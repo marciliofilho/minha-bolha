@@ -113,6 +113,19 @@ class MainActivity : Activity() {
         webView.evaluateJavascript(script) { value ->
             Log.i(TAG, "webviewReady: $value")
         }
+
+        if (BuildConfig.DEBUG) {
+            // Sonda temporária: confirma se o WebView entrega eventos SSE ao JS.
+            val probe =
+                "(function(){try{var s=new EventSource('/api/events');window.__hubSseProbe=s;" +
+                    "s.onopen=function(){console.log('PROBE open')};" +
+                    "s.onmessage=function(e){console.log('PROBE msg '+String(e.data).slice(0,90))};" +
+                    "s.onerror=function(){console.log('PROBE error '+s.readyState)};" +
+                    "return 'probe-started';}catch(err){return 'probe-fail '+err;}})()"
+            webView.evaluateJavascript(probe) { value ->
+                Log.i(TAG, "sseProbe: $value")
+            }
+        }
     }
 
     @Deprecated("Deprecated in Android")
