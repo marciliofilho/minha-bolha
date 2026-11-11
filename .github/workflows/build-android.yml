@@ -100,4 +100,5 @@ jobs:
             android-spike.png
             android-feed.png
             android-logcat.txt
+            android-logcat-start.txt
             android-events.txt

@@ -26,9 +26,9 @@ adb shell am start -W -n "$PACKAGE/.MainActivity"
 # O app agenda a checagem da UI 6s depois do onPageFinished.
 sleep 12
 
-echo "== Capturando screenshot e logcat =="
+echo "== Capturando screenshot inicial e logcat =="
 adb exec-out screencap -p > android-spike.png || true
-adb logcat -d > android-logcat.txt || true
+adb logcat -d > android-logcat-start.txt || true
 
 echo "== Processo e crash =="
 PID="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
@@ -154,6 +154,7 @@ if [ "$NETWORK_OK" -eq 1 ]; then
 
   # Dá tempo do React Query recarregar o feed via SSE antes do screenshot.
   sleep 8
+  adb logcat -d > android-logcat.txt || true
   adb exec-out screencap -p > android-feed.png || true
 
   echo "== Removendo a fonte de teste =="
