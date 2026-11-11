@@ -51,7 +51,7 @@ import { nowIso } from '../../lib/dates';
 import { parseJson } from '../../db/mappers';
 import { enqueueSource } from '../../scheduler';
 import { renderPageJson } from '../../lib/headless-browser';
-import { desktopExtractPort, extractViaDesktop } from '../../lib/desktop-extract';
+import { desktopExtractAvailable, extractViaDesktop } from '../../lib/desktop-extract';
 import { fetchViaJina } from '../../lib/jina';
 import {
   isWebnovelUrl,
@@ -60,6 +60,7 @@ import {
   toMobileUrl
 } from '../../lib/live-browser';
 import { isNovelChallengePage, isSameChapter } from '../../lib/webnovel-url';
+import { fetchNovelChapterHtml } from '../../lib/novel-html';
 import { HttpError, parseBody } from '../errors';
 
 export const sourcesRouter = Router();
@@ -301,6 +302,46 @@ interface NovelChapterProgressState {
 const novelChapterProgress = new Map<string, NovelChapterProgressState>();
 const NOVEL_PROGRESS_LIMIT = 30;
 
+/** Tempo médio dos métodos que já funcionaram por site. */
+const chapterMethodStats = new Map<
+  string,
+  Map<string, { successes: number; totalMs: number }>
+>();
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function recordChapterMethod(host: string, label: string, elapsedMs: number): void {
+  if (!host) return;
+  let stats = chapterMethodStats.get(host);
+  if (!stats) {
+    stats = new Map();
+    chapterMethodStats.set(host, stats);
+  }
+  const current = stats.get(label) ?? { successes: 0, totalMs: 0 };
+  current.successes += 1;
+  current.totalMs += elapsedMs;
+  stats.set(label, current);
+}
+
+/** Coloca primeiro os métodos que já foram mais rápidos neste site. */
+function sortAttemptsBySpeed<T extends { label: string }>(host: string, attempts: T[]): void {
+  const stats = chapterMethodStats.get(host);
+  if (!stats) return;
+  const average = (label: string): number => {
+    const stat = stats.get(label);
+    return stat && stat.successes > 0
+      ? stat.totalMs / stat.successes
+      : Number.MAX_SAFE_INTEGER;
+  };
+  attempts.sort((a, b) => average(a.label) - average(b.label));
+}
+
 function startChapterProgress(url: string): NovelChapterProgressState {
   const state: NovelChapterProgressState = {
     url,
@@ -356,17 +397,30 @@ async function loadNovelChapter(
     finalUrl: string;
   };
 
+  const feedPort = await desktopExtractAvailable();
   const attempts: Array<{ label: string; run: () => Promise<ChapterRenderResult> }> =
     isWebnovelUrl(urlKey)
       ? [
-          ...(desktopExtractPort()
+          {
+            label: 'html',
+            run: async () => {
+              const result = await fetchNovelChapterHtml(urlKey, 5_000);
+              if (!result) throw new Error('HTML sem conteúdo de capítulo');
+              return {
+                data: { title: result.title, text: result.text },
+                title: result.title,
+                finalUrl: result.finalUrl
+              };
+            }
+          },
+          ...(feedPort
             ? [
                 {
                   label: 'feed',
                   run: () =>
                     extractViaDesktop<ChapterExtract>({
                       ...baseOptions,
-                      timeoutMs: 18_000,
+                      timeoutMs: 10_000,
                       fallback: true
                     })
                 }
@@ -375,7 +429,7 @@ async function loadNovelChapter(
           {
             label: 'jina',
             run: async () => {
-              const result = await fetchViaJina(urlKey);
+              const result = await fetchViaJina(urlKey, 8_000);
               if (!result) throw new Error('leitor externo indisponível');
               return {
                 data: { title: result.title, text: result.text },
@@ -389,7 +443,7 @@ async function loadNovelChapter(
             run: () =>
               liveRenderJson<ChapterExtract>({
                 ...baseOptions,
-                timeoutMs: 15_000,
+                timeoutMs: 8_000,
                 reuseCurrentPage: true
               })
           },
@@ -398,14 +452,14 @@ async function loadNovelChapter(
             run: () =>
               liveRenderJson<ChapterExtract>({
                 ...baseOptions,
-                timeoutMs: 12_000,
+                timeoutMs: 7_000,
                 mobile: true
               })
           },
           {
             label: 'scraping',
             run: () =>
-              renderPageJson<ChapterExtract>({ ...baseOptions, timeoutMs: 12_000 })
+              renderPageJson<ChapterExtract>({ ...baseOptions, timeoutMs: 7_000 })
           },
           {
             label: 'scraping-móvel',
@@ -413,21 +467,28 @@ async function loadNovelChapter(
               renderPageJson<ChapterExtract>({
                 ...baseOptions,
                 url: toMobileUrl(urlKey),
-                timeoutMs: 10_000,
+                timeoutMs: 6_000,
                 userAgent: MOBILE_USER_AGENT
               })
           }
         ]
       : [
           {
-            label: 'scraping',
-            run: () =>
-              renderPageJson<ChapterExtract>({ ...baseOptions, timeoutMs: 20_000 })
+            label: 'html',
+            run: async () => {
+              const result = await fetchNovelChapterHtml(urlKey, 5_000);
+              if (!result) throw new Error('HTML sem conteúdo de capítulo');
+              return {
+                data: { title: result.title, text: result.text },
+                title: result.title,
+                finalUrl: result.finalUrl
+              };
+            }
           },
           {
             label: 'jina',
             run: async () => {
-              const result = await fetchViaJina(urlKey);
+              const result = await fetchViaJina(urlKey, 8_000);
               if (!result) throw new Error('leitor externo indisponível');
               return {
                 data: { title: result.title, text: result.text },
@@ -435,8 +496,26 @@ async function loadNovelChapter(
                 finalUrl: urlKey
               };
             }
+          },
+          {
+            label: 'scraping',
+            run: () =>
+              renderPageJson<ChapterExtract>({ ...baseOptions, timeoutMs: 10_000 })
+          },
+          {
+            label: 'scraping-móvel',
+            run: () =>
+              renderPageJson<ChapterExtract>({
+                ...baseOptions,
+                url: toMobileUrl(urlKey),
+                timeoutMs: 7_000,
+                userAgent: MOBILE_USER_AGENT
+              })
           }
         ];
+
+  // O método mais rápido que já funcionou para este site vai para a frente.
+  sortAttemptsBySpeed(hostOf(urlKey), attempts);
 
   let result: ChapterRenderResult | null = null;
   const failures: string[] = [];
@@ -447,6 +526,7 @@ async function loadNovelChapter(
       message: null
     };
     progress.attempts.push(attemptState);
+    const startedAt = Date.now();
     try {
       const candidate = await attempt.run();
       const candidateText = candidate.data?.text?.trim() ?? '';
@@ -470,13 +550,18 @@ async function loadNovelChapter(
       attemptState.status = 'ok';
       progress.finishedAt = nowIso();
       result = candidate;
+      const elapsed = Date.now() - startedAt;
+      recordChapterMethod(hostOf(urlKey), attempt.label, elapsed);
+      console.info(`[novels] capítulo ${urlKey} — ${attempt.label}: ok em ${elapsed}ms`);
       break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       attemptState.status = 'failed';
       attemptState.message = message;
       failures.push(`${attempt.label}: ${message}`);
-      console.warn(`[novels] capítulo ${urlKey} — ${attempt.label}: ${message}`);
+      console.warn(
+        `[novels] capítulo ${urlKey} — ${attempt.label}: ${message} (${Date.now() - startedAt}ms)`
+      );
     }
   }
 

@@ -17,7 +17,10 @@ export interface JinaChapter {
   text: string;
 }
 
-export async function fetchViaJina(url: string): Promise<JinaChapter | null> {
+export async function fetchViaJina(
+  url: string,
+  timeoutMs = TIMEOUT_MS
+): Promise<JinaChapter | null> {
   try {
     const response = await fetch(`https://r.jina.ai/${url}`, {
       headers: {
@@ -25,7 +28,7 @@ export async function fetchViaJina(url: string): Promise<JinaChapter | null> {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
       },
-      signal: AbortSignal.timeout(TIMEOUT_MS)
+      signal: AbortSignal.timeout(timeoutMs)
     });
     if (!response.ok) {
       log.warn(`leitor externo respondeu ${response.status}`);

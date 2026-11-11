@@ -15,6 +15,10 @@ const log = createLogger('desktop-extract');
 let cachedPort: string | null = null;
 let cachedMtime = 0;
 
+/** Resultado do último health check do serviço do app desktop. */
+let availability: { port: string; at: number; ok: boolean } | null = null;
+const AVAILABILITY_TTL_MS = 30_000;
+
 function portFromFile(): string | null {
   try {
     const file = join(dirname(env.dbPath), 'desktop-extract.json');
@@ -35,6 +39,37 @@ export function desktopExtractPort(): string | null {
   return process.env.HUB_EXTRACT_PORT?.trim() || portFromFile();
 }
 
+/**
+ * Confirma que o serviço do app desktop está realmente ouvindo. Evita tentar
+ * uma porta antiga deixada em `desktop-extract.json` quando a API roda sozinha.
+ */
+export async function desktopExtractAvailable(): Promise<string | null> {
+  const port = desktopExtractPort();
+  if (!port) {
+    availability = null;
+    return null;
+  }
+  const now = Date.now();
+  if (availability?.port === port && now - availability.at < AVAILABILITY_TTL_MS) {
+    return availability.ok ? port : null;
+  }
+
+  let ok = false;
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      signal: AbortSignal.timeout(1_200)
+    });
+    ok = response.ok;
+  } catch {
+    ok = false;
+  }
+  availability = { port, at: Date.now(), ok };
+  if (!ok) {
+    log.debug(`extração pelo app desktop indisponível na porta ${port}`);
+  }
+  return ok ? port : null;
+}
+
 export interface DesktopExtractOptions {
   url: string;
   readyExpression: string;
@@ -53,7 +88,7 @@ export interface DesktopExtractResult<T> {
 export async function extractViaDesktop<T>(
   options: DesktopExtractOptions
 ): Promise<DesktopExtractResult<T>> {
-  const port = desktopExtractPort();
+  const port = await desktopExtractAvailable();
   if (!port) {
     throw new Error('navegador do Feed indisponível');
   }
@@ -73,8 +108,10 @@ export async function extractViaDesktop<T>(
       signal: AbortSignal.timeout(timeoutMs + 15_000)
     });
   } catch (error) {
-    log.warn(
-      `não foi possível falar com o app desktop: ${
+    // O desktop pode ter fechado entre o health check e a extração.
+    availability = { port, at: Date.now(), ok: false };
+    log.debug(
+      `app desktop deixou de responder: ${
         error instanceof Error ? error.message : String(error)
       }`
     );

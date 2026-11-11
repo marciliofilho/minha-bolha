@@ -16,7 +16,7 @@ Everything runs on your machine. There is no account, no cloud sync and no telem
 - **Games** via Steam wishlist and gg.deals: one card per game, lowest current price and a detail modal.
 - **Stremio** read-only library sync, addons and stream playback.
 - **Novels / Webnovel**: cover previews, chapter reader, persistent cache, offline chapter downloads, background jobs, per-chapter progress and a batch offline manager.
-- **Robust novel extraction** with automatic fallbacks: Feed browser session → page HTML → external reader (Jina) → mobile site → headless scraping.
+- **Robust novel extraction** with automatic fallbacks, fastest first: direct page HTML → Feed browser session → external reader (Jina) → mobile site → headless scraping. The fastest method that already worked for a site is tried first on the next chapter.
 - **Three UI languages**: Português (Brasil), English and Español. The app is called *Minha Bolha* in Portuguese and *My Bubble* in other languages.
 - **Automatic updates** through GitHub Releases, with separate installed and portable builds.
 - **Local SQLite database**, preserved across updates, with automatic daily snapshots (the last 7 are kept in `data\backups`).
@@ -122,7 +122,7 @@ Data locations:
 - It only contacts the sources you configure (YouTube, RSS sites, TMDB, AniList, Steam, gg.deals, Stremio, Webnovel, etc.).
 - API keys stay on your machine and are masked in the UI.
 - The embedded browser shares a dedicated profile with the app; cookies obtained by the Feed browser are reused by the internal extraction session.
-- **External reader disclosure:** when local extraction of a novel chapter fails, the app may use [Jina Reader](https://r.jina.ai/) as a last-resort fallback. In that case only the chapter URL is sent to that service. If you do not want external requests, avoid the novel sources that require this fallback or block `r.jina.ai` on your network.
+- **External reader disclosure:** when local extraction of a novel chapter fails, the app may use [Jina Reader](https://r.jina.ai/) as a fallback. In that case only the chapter URL is sent to that service. If you do not want external requests, avoid the novel sources that require this fallback or block `r.jina.ai` on your network.
 
 ---
 

@@ -9,7 +9,7 @@ import { ConnectorError } from './types';
 import type { NovelChapter, NovelSnapshot } from './novel-types';
 import { liveRenderJson, MOBILE_USER_AGENT, toMobileUrl } from '../lib/live-browser';
 import { renderPageJson } from '../lib/headless-browser';
-import { desktopExtractPort, extractViaDesktop } from '../lib/desktop-extract';
+import { desktopExtractAvailable, extractViaDesktop } from '../lib/desktop-extract';
 
 interface RawChapter {
   id?: string;
@@ -160,11 +160,12 @@ export async function loadWebnovelPage(input: string): Promise<NovelSnapshot> {
     readyExpression: READY_EXPRESSION,
     expression: EXTRACT_EXPRESSION
   };
+  const feedPort = await desktopExtractAvailable();
   const attempts: Array<{
     label: string;
     run: () => Promise<{ data: RawNovel | null; title: string; finalUrl: string }>;
   }> = [
-    ...(desktopExtractPort()
+    ...(feedPort
       ? [
           {
             label: 'feed',

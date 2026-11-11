@@ -857,6 +857,11 @@ function startExtractServer() {
     (port) =>
       new Promise((resolve, reject) => {
         const server = http.createServer((req, res) => {
+          if (req.method === 'GET' && req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
           if (req.method !== 'POST' || req.url !== '/extract') {
             res.writeHead(404, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Rota não encontrada.' }));
