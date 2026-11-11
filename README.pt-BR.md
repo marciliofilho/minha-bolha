@@ -88,6 +88,7 @@ npm run desktop
 | `npm run desktop:dev` | Abre o app desktop sem recompilar |
 | `npm run seed` | Recria as fontes/itens de demonstração |
 | `npm run typecheck` | Checagem de tipos de API e web |
+| `npm test` | Testes de regressão da API |
 | `npm run check:secrets` | Verifica se chaves/tokens entrariam no Git |
 
 ---
@@ -220,7 +221,7 @@ Você pode colar as chaves em **Configurações → Chaves de API** (recomendado
 
 **Sistema**
 - **Configurações por categoria**: **Interface** (aparência, idioma, **Feed e prévias** — janela de YouTube/notícias e atraso da prévia —, inicialização/intro, player/legendas), **Streaming** (fontes, Stremio e addons), **Sistema** (atualizações, região/moeda, cache inteligente, armazenamento/cache e backup) e **Chaves**. As seções longas (Stremio, Addons e Chaves) podem ser minimizadas com o olho ao lado do título, e a categoria/seções ficam lembradas no navegador.
-- **Armazenamento e cache**: mostra o espaço usado pelo cache de streams/torrents/HLS, temporários do navegador e banco SQLite; permite **limpar caches** (com confirmação, interrompendo streams em andamento) e **otimizar o banco** com `VACUUM`/`PRAGMA optimize`. A seção **Cache inteligente** ajusta o TTL do cache de streams, a retenção do cache de torrents e a manutenção automática.
+- **Armazenamento e cache**: mostra o espaço usado pelo cache de streams/torrents/HLS, temporários do navegador e banco SQLite; permite **limpar caches** (com confirmação, interrompendo streams em andamento) e **otimizar o banco** com `VACUUM`/`PRAGMA optimize`. A seção **Cache inteligente** ajusta o TTL do cache de streams, a retenção do cache de torrents e a manutenção automática. Com a manutenção ligada, o app também cria **um snapshot diário do banco** em `data/backups` (mantém os 7 mais recentes) e **rotaciona o `api.log`** em 5 MB (`api.log.old`). Para restaurar um snapshot, feche o app e substitua o `hub.db` pelo arquivo escolhido.
 - **Backup e portabilidade**: exporta um JSON com **fontes reais, categorias personalizadas e configurações** (incluindo o progresso de leitura salvo no config das novels). Chaves de API, caches, torrents, arquivos temporários e dados da conta do Stremio **não entram** no arquivo. A importação mostra uma **prévia** com quantas fontes/categorias são novas ou já existem e, após confirmação, **mescla** os dados: fontes com o mesmo ID são atualizadas e as demais são criadas.
 
 ---
@@ -511,7 +512,7 @@ POST   /api/demo/seed · DELETE /api/demo
 │     ├─ lib/           (api, queries, realtime, theme, utils, stremio)
 │     └─ styles/index.css
 ├─ packages/shared/src/ (tipos, constantes, schemas Zod)
-├─ data/                (SQLite — criado em runtime, ignorado pelo git)
+├─ data/                (SQLite, backups e logs — criado em runtime, ignorado pelo git)
 └─ .env.example
 ```
 
@@ -712,6 +713,12 @@ Copyright (C) 2026 Minha Bolha (My Bubble). “Minha Bolha” e “My Bubble” 
 - As licenças de Electron, FFmpeg e demais componentes estão em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 O código-fonte do projeto é público. Ao distribuir o instalador ou o portátil, o repositório público cumpre a exigência de disponibilização do código correspondente.
+
+---
+
+## Contribuindo
+
+Contribuições são bem-vindas. Veja [CONTRIBUTING.md](CONTRIBUTING.md). Para problemas de segurança, siga [SECURITY.md](SECURITY.md) em vez de abrir uma issue pública.
 
 ---
 

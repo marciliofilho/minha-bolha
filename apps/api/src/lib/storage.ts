@@ -4,7 +4,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { env } from '../config/env';
 import { db } from '../db/database';
 import {
@@ -190,11 +190,59 @@ export async function cleanupTorrentCacheIfOld(days: number): Promise<TorrentCle
 /** Manutenção automática: temporários antigos do navegador + cache de torrents. */
 let lastNovelCleanupAt = 0;
 
+const DATABASE_BACKUP_INTERVAL_MS = 24 * 60 * 60_000;
+const DATABASE_BACKUP_RETENTION = 7;
+
+export interface DatabaseBackupResult {
+  created: boolean;
+  path: string | null;
+  removed: number;
+}
+
+/**
+ * Cópia consistente do SQLite (VACUUM INTO) uma vez por dia, mantendo as 7
+ * mais recentes. Fica em `data/backups/` e nunca entra no release.
+ */
+export async function runAutomaticDatabaseBackup(force = false): Promise<DatabaseBackupResult> {
+  const root = join(dirname(env.dbPath), 'backups');
+  await fs.mkdir(root, { recursive: true });
+
+  const existing = (await fs.readdir(root).catch(() => [])).filter((name) =>
+    /^hub-.*\.db$/i.test(name)
+  );
+  const withStats = await Promise.all(
+    existing.map(async (name) => {
+      const stat = await fs.stat(join(root, name)).catch(() => null);
+      return { name, mtimeMs: stat?.mtimeMs ?? 0 };
+    })
+  );
+  const latest = withStats.reduce((max, item) => Math.max(max, item.mtimeMs), 0);
+  if (!force && latest > 0 && Date.now() - latest < DATABASE_BACKUP_INTERVAL_MS) {
+    return { created: false, path: null, removed: 0 };
+  }
+
+  const stamp = nowIso().replace(/[:.]/g, '-').slice(0, 19);
+  const target = join(root, `hub-${stamp}.db`);
+  db.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+
+  const after = (await fs.readdir(root).catch(() => []))
+    .filter((name) => /^hub-.*\.db$/i.test(name))
+    .sort();
+  let removed = 0;
+  while (after.length - removed > DATABASE_BACKUP_RETENTION) {
+    await fs.rm(join(root, after[removed]), { force: true }).catch(() => undefined);
+    removed += 1;
+  }
+
+  return { created: true, path: target, removed };
+}
+
 export async function runAutomaticMaintenance(): Promise<{
   enabled: boolean;
   browserTemp: DirectoryStats;
   torrent: TorrentCleanupResult;
   novelCache: { removed: number };
+  databaseBackup: DatabaseBackupResult;
 }> {
   const settings = getSettings();
   if (!settings.autoMaintenanceEnabled) {
@@ -202,7 +250,8 @@ export async function runAutomaticMaintenance(): Promise<{
       enabled: false,
       browserTemp: { bytes: 0, files: 0, dirs: 0 },
       torrent: { removed: false, freedBytes: 0, freedFiles: 0, reason: 'disabled' },
-      novelCache: { removed: 0 }
+      novelCache: { removed: 0 },
+      databaseBackup: { created: false, path: null, removed: 0 }
     };
   }
 
@@ -216,12 +265,21 @@ export async function runAutomaticMaintenance(): Promise<{
     lastNovelCleanupAt = Date.now();
   }
   const chaptersRemoved = cleanupNovelChaptersOlderThan(settings.novelOfflineRetentionDays);
+  const databaseBackup = await runAutomaticDatabaseBackup().catch((error) => {
+    console.warn(
+      `[storage] backup automático falhou: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return { created: false, path: null, removed: 0 } satisfies DatabaseBackupResult;
+  });
 
   return {
     enabled: true,
     browserTemp,
     torrent,
-    novelCache: { removed: detailsRemoved + chaptersRemoved }
+    novelCache: { removed: detailsRemoved + chaptersRemoved },
+    databaseBackup
   };
 }
 

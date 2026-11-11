@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "seed": "tsx src/scripts/seed-cli.ts",
+    "test": "tsx --test src/lib/webnovel-url.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

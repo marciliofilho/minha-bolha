@@ -330,6 +330,9 @@ export function startScheduler(): void {
         if (result.novelCache.removed > 0) {
           log.info(`cache de novels limpo automaticamente: ${result.novelCache.removed} entrada(s)`);
         }
+        if (result.databaseBackup.created) {
+          log.info('backup automático do banco criado');
+        }
       })
       .catch((error) => {
         log.warn(

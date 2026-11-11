@@ -54,7 +54,6 @@ import type {
   TranslationDto,
   WishlistImportResultDto
 } from '@hub/shared';
-import type { BridgeCookie } from '@/types/electron';
 import { localizeApiMessage } from './api-errors';
 
 export class ApiError extends Error {
@@ -206,18 +205,6 @@ export const api = {
         }>;
       } | null;
     }>(`/novels/chapter/progress?url=${encodeURIComponent(url)}`),
-  showNovelVerification: (url: string) =>
-    request<{ url: string; title: string }>('/browser/live/verify', {
-      method: 'POST',
-      body: JSON.stringify({ url })
-    }),
-  hideNovelVerification: () =>
-    request<{ ok: boolean }>('/browser/live/verify/close', { method: 'POST' }),
-  importNovelCookies: (url: string, cookies: BridgeCookie[]) =>
-    request<{ imported: number; url: string; title: string }>('/browser/live/cookies', {
-      method: 'POST',
-      body: JSON.stringify({ url, cookies })
-    }),
   startNovelDownload: (body: { title: string; chapters: NovelDownloadChapterDto[] }) =>
     request<NovelDownloadJobDto>('/novels/download', {
       method: 'POST',

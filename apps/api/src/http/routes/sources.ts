@@ -54,12 +54,12 @@ import { renderPageJson } from '../../lib/headless-browser';
 import { desktopExtractPort, extractViaDesktop } from '../../lib/desktop-extract';
 import { fetchViaJina } from '../../lib/jina';
 import {
-  isManualVerificationRequested,
   isWebnovelUrl,
   liveRenderJson,
   MOBILE_USER_AGENT,
   toMobileUrl
 } from '../../lib/live-browser';
+import { isNovelChallengePage, isSameChapter } from '../../lib/webnovel-url';
 import { HttpError, parseBody } from '../errors';
 
 export const sourcesRouter = Router();
@@ -233,16 +233,6 @@ function fallbackNovelDetails(config: Record<string, unknown>): {
   };
 }
 
-/** Página de verificação (Cloudflare e similares) não é conteúdo de capítulo. */
-const NOVEL_CHALLENGE_RE =
-  /(executando verifica[cç][aã]o de seguran[cç]a|verifica[cç][aã]o de seguran[cç]a|cf-browser-verification|just a moment\.\.\.|attention required!?\s*\|\s*cloudflare|checking your browser before accessing|enable javascript and cookies|ray id:)/i;
-
-function isNovelChallengePage(title: string, text: string): boolean {
-  // Só o começo da página: o texto do capítulo pode conter frases parecidas.
-  const haystack = `${title}\n${text.slice(0, 1500)}`;
-  return text.length < 20_000 && NOVEL_CHALLENGE_RE.test(haystack);
-}
-
 const CHAPTER_CONTENT_EXTRACT = `(() => {
   const selectors = [
     '.cha-words',
@@ -311,22 +301,6 @@ interface NovelChapterProgressState {
 const novelChapterProgress = new Map<string, NovelChapterProgressState>();
 const NOVEL_PROGRESS_LIMIT = 30;
 
-/** Último segmento da URL (ID/slug do capítulo), para conferir a página. */
-function chapterSegment(url: string): string | null {
-  try {
-    const parts = new URL(url).pathname.split('/').filter(Boolean);
-    return parts[parts.length - 1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function isSameChapter(a: string, b: string): boolean {
-  const left = chapterSegment(a);
-  const right = chapterSegment(b);
-  return Boolean(left && right && left === right);
-}
-
 function startChapterProgress(url: string): NovelChapterProgressState {
   const state: NovelChapterProgressState = {
     url,
@@ -372,7 +346,7 @@ async function loadNovelChapter(
     url: urlKey,
     readyExpression: CHAPTER_READY_EXPRESSION,
     expression: CHAPTER_CONTENT_EXTRACT,
-    shouldAbort: () => isManualVerificationRequested(urlKey) || Boolean(shouldAbort?.())
+    shouldAbort
   };
   const progress = startChapterProgress(urlKey);
   type ChapterExtract = { title: string; text: string; textWithComments?: string | null };
@@ -466,12 +440,7 @@ async function loadNovelChapter(
 
   let result: ChapterRenderResult | null = null;
   const failures: string[] = [];
-  let manualPause = false;
   for (const attempt of attempts) {
-    if (isManualVerificationRequested(urlKey)) {
-      manualPause = true;
-      break;
-    }
     const attemptState: NovelAttemptState = {
       label: attempt.label,
       status: 'trying',
@@ -513,9 +482,6 @@ async function loadNovelChapter(
 
   if (!result) {
     progress.finishedAt = nowIso();
-    if (manualPause) {
-      throw new Error('Leitura pausada para você concluir a verificação manual.');
-    }
     throw new Error(
       `Todas as tentativas de carregar o capítulo falharam. ${failures.join(' | ')}`
     );

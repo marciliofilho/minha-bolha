@@ -34,7 +34,6 @@ import type {
   TitleDetailsDto
 } from '@hub/shared';
 import { api, type StatusResponse } from './api';
-import type { BridgeCookie } from '@/types/electron';
 
 export const FALLBACK_SETTINGS: SettingsDto = {
   theme: 'dark',
@@ -1066,25 +1065,6 @@ export function useNovelChapterProgress(
     refetchInterval: 700,
     retry: false,
     staleTime: 0
-  });
-}
-
-export function useShowNovelVerification() {
-  return useMutation({
-    mutationFn: (url: string) => api.showNovelVerification(url)
-  });
-}
-
-export function useHideNovelVerification() {
-  return useMutation({
-    mutationFn: () => api.hideNovelVerification()
-  });
-}
-
-export function useImportNovelCookies() {
-  return useMutation({
-    mutationFn: (input: { url: string; cookies: BridgeCookie[] }) =>
-      api.importNovelCookies(input.url, input.cookies)
   });
 }
 

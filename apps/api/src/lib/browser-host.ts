@@ -29,8 +29,6 @@ export interface BrowserHost {
   port: number;
   httpEndpoint: string;
   wsEndpoint: string;
-  /** Porta do canal de controle (mostrar/esconder a janela de verificação). */
-  controlPort: number;
   /** IDs das duas janelas fixas criadas pelo host. */
   targets: Record<BrowserTargetKind, string>;
   /** Porta/URLs mudam a cada reinício; guarda o processo para encerrar junto. */
@@ -79,13 +77,12 @@ function electronBinary(): string | null {
   return null;
 }
 
-function hostArgs(port: number, controlPort: number): string[] {
+function hostArgs(port: number): string[] {
   const args: string[] = [];
   if (process.env.HUB_PACKAGED !== '1') {
     args.push(resolve(appRoot, 'apps/desktop'));
   }
   args.push(`--browser-host=${port}`);
-  args.push(`--browser-control=${controlPort}`);
   return args;
 }
 
@@ -181,8 +178,6 @@ async function startHost(): Promise<BrowserHost> {
   }
 
   const port = await freePort();
-  let controlPort = await freePort();
-  while (controlPort === port) controlPort = await freePort();
   const hostEnv: NodeJS.ProcessEnv = {
     ...process.env,
     HUB_BROWSER_HOST: '1',
@@ -192,7 +187,7 @@ async function startHost(): Promise<BrowserHost> {
   // A API pode estar rodando como Node do Electron; o host precisa ser GUI.
   delete hostEnv.ELECTRON_RUN_AS_NODE;
 
-  const spawned = spawn(binary, hostArgs(port, controlPort), {
+  const spawned = spawn(binary, hostArgs(port), {
     cwd: process.env.HUB_APP_DIR?.trim() || appRoot,
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: true,
@@ -220,7 +215,6 @@ async function startHost(): Promise<BrowserHost> {
       port,
       httpEndpoint: `http://127.0.0.1:${port}`,
       wsEndpoint: ready.version.webSocketDebuggerUrl!,
-      controlPort,
       targets: ready.targets,
       restartKey: port
     };
@@ -269,35 +263,6 @@ export async function stopBrowserHost(): Promise<void> {
       resolveStop();
     });
   });
-}
-
-/**
- * Mostra ou esconde a janela live no host. O CDP do Electron não expõe
- * `Browser.setWindowBounds`, por isso o host abre um pequeno canal HTTP local.
- */
-export async function controlBrowserHost(action: 'show' | 'hide'): Promise<boolean> {
-  const current = host;
-  if (!current?.controlPort) return false;
-  const deadline = Date.now() + 3_000;
-  let lastError = '';
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${current.controlPort}/${action}`, {
-        method: 'POST',
-        signal: AbortSignal.timeout(2_500)
-      });
-      if (response.ok) {
-        const data = (await response.json()) as { ok?: boolean };
-        return data.ok === true;
-      }
-      lastError = `HTTP ${response.status}`;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-    }
-    await delay(250);
-  }
-  log.warn(`canal de controle do navegador indisponível (${action}): ${lastError}`);
-  return false;
 }
 
 /** URL WebSocket de uma das janelas fixas. */

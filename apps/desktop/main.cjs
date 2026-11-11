@@ -5,7 +5,7 @@
  * <webview>, que é o navegador real embutido no card do Feed. O webview usa
  * uma sessão/partição própria, então não interfere no navegador do usuário.
  */
-const { app, BrowserWindow, Menu, shell, session, ipcMain, webContents } = require('electron');
+const { app, BrowserWindow, Menu, shell, webContents } = require('electron');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const net = require('node:net');
@@ -22,8 +22,6 @@ const repoRoot = path.resolve(__dirname, '../..');
 const hostArg = process.argv.find((argument) => argument.startsWith('--browser-host='));
 const isBrowserHost = process.env.HUB_BROWSER_HOST === '1' || Boolean(hostArg);
 const hostPort = hostArg ? Number(hostArg.split('=')[1]) : 0;
-const controlArg = process.argv.find((argument) => argument.startsWith('--browser-control='));
-const controlPort = controlArg ? Number(controlArg.split('=')[1]) : 0;
 
 // Mantém janelas fora da tela ativas: desafios do site (Cloudflare) dependem
 // de timers/renderização e não podem ser "congelados" por oclusão.
@@ -90,7 +88,6 @@ let startingUp = true;
 let quitting = false;
 /** Mantém as janelas do navegador auxiliar vivas (sem referência o Electron as fecha). */
 let hostWindows = [];
-let hostLiveWindow = null;
 let hostScrapeWindow = null;
 
 /** Lê as preferências da intro direto do SQLite antes de a API subir. */
@@ -234,6 +231,21 @@ async function setApiLanguage(language) {
   return false;
 }
 
+// Mantém no máximo um log antigo de 5 MB. O api.log atual é reiniciado a cada
+// execução; a cópia anterior fica em api.log.old para diagnóstico.
+const API_LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+function rotateApiLog(logPath) {
+  try {
+    const stat = fs.statSync(logPath);
+    if (stat.size < API_LOG_MAX_BYTES) return;
+    fs.rmSync(`${logPath}.old`, { force: true });
+    fs.renameSync(logPath, `${logPath}.old`);
+  } catch {
+    // ainda não existe log
+  }
+}
+
 async function startApi(initialLanguage = null) {
   if (process.env.HUB_DESKTOP_URL) return true;
   if (!isPackaged && (await checkHealth())) return true;
@@ -309,7 +321,9 @@ async function startApi(initialLanguage = null) {
     });
   }
 
-  apiLogStream = fs.createWriteStream(path.join(dataDir, 'api.log'), { flags: 'w' });
+  const apiLogPath = path.join(dataDir, 'api.log');
+  rotateApiLog(apiLogPath);
+  apiLogStream = fs.createWriteStream(apiLogPath, { flags: 'w' });
   apiProcess.stdout?.pipe(apiLogStream);
   apiProcess.stderr?.pipe(apiLogStream);
 
@@ -404,127 +418,6 @@ function desktopUserAgent() {
   );
 }
 
-let verificationWindow = null;
-
-/**
- * Abre uma janela visível usando a MESMA sessão do navegador do Feed
- * (`persist:hub-browser`). É onde o usuário resolve a verificação do site;
- * os cookies ficam disponíveis para importar na extração.
- */
-function openVerificationWindow(rawUrl) {
-  const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
-  if (!/^https?:\/\//i.test(url)) {
-    return { ok: false, error: 'URL inválida.' };
-  }
-
-  // Se a janela de extração ainda está neste capítulo (ex.: desafio pendente),
-  // só traz ela para frente em vez de abrir outra.
-  if (
-    extractWindow &&
-    !extractWindow.isDestroyed() &&
-    sameExtractUrl(extractWindow.webContents.getURL(), url)
-  ) {
-    showExtractWindow(extractWindow);
-    return { ok: true, reused: true };
-  }
-
-  if (verificationWindow && !verificationWindow.isDestroyed()) {
-    verificationWindow.show();
-    verificationWindow.focus();
-    void verificationWindow.loadURL(url).catch(() => undefined);
-    return { ok: true };
-  }
-
-  const win = new BrowserWindow({
-    width: 1120,
-    height: 860,
-    minWidth: 800,
-    minHeight: 600,
-    show: false,
-    backgroundColor: '#07090e',
-    title: 'Verificação — Minha Bolha',
-    webPreferences: {
-      partition: 'persist:hub-browser',
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      backgroundThrottling: false
-    }
-  });
-  verificationWindow = win;
-  try {
-    win.setMenuBarVisibility(false);
-  } catch {
-    // sem menu
-  }
-
-  win.webContents.setUserAgent(desktopUserAgent());
-  win.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:/i.test(target)) {
-      void win.loadURL(target).catch(() => undefined);
-    }
-    return { action: 'deny' };
-  });
-  win.on('closed', () => {
-    if (verificationWindow === win) verificationWindow = null;
-  });
-
-  let shown = false;
-  const show = () => {
-    if (shown || win.isDestroyed()) return;
-    shown = true;
-    win.show();
-    win.focus();
-  };
-  win.once('ready-to-show', show);
-  setTimeout(show, 1500);
-
-  void win.loadURL(url).catch(() => {
-    show();
-  });
-  return { ok: true };
-}
-
-function closeVerificationWindow() {
-  if (verificationWindow && !verificationWindow.isDestroyed()) {
-    verificationWindow.destroy();
-  }
-  verificationWindow = null;
-  return { ok: true };
-}
-
-const SAME_SITE_MAP = {
-  no_restriction: 'None',
-  lax: 'Lax',
-  strict: 'Strict'
-};
-
-/** Lê os cookies da sessão do Feed aplicáveis à URL (para importar na extração). */
-async function readVerificationCookies(rawUrl) {
-  const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
-  if (!/^https?:\/\//i.test(url)) return { cookies: [] };
-  const ses = session.fromPartition('persist:hub-browser');
-  const cookies = await ses.cookies.get({ url });
-  return {
-    cookies: cookies.map((cookie) => ({
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path,
-      secure: cookie.secure,
-      httpOnly: cookie.httpOnly,
-      sameSite: SAME_SITE_MAP[cookie.sameSite] ?? null,
-      expires: cookie.session ? null : cookie.expirationDate ?? null
-    }))
-  };
-}
-
-function registerVerificationBridge() {
-  ipcMain.handle('verify:open', (_event, url) => openVerificationWindow(url));
-  ipcMain.handle('verify:cookies', (_event, url) => readVerificationCookies(url));
-  ipcMain.handle('verify:close', () => closeVerificationWindow());
-}
-
 // ---------------------------------------------------------------------------
 // Extração usando a sessão do navegador do Feed
 // ---------------------------------------------------------------------------
@@ -569,20 +462,6 @@ function enqueueExtract(task) {
   const next = extractQueue.then(task, task);
   extractQueue = next.catch(() => undefined);
   return next;
-}
-
-function showExtractWindow(win) {
-  if (!win || win.isDestroyed()) return;
-  try {
-    win.setSkipTaskbar(true);
-    win.setOpacity(1);
-    win.setAlwaysOnTop(true, 'floating');
-    win.setBounds({ x: 120, y: 80, width: 1100, height: 820 });
-    win.show();
-    win.focus();
-  } catch {
-    // janela indisponível
-  }
 }
 
 function parkExtractWindow(win) {
@@ -912,26 +791,16 @@ async function extractWithFeedSession(payload) {
       }
     }
 
-    // Depois, a janela de verificação (página visível que o usuário liberou).
-    const verificationReady =
-      verificationWindow &&
-      !verificationWindow.isDestroyed() &&
-      sameExtractUrl(verificationWindow.webContents.getURL(), url);
-    // Repetição do mesmo capítulo (ex.: depois de resolver o desafio) não
-    // recarrega a página: usa a que já está liberada.
+    // Repetição do mesmo capítulo não recarrega a página: usa a que já está
+    // carregada na janela de extração.
     const reuseExtract =
-      !verificationReady &&
       extractWindow &&
       !extractWindow.isDestroyed() &&
       sameExtractUrl(extractWindow.webContents.getURL(), url);
-    const win = verificationReady
-      ? verificationWindow
-      : reuseExtract
-        ? extractWindow
-        : ensureExtractWindow();
+    const win = reuseExtract ? extractWindow : ensureExtractWindow();
     const contents = win.webContents;
 
-    if (!verificationReady && !reuseExtract) {
+    if (!reuseExtract) {
       let loadTimer = null;
       await Promise.race([
         contents.loadURL(url).catch(() => undefined),
@@ -1047,7 +916,6 @@ function startExtractServer() {
 
 async function bootstrap() {
   Menu.setApplicationMenu(null);
-  registerVerificationBridge();
   await startExtractServer().catch((error) => {
     console.error('[desktop] extração pelo navegador do Feed indisponível:', error);
   });
@@ -1177,55 +1045,6 @@ async function bootstrap() {
   }
 }
 
-/**
- * Mostra/esconde a janela live. Usada quando o usuário precisa resolver uma
- * verificação de segurança manualmente: a janela é movida para a tela, ganha
- * foco e fica sempre na frente enquanto o desafio estiver aberto.
- */
-function setVerificationVisible(visible) {
-  const win = hostLiveWindow;
-  if (!win || win.isDestroyed()) return false;
-  try {
-    win.setSkipTaskbar(true);
-    if (visible) {
-      win.setOpacity(1);
-      win.setAlwaysOnTop(true, 'floating');
-      win.setBounds({ x: 90, y: 60, width: 1120, height: 860 });
-      win.show();
-      win.focus();
-    } else {
-      win.setAlwaysOnTop(false);
-      win.setOpacity(1);
-      win.setBounds({ x: -32000, y: -32000, width: 1120, height: 860 });
-      win.showInactive();
-    }
-    return true;
-  } catch (error) {
-    console.error('[browser-host] verificação manual:', error);
-    return false;
-  }
-}
-
-function startHostControlServer() {
-  if (!(controlPort > 0)) return;
-  const server = http.createServer((req, res) => {
-    const action = (req.url || '').split('?')[0];
-    let ok = false;
-    if (req.method === 'POST' && action === '/show') {
-      ok = setVerificationVisible(true);
-    } else if (req.method === 'POST' && action === '/hide') {
-      ok = setVerificationVisible(false);
-    }
-    res.writeHead(ok ? 200 : 409, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok }));
-  });
-  server.on('error', (error) => {
-    console.error('[browser-host] controle:', error.message);
-  });
-  server.listen(controlPort, '127.0.0.1');
-  server.unref?.();
-}
-
 async function startBrowserHost() {
   Menu.setApplicationMenu(null);
 
@@ -1270,7 +1089,6 @@ async function startBrowserHost() {
 
   const live = new BrowserWindow(windowOptions());
   const scrape = new BrowserWindow(windowOptions());
-  hostLiveWindow = live;
   hostScrapeWindow = scrape;
 
   live.webContents.setWindowOpenHandler(({ url }) => {
@@ -1295,8 +1113,6 @@ async function startBrowserHost() {
       if (!win.isDestroyed()) win.setSkipTaskbar(true);
     }
   }, 800);
-
-  startHostControlServer();
 
   // Se a API morrer (inclusive de forma abrupta), o host encerra sozinho.
   const parentPid = Number(process.env.HUB_PARENT_PID);

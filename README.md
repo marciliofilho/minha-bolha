@@ -19,7 +19,7 @@ Everything runs on your machine. There is no account, no cloud sync and no telem
 - **Robust novel extraction** with automatic fallbacks: Feed browser session → page HTML → external reader (Jina) → mobile site → headless scraping.
 - **Three UI languages**: Português (Brasil), English and Español. The app is called *Minha Bolha* in Portuguese and *My Bubble* in other languages.
 - **Automatic updates** through GitHub Releases, with separate installed and portable builds.
-- **Local SQLite database**, preserved across updates.
+- **Local SQLite database**, preserved across updates, with automatic daily snapshots (the last 7 are kept in `data\backups`).
 
 ---
 
@@ -62,6 +62,7 @@ Useful scripts:
 | `npm run dev` | API and web UI with hot reload |
 | `npm run desktop` | Build the UI and launch the desktop app |
 | `npm run typecheck` | Type-check API and web |
+| `npm test` | Run the API regression tests |
 | `npm run check:secrets` | Scan the repository for leaked secrets |
 | `npm run dist` | Build the installer and portable ZIP into `release/` |
 
@@ -107,9 +108,11 @@ The desktop app starts its own API process. In the packaged app, the API, web as
 
 Data locations:
 
-- **Installed:** `%APPDATA%\Minha Bolha` (`hub.db`, browser profile, logs).
+- **Installed:** `%APPDATA%\Minha Bolha` (`hub.db`, browser profile, logs, backups).
 - **Portable:** `data\` next to `Minha Bolha.exe`.
 - **Development:** `data\hub.db`.
+- **Automatic backups:** `data\backups\hub-*.db` (one per day, last 7 kept). To restore, close the app and replace `hub.db` with one of these files.
+- **Logs:** `api.log`, rotated to `api.log.old` when it reaches 5 MB.
 
 ---
 
@@ -172,3 +175,9 @@ See [LICENSE](LICENSE), [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PART
 ## Support
 
 If you find the project useful, you can support its development on [Ko-fi](https://ko-fi.com/mybubble).
+
+---
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). For security issues, please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.

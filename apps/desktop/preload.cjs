@@ -17,9 +17,6 @@ contextBridge.exposeInMainWorld('hubDesktop', {
   } Safari/537.36`,
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
-  openVerification: (url) => ipcRenderer.invoke('verify:open', url),
-  readVerificationCookies: (url) => ipcRenderer.invoke('verify:cookies', url),
-  closeVerification: () => ipcRenderer.invoke('verify:close'),
   onUpdateEvent: (callback) => {
     updateHandler = callback;
   }

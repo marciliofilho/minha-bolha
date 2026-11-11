@@ -4,7 +4,16 @@
   "version": "0.4.0",
   "type": "module",
   "license": "GPL-3.0-only",
-  "description": "Hub — agregador pessoal de feeds, lançamentos e preços de jogos",
+  "description": "Local-first desktop hub for feeds, releases, game prices and novels, with an embedded browser, offline reading and automatic updates.",
+  "author": "Minha Bolha (My Bubble)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marciliofilho/minha-bolha.git"
+  },
+  "homepage": "https://github.com/marciliofilho/minha-bolha#readme",
+  "bugs": {
+    "url": "https://github.com/marciliofilho/minha-bolha/issues"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -22,6 +31,7 @@
     "desktop:dev": "npm run start -w @hub/desktop",
     "start": "npm run start -w @hub/api",
     "typecheck": "npm run typecheck -w @hub/api && npm run typecheck -w @hub/web",
+    "test": "npm run test -w @hub/api",
     "check:secrets": "node scripts/check-secrets.mjs"
   },
   "devDependencies": {

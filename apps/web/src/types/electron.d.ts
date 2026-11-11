@@ -29,17 +29,6 @@ export type UpdateEvent =
   | { type: 'downloaded' | 'installing'; version?: string | null }
   | { type: 'error'; message: string };
 
-export interface BridgeCookie {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  secure: boolean;
-  httpOnly: boolean;
-  sameSite: 'Strict' | 'Lax' | 'None' | null;
-  expires: number | null;
-}
-
 export interface HubDesktopBridge {
   isDesktop: boolean;
   platform: string;
@@ -48,9 +37,6 @@ export interface HubDesktopBridge {
   userAgent: string;
   checkForUpdates: () => Promise<UpdateCheckResult>;
   downloadUpdate: () => Promise<UpdateCheckResult>;
-  openVerification: (url: string) => Promise<{ ok?: boolean; error?: string }>;
-  readVerificationCookies: (url: string) => Promise<{ cookies: BridgeCookie[] }>;
-  closeVerification: () => Promise<{ ok: boolean }>;
   onUpdateEvent: (callback: (event: UpdateEvent) => void) => void;
 }
 

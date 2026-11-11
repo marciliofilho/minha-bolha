@@ -4,14 +4,11 @@ import { HttpError } from '../errors';
 import { renderPageJson } from '../../lib/headless-browser';
 import {
   canonicalizeWebnovelUrl,
-  hideLiveVerification,
-  importLiveCookies,
   liveAction,
   liveFrame,
   liveInput,
   liveNavigate,
   resetLiveBrowser,
-  showLiveVerification,
   stopLiveBrowser,
   type LiveBrowserInput
 } from '../../lib/live-browser';
@@ -313,24 +310,6 @@ browserRouter.post('/browser/live/navigate', async (req, res) => {
   const raw = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
   const target = parseTarget(raw);
   res.json(await liveNavigate(target.toString()));
-});
-
-browserRouter.post('/browser/live/verify', async (req, res) => {
-  const raw = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
-  const target = parseTarget(raw);
-  res.json(await showLiveVerification(target.toString()));
-});
-
-browserRouter.post('/browser/live/verify/close', async (_req, res) => {
-  await hideLiveVerification();
-  res.json({ ok: true });
-});
-
-browserRouter.post('/browser/live/cookies', async (req, res) => {
-  const raw = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
-  const target = parseTarget(raw);
-  const cookies = Array.isArray(req.body?.cookies) ? req.body.cookies : [];
-  res.json(await importLiveCookies(target.toString(), cookies));
 });
 
 browserRouter.post('/browser/live/action', async (req, res) => {
