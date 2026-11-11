@@ -320,19 +320,25 @@ class HubServer(
     }
 
     private fun sse(): Response {
-        // Chromium aceita os headers do EventSource mas não entrega os eventos
-        // quando a resposta usa Transfer-Encoding: chunked no NanoHTTPD.
-        // Declaramos um Content-Length grande e escrevemos direto no socket,
-        // que é como servidores Java costumam fazer streaming de SSE.
-        val response = newFixedLengthResponse(
+        val response = newChunkedResponse(
             Response.Status.OK,
             "text/event-stream; charset=utf-8",
-            events.createStream(),
-            Long.MAX_VALUE
+            events.createStream()
         )
         response.addHeader("Cache-Control", "no-cache")
         response.addHeader("X-Accel-Buffering", "no")
         return response
+    }
+
+    /**
+     * O NanoHTTPD comprime qualquer `text/*` quando o cliente aceita gzip.
+     * Para SSE isso quebra o streaming: o `GZIPOutputStream` segura os dados
+     * até fechar a conexão, então o navegador nunca recebe os eventos.
+     */
+    override fun useGzipWhenAccepted(response: Response): Boolean {
+        val mime = response.mimeType?.lowercase().orEmpty()
+        if (mime.contains("text/event-stream")) return false
+        return super.useGzipWhenAccepted(response)
     }
 
     private fun feed(session: IHTTPSession): Response {
