@@ -20,11 +20,26 @@ fail() {
 echo "== Instalando APK =="
 adb install -r "$APK"
 
+# O Package Manager pode ainda estar finalizando a instalação; abrir o app
+# nesse intervalo faz o Android falhar em criar o processo.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if adb shell pm path "$PACKAGE" > /dev/null 2>&1; then break; fi
+  sleep 1
+done
+sleep 3
+
 echo "== Abrindo o app =="
 adb shell am start -W -n "$PACKAGE/.MainActivity"
 
 # O app agenda a checagem da UI 6s depois do onPageFinished.
 sleep 12
+
+# Se o processo não subiu (corrida na instalação), tenta abrir mais uma vez.
+if [ -z "$(adb shell pidof "$PACKAGE" | tr -d '\r')" ]; then
+  echo "processo ausente; tentando abrir novamente"
+  adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
+  sleep 10
+fi
 
 echo "== Capturando screenshot inicial e logcat =="
 adb exec-out screencap -p > android-spike.png || true
