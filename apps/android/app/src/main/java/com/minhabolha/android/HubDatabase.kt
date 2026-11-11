@@ -1413,6 +1413,144 @@ class HubDatabase(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------
+    // Progresso local de reprodução
+    // ---------------------------------------------------------------------
+
+    fun playback(metaId: String, videoId: String): JSONObject? {
+        db.rawQuery(
+            "SELECT * FROM stremio_playback WHERE meta_id = ? AND video_id = ?",
+            arrayOf(metaId, videoId)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return playbackFromCursor(cursor)
+        }
+    }
+
+    /** Progresso recente; 1 s já conta para "Continuar assistindo". */
+    fun playbackContinue(limit: Int): JSONArray {
+        val result = JSONArray()
+        db.rawQuery(
+            """
+            SELECT * FROM stremio_playback
+            WHERE completed = 0 AND position_ms > 1000
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(limit.coerceIn(1, 50).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) result.put(playbackFromCursor(cursor))
+        }
+        return result
+    }
+
+    private fun playbackFromCursor(cursor: Cursor): JSONObject {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        fun intOrNull(column: String): Int? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
+        }
+
+        val position = cursor.getLong(cursor.getColumnIndexOrThrow("position_ms")).coerceAtLeast(0)
+        val duration = intOrNull("duration_ms")?.toLong()
+        val completed = intOrNull("completed") == 1
+        val progress = if (duration != null && duration > 0) {
+            (position.toDouble() / duration).coerceIn(0.0, 1.0)
+        } else {
+            0.0
+        }
+
+        return JSONObject()
+            .put("metaId", cursor.getString(cursor.getColumnIndexOrThrow("meta_id")))
+            .put("type", cursor.getString(cursor.getColumnIndexOrThrow("meta_type")))
+            .put("videoId", cursor.getString(cursor.getColumnIndexOrThrow("video_id")))
+            .put("season", intOrNull("season") ?: JSONObject.NULL)
+            .put("episode", intOrNull("episode") ?: JSONObject.NULL)
+            .put("positionMs", position)
+            .put("durationMs", duration ?: JSONObject.NULL)
+            .put("addonId", text("addon_id") ?: JSONObject.NULL)
+            .put("streamSignature", text("stream_signature") ?: JSONObject.NULL)
+            .put("name", text("name") ?: "")
+            .put("poster", text("poster") ?: JSONObject.NULL)
+            .put("backdrop", text("backdrop") ?: JSONObject.NULL)
+            .put("year", intOrNull("year") ?: JSONObject.NULL)
+            .put("progress", progress)
+            .put("completed", completed)
+            .put("updatedAt", cursor.getString(cursor.getColumnIndexOrThrow("updated_at")))
+    }
+
+    fun savePlayback(
+        metaId: String,
+        type: String,
+        videoId: String,
+        season: Int?,
+        episode: Int?,
+        positionMs: Long,
+        durationMs: Long?,
+        addonId: String?,
+        streamSignature: String?,
+        name: String,
+        poster: String?,
+        backdrop: String?,
+        year: Int?,
+        completed: Boolean
+    ): JSONObject {
+        val now = nowIso()
+        db.execSQL(
+            """
+            INSERT INTO stremio_playback (
+              id, meta_id, meta_type, video_id, season, episode, position_ms, duration_ms,
+              addon_id, stream_signature, name, poster, backdrop, year, completed, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(meta_id, video_id) DO UPDATE SET
+              meta_type = excluded.meta_type,
+              season = excluded.season,
+              episode = excluded.episode,
+              position_ms = excluded.position_ms,
+              duration_ms = excluded.duration_ms,
+              addon_id = excluded.addon_id,
+              stream_signature = excluded.stream_signature,
+              name = excluded.name,
+              poster = excluded.poster,
+              backdrop = excluded.backdrop,
+              year = excluded.year,
+              completed = excluded.completed,
+              updated_at = excluded.updated_at
+            """.trimIndent(),
+            arrayOf(
+                "$metaId::$videoId",
+                metaId,
+                type,
+                videoId,
+                season,
+                episode,
+                positionMs.coerceAtLeast(0),
+                durationMs?.takeIf { it > 0 },
+                addonId,
+                streamSignature,
+                name,
+                poster,
+                backdrop,
+                year,
+                if (completed) 1 else 0,
+                now
+            )
+        )
+        return playback(metaId, videoId)
+            ?: throw HubException(500, "database", "Não foi possível salvar o progresso.")
+    }
+
+    fun deletePlayback(metaId: String, videoId: String) {
+        db.execSQL(
+            "DELETE FROM stremio_playback WHERE meta_id = ? AND video_id = ?",
+            arrayOf(metaId, videoId)
+        )
+    }
+
+    // ---------------------------------------------------------------------
     // Saúde / estatísticas
     // ---------------------------------------------------------------------
 

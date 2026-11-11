@@ -96,6 +96,21 @@ class HubServer(
                 method == Method.GET -> json(
                 StremioCatalog.title(database, segments[2], segments[3])
             )
+            segments == listOf("stremio", "streams") && method == Method.GET -> stremioStreams(session)
+            segments == listOf("stremio", "subtitles") && method == Method.GET -> stremioSubtitles(session)
+            segments == listOf("stremio", "server") && method == Method.GET ->
+                json(
+                    JSONObject()
+                        .put("available", false)
+                        .put("baseUrl", "")
+                        .put("version", JSONObject.NULL)
+                )
+
+            segments == listOf("playback", "progress") && method == Method.GET -> getPlayback(session)
+            segments == listOf("playback", "continue") && method == Method.GET -> continueWatching(session)
+            segments == listOf("playback", "progress") &&
+                (method == Method.PUT || method == Method.POST) -> savePlayback(session)
+            segments == listOf("playback", "progress") && method == Method.DELETE -> removePlayback(session)
             segments == listOf("stremio", "library") && method == Method.GET ->
                 json(
                     JSONObject()
@@ -642,6 +657,110 @@ class HubServer(
             throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
         }
         return json(StremioCatalog.search(database, query, param(session, "type")))
+    }
+
+    private fun stremioStreams(session: IHTTPSession): Response {
+        val type = param(session, "type")
+            ?: throw HubException(400, "validation", "Informe o tipo do título.")
+        val id = param(session, "id")
+            ?: throw HubException(400, "validation", "Informe o título.")
+
+        val season = param(session, "season")?.toIntOrNull()
+        val episode = param(session, "episode")?.toIntOrNull()
+
+        return json(
+            StremioStreams.fetch(
+                database = database,
+                type = type,
+                id = id,
+                season = season,
+                episode = episode,
+                videoId = param(session, "videoId")
+            )
+        )
+    }
+
+    private fun stremioSubtitles(session: IHTTPSession): Response {
+        val type = param(session, "type") ?: "movie"
+        val id = param(session, "id") ?: ""
+        val videoId = param(session, "videoId") ?: id
+        return json(
+            JSONObject()
+                .put("type", type)
+                .put("id", id)
+                .put("videoId", videoId)
+                .put("subtitles", JSONArray())
+                .put("errors", JSONArray())
+                .put("elapsedMs", 0)
+        )
+    }
+
+    // ---------------------------------------------------------------------
+    // Progresso de reprodução
+    // ---------------------------------------------------------------------
+
+    private fun getPlayback(session: IHTTPSession): Response {
+        val metaId = param(session, "metaId")
+            ?: throw HubException(400, "validation", "Informe o título.")
+        val videoId = param(session, "videoId")
+            ?: throw HubException(400, "validation", "Informe o vídeo.")
+        return json(JSONObject().put("progress", database.playback(metaId, videoId) ?: JSONObject.NULL))
+    }
+
+    private fun continueWatching(session: IHTTPSession): Response {
+        val limit = param(session, "limit")?.toIntOrNull() ?: 20
+        return json(JSONObject().put("items", database.playbackContinue(limit)))
+    }
+
+    private fun savePlayback(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val metaId = body.optString("metaId").trim()
+        val videoId = body.optString("videoId").trim()
+        val type = if (body.optString("type") == "series") "series" else "movie"
+        val name = body.optString("name").trim()
+        if (metaId.isEmpty() || videoId.isEmpty() || name.isEmpty()) {
+            throw HubException(400, "validation", "Dados de progresso incompletos.")
+        }
+
+        val position = body.optLong("positionMs").coerceAtLeast(0)
+        val durationRaw = if (body.has("durationMs") && !body.isNull("durationMs")) {
+            body.optLong("durationMs").takeIf { it > 0 }
+        } else {
+            null
+        }
+        val completed = if (body.has("completed")) {
+            body.optBoolean("completed")
+        } else {
+            durationRaw != null && position.toDouble() / durationRaw >= 0.95
+        }
+
+        val progress = database.savePlayback(
+            metaId = metaId,
+            type = type,
+            videoId = videoId,
+            season = if (body.has("season") && !body.isNull("season")) body.optInt("season") else null,
+            episode = if (body.has("episode") && !body.isNull("episode")) body.optInt("episode") else null,
+            positionMs = position,
+            durationMs = durationRaw,
+            addonId = body.optString("addonId").ifEmpty { null },
+            streamSignature = body.optString("streamSignature").ifEmpty { null },
+            name = name,
+            poster = body.optString("poster").ifEmpty { null },
+            backdrop = body.optString("backdrop").ifEmpty { null },
+            year = if (body.has("year") && !body.isNull("year")) body.optInt("year") else null,
+            completed = completed
+        )
+
+        return json(JSONObject().put("progress", progress))
+    }
+
+    private fun removePlayback(session: IHTTPSession): Response {
+        val metaId = param(session, "metaId")
+            ?: throw HubException(400, "validation", "Informe o título.")
+        val videoId = param(session, "videoId")
+            ?: throw HubException(400, "validation", "Informe o vídeo.")
+        database.deletePlayback(metaId, videoId)
+        return newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
     }
 
     // ---------------------------------------------------------------------

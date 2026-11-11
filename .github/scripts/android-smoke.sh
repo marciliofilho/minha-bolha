@@ -292,6 +292,38 @@ else
   echo "AVISO: Cinemeta indisponível (rede externa) — etapa Stremio ignorada"
 fi
 
+echo "== Progresso de reprodução =="
+PB="$(curl -fsS --max-time 20 -X PUT -H 'content-type: application/json' \
+  -d '{"metaId":"tt0111161","type":"movie","videoId":"tt0111161","positionMs":120000,"durationMs":600000,"name":"Um Sonho de Liberdade"}' \
+  "$BASE/api/playback/progress" || true)"
+POS="$(printf '%s' "$PB" | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["progress"]["positionMs"]))' 2>/dev/null || echo -1)"
+[ "$POS" = "120000" ] || fail "progresso não foi salvo (posição=$POS)"
+PCT="$(printf '%s' "$PB" | python3 -c 'import sys,json;print(round(json.load(sys.stdin)["progress"]["progress"],2))' 2>/dev/null || echo '?')"
+CONTINUE="$(curl -fsS --max-time 15 "$BASE/api/playback/continue" || true)"
+CONTINUE_COUNT="$(printf '%s' "$CONTINUE" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' 2>/dev/null || echo 0)"
+[ "$CONTINUE_COUNT" -ge 1 ] || fail "continuar assistindo ficou vazio"
+curl -fsS --max-time 15 -X DELETE "$BASE/api/playback/progress?metaId=tt0111161&videoId=tt0111161" > /dev/null \
+  || fail "não foi possível remover o progresso"
+LEFT="$(curl -fsS --max-time 15 "$BASE/api/playback/continue" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' 2>/dev/null || echo -1)"
+[ "$LEFT" = "0" ] || fail "progresso continuou após DELETE"
+echo "progresso ok (${PCT})"
+
+echo "== Streams do Stremio =="
+TORRENTIO="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+  -d '{"url":"https://torrentio.strem.fun/manifest.json"}' "$BASE/api/stremio/addons" || true)"
+TORRENTIO_ID="$(printf '%s' "$TORRENTIO" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("addon",{}).get("id",""))' 2>/dev/null || true)"
+
+if [ -n "$TORRENTIO_ID" ]; then
+  STREAMS="$(curl -fsS --max-time 60 "$BASE/api/stremio/streams?type=movie&id=tt0111161" || true)"
+  STREAM_COUNT="$(printf '%s' "$STREAMS" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("streams",[])))' 2>/dev/null || echo 0)"
+  DIRECT_COUNT="$(printf '%s' "$STREAMS" | python3 -c 'import sys,json;print(sum(1 for s in json.load(sys.stdin).get("streams",[]) if s.get("playbackUrl")))' 2>/dev/null || echo 0)"
+  echo "streams: $STREAM_COUNT (com URL reproduzível: $DIRECT_COUNT)"
+  [ "$STREAM_COUNT" -gt 0 ] || echo "AVISO: addon de streams não devolveu resultados"
+  curl -fsS --max-time 15 -X DELETE "$BASE/api/stremio/addons/$TORRENTIO_ID" > /dev/null || true
+else
+  echo "AVISO: Torrentio indisponível (rede externa) — etapa de streams ignorada"
+fi
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0
