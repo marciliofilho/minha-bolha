@@ -74,7 +74,6 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -o pipefail
             adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -W -n com.minhabolha.android/.MainActivity
             sleep 12
