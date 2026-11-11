@@ -99,6 +99,7 @@ jobs:
           path: |
             android-spike.png
             android-feed.png
+            android-calendar.png
             android-logcat.txt
             android-logcat-start.txt
             android-events.txt

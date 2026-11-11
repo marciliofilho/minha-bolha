@@ -258,6 +258,11 @@ done
 echo "calendário global: $GLOBAL_COUNT evento(s)"
 [ "$GLOBAL_COUNT" -gt 0 ] || echo "AVISO: calendário global vazio (rede externa ou AniList fora do ar)"
 
+echo "== Abrindo o Calendário no app =="
+adb shell input tap 160 617 || true
+sleep 6
+adb exec-out screencap -p > android-calendar.png || true
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0
