@@ -338,9 +338,14 @@ object TorrentEngine {
     fun remove(sessionId: String) {
         val session = sessions.remove(sessionId) ?: return
         try {
-            manager?.remove(session.handle, org.libtorrent4j.swig.remove_flags_t.delete_files)
+            manager?.remove(session.handle)
         } catch (error: Throwable) {
             Log.w(TAG, "falha ao remover torrent", error)
+        }
+        try {
+            session.filePath.delete()
+        } catch (error: Throwable) {
+            Log.w(TAG, "falha ao apagar arquivo do torrent", error)
         }
     }
 
