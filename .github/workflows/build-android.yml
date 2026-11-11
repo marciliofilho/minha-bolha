@@ -55,3 +55,34 @@ jobs:
           name: minha-bolha-android-debug
           if-no-files-found: error
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Smoke test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.minhabolha.android/.MainActivity
+            sleep 8
+            PID="$(adb shell pidof com.minhabolha.android | tr -d '\r')"
+            if [ -z "$PID" ]; then
+              echo "App process is not running"
+              adb logcat -d -s AndroidRuntime:E
+              exit 1
+            fi
+            if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
+              adb logcat -d -s AndroidRuntime:E
+              exit 1
+            fi
+            adb exec-out screencap -p > android-spike.png
+            echo "Android spike process PID: $PID"
+
+      - name: Upload Android smoke screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: minha-bolha-android-smoke
+          if-no-files-found: error
+          path: android-spike.png
