@@ -634,18 +634,36 @@ class HubServer(
         else -> 502
     }
 
+    /**
+     * Lê o corpo JSON da requisição.
+     *
+     * O `parseBody` do NanoHTTPD só preenche `postData` em POST (PUT vira
+     * arquivo temporário e PATCH é descartado), então lemos o corpo bruto pelo
+     * `content-length` para funcionar em todos os métodos.
+     */
     private fun readJsonBody(session: IHTTPSession): JSONObject {
-        val files = HashMap<String, String>()
-        try {
-            session.parseBody(files)
-        } catch (error: Exception) {
-            throw HubException(400, "validation", "Não foi possível ler o corpo da requisição.")
-        }
-        val raw = files["postData"].orEmpty()
+        val raw = readRawBody(session)
         if (raw.isBlank()) return JSONObject()
         val parsed = JSONTokener(raw).nextValue()
         return parsed as? JSONObject
             ?: throw HubException(400, "validation", "Corpo da requisição deve ser um objeto JSON.")
+    }
+
+    private fun readRawBody(session: IHTTPSession): String {
+        val length = session.headers["content-length"]?.trim()?.toLongOrNull() ?: 0L
+        if (length <= 0L) return ""
+        if (length > MAX_BODY_BYTES) {
+            throw HubException(413, "validation", "Corpo da requisição grande demais.")
+        }
+        val stream = session.inputStream
+        val buffer = ByteArray(length.toInt())
+        var read = 0
+        while (read < buffer.size) {
+            val count = stream.read(buffer, read, buffer.size - read)
+            if (count <= 0) break
+            read += count
+        }
+        return String(buffer, 0, read, Charsets.UTF_8)
     }
 
     private fun param(session: IHTTPSession, name: String): String? {
@@ -656,6 +674,7 @@ class HubServer(
     private companion object {
         val COLOR_PATTERN = Regex("^#[0-9a-fA-F]{6}$")
         val DATE_PATTERN = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        const val MAX_BODY_BYTES = 16L * 1024 * 1024
 
         val MIME_TYPES = mapOf(
             "html" to "text/html; charset=utf-8",
