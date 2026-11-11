@@ -31,7 +31,7 @@ Get the latest release from the [Releases page](https://github.com/marciliofilho
 | --- | --- | --- |
 | Installer | `Minha-Bolha-Setup-<version>.exe` | Per-user install; data in `%APPDATA%\Minha Bolha` |
 | Portable | `Minha-Bolha-Portable-<version>.zip` | Extract anywhere; data in `data\` next to the executable |
-| Linux (AppImage, preview) | `Minha-Bolha-<version>-x64.AppImage` | x64; data in `~/.config/Minha Bolha` |
+| Linux (AppImage, preview) | `Minha-Bolha-<version>-x86_64.AppImage` | x64; data in `~/.config/Minha Bolha` |
 
 The Linux AppImage is built by the `Build Linux AppImage` workflow on Ubuntu. It uses the same local database, addons and updater model; the Windows portable ZIP remains Windows-only.
 
@@ -172,7 +172,7 @@ npm run dist:linux
 
 This must run on Linux (or the `Build Linux AppImage` GitHub Actions workflow). It generates:
 
-- `release/Minha-Bolha-<version>-x64.AppImage`
+- `release/Minha-Bolha-<version>-x86_64.AppImage`
 - `release/latest-linux.yml`
 
 Publish both files in the same GitHub Release. The AppImage updates itself through `electron-updater` and keeps its data in `~/.config/Minha Bolha`. There is no Linux portable mode; the AppImage itself is the portable build.

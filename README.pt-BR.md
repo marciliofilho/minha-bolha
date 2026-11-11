@@ -662,7 +662,7 @@ npm run dist:linux
 
 O build precisa rodar em Linux ou pelo workflow **Build Linux AppImage** no GitHub Actions. Gera:
 
-- `release/Minha-Bolha-<versão>-x64.AppImage`
+- `release/Minha-Bolha-<versão>-x86_64.AppImage`
 - `release/latest-linux.yml`
 
 Publique os dois na mesma release. O AppImage guarda dados em `~/.config/Minha Bolha`, atualiza sozinho pelo `electron-updater` e não tem modo portátil separado — o próprio AppImage é o executável portátil. O ZIP portátil continua exclusivo do Windows.
