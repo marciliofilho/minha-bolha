@@ -14,7 +14,7 @@ Everything runs on your machine. There is no account, no cloud sync and no telem
 - **Embedded Chromium** (no external Chrome/Edge required) for browsing, previews and protected sites.
 - **Movies, series and anime** via TMDB and AniList, with a release calendar.
 - **Games** via Steam wishlist and gg.deals: one card per game, lowest current price and a detail modal.
-- **Stremio** read-only library sync, addons and stream playback.
+- **Stremio** read-only library sync, addons and stream playback. **Cinemeta**, **Kitsu** and **OpenSubtitles v3** are installed by default and can be disabled or removed.
 - **Novels / Webnovel**: cover previews, chapter reader, persistent cache, offline chapter downloads, background jobs, per-chapter progress and a batch offline manager.
 - **Robust novel extraction** with automatic fallbacks, fastest first: direct page HTML → Feed browser session → external reader (Jina) → mobile site → headless scraping. The fastest method that already worked for a site is tried first on the next chapter.
 - **Three UI languages**: Português (Brasil), English and Español. The app is called *Minha Bolha* in Portuguese and *My Bubble* in other languages.

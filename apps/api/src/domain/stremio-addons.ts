@@ -551,32 +551,119 @@ const KITSU_MANIFEST: AddonManifest = {
   }))
 };
 
-/**
- * Registra o Kitsu como addon de verdade no primeiro boot, para que ele
- * apareça em Config → Addons e possa ser desativado/removido pelo usuário.
- * O arquivo marcador evita recriá-lo depois que o usuário o remover.
- */
-export function ensureBuiltinKitsuAddon(): void {
-  try {
-    const marker = join(dirname(env.dbPath), KITSU_SEED_FLAG);
-    if (existsSync(marker)) return;
-
-    const alreadyRegistered =
-      findAddonByUrl(KITSU_TRANSPORT) ||
-      listAddonRows().some((row) => row.name.trim().toLowerCase() === 'kitsu');
-    if (!alreadyRegistered) {
-      createAddonRow({
-        transportUrl: KITSU_TRANSPORT,
-        manifest: KITSU_MANIFEST,
-        priority: 1000
-      });
+const CINEMETA_TRANSPORT = `${CINEMETA_BASE}/manifest.json`;
+const CINEMETA_MANIFEST: AddonManifest = {
+  id: 'com.linvo.cinemeta',
+  name: 'Cinemeta',
+  description: 'Catálogos e metadados oficiais de filmes e séries do Stremio.',
+  version: '3.0.14',
+  resources: ['catalog', 'meta'],
+  types: ['movie', 'series'],
+  idPrefixes: ['tt'],
+  catalogs: [
+    {
+      type: 'movie',
+      id: 'top',
+      name: 'Popular',
+      extraSupported: ['search', 'genre', 'skip'],
+      extraRequired: []
+    },
+    {
+      type: 'series',
+      id: 'top',
+      name: 'Popular',
+      extraSupported: ['search', 'genre', 'skip'],
+      extraRequired: []
+    },
+    {
+      type: 'movie',
+      id: 'imdbRating',
+      name: 'Featured',
+      extraSupported: ['genre', 'skip'],
+      extraRequired: []
+    },
+    {
+      type: 'series',
+      id: 'imdbRating',
+      name: 'Featured',
+      extraSupported: ['genre', 'skip'],
+      extraRequired: []
     }
-    writeFileSync(marker, new Date().toISOString(), 'utf8');
-  } catch (error) {
-    console.error(
-      '[stremio-addons] não foi possível registrar o Kitsu embutido:',
-      error instanceof Error ? error.message : error
-    );
+  ]
+};
+
+const OPENSUBTITLES_TRANSPORT = 'https://opensubtitles-v3.strem.io/manifest.json';
+const OPENSUBTITLES_MANIFEST: AddonManifest = {
+  id: 'org.stremio.opensubtitlesv3',
+  name: 'OpenSubtitles v3',
+  description: 'Legendas do OpenSubtitles para filmes e séries.',
+  version: '1.0.0',
+  resources: ['subtitles'],
+  types: ['movie', 'series'],
+  idPrefixes: ['tt'],
+  catalogs: []
+};
+
+interface DefaultAddonSeed {
+  marker: string;
+  transportUrl: string;
+  manifest: AddonManifest;
+  priority: number;
+}
+
+const DEFAULT_ADDONS: DefaultAddonSeed[] = [
+  {
+    marker: 'cinemeta-addon-seeded',
+    transportUrl: CINEMETA_TRANSPORT,
+    manifest: CINEMETA_MANIFEST,
+    priority: 900
+  },
+  {
+    marker: KITSU_SEED_FLAG,
+    transportUrl: KITSU_TRANSPORT,
+    manifest: KITSU_MANIFEST,
+    priority: 1000
+  },
+  {
+    marker: 'opensubtitles-v3-addon-seeded',
+    transportUrl: OPENSUBTITLES_TRANSPORT,
+    manifest: OPENSUBTITLES_MANIFEST,
+    priority: 1010
+  }
+];
+
+/**
+ * Registra os addons padrão no primeiro boot: Cinemeta, Kitsu e
+ * OpenSubtitles v3. O marcador individual evita recriar um addon que o
+ * usuário removeu depois.
+ */
+export function ensureDefaultAddons(): void {
+  for (const seed of DEFAULT_ADDONS) {
+    try {
+      const marker = join(dirname(env.dbPath), seed.marker);
+      if (existsSync(marker)) continue;
+
+      const alreadyRegistered =
+        findAddonByUrl(seed.transportUrl) ||
+        listAddonRows().some(
+          (row) =>
+            row.addon_id === seed.manifest.id ||
+            row.name.trim().toLowerCase() === seed.manifest.name.trim().toLowerCase()
+        );
+      if (!alreadyRegistered) {
+        createAddonRow({
+          transportUrl: seed.transportUrl,
+          manifest: seed.manifest,
+          priority: seed.priority
+        });
+      }
+      writeFileSync(marker, new Date().toISOString(), 'utf8');
+    } catch (error) {
+      console.error(
+        `[stremio-addons] não foi possível registrar o addon padrão ${seed.manifest.name}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
   }
 }
 

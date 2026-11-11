@@ -8,7 +8,7 @@ import { createLogger } from './lib/logger';
 import { seedDemoData, ensureDemoGames } from './seed';
 import { startScheduler, stopScheduler } from './scheduler';
 import { ensureGgdealsSource } from './domain/games';
-import { ensureBuiltinKitsuAddon } from './domain/stremio-addons';
+import { ensureDefaultAddons } from './domain/stremio-addons';
 import { ensureGlobalReleasesSource } from './domain/global-releases';
 import { countGlobalReleases } from './db/repositories/global-releases';
 import { listSecretStatuses } from './lib/secrets';
@@ -20,8 +20,9 @@ const host = process.env.HOST ?? '127.0.0.1';
 // Primeiro boot do app desktop: o idioma escolhido antes da intro.
 applyInitialLanguage();
 
-// Catálogos de anime prontos para uso, mas visíveis como addon instalado.
-ensureBuiltinKitsuAddon();
+// Catálogos padrão: Cinemeta, Kitsu e OpenSubtitles v3, visíveis como addons
+// instalados e removíveis pelo usuário.
+ensureDefaultAddons();
 
 // O motor de torrent e conectores de terceiros podem emitir erros assíncronos
 // sem um consumidor direto. Logar mantém o Hub no ar em vez de encerrar tudo.

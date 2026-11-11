@@ -213,7 +213,7 @@ Você pode colar as chaves em **Configurações → Chaves de API** (recomendado
 - **Biblioteca como fontes** (importação sem duplicar): filmes e séries viram fontes TMDB (animações vão para Animação/Anime) e animes com IDs Kitsu/AniList/MAL viram fontes AniList, gerando episódios no feed/calendário.
 - Indicador **"Na biblioteca"** e sincronização a cada 1h, além do botão manual — somente leitura.
 - **Sem deep links**: nada de `stremio://` ou `web.stremio.com`; a navegação é toda dentro do Hub.
-- **Addons manuais**: cadastre a URL do `manifest.json` de qualquer addon (aceita `stremio://`). O **Kitsu** é instalado como addon inicial e pode ser desativado ou removido normalmente.
+- **Addons manuais**: cadastre a URL do `manifest.json` de qualquer addon (aceita `stremio://`). **Cinemeta**, **Kitsu** e **OpenSubtitles v3** são instalados como addons iniciais e podem ser desativados ou removidos normalmente.
 - **Explorar**: catálogos dos addons ativos por addon e tipo (filmes, séries e animes), com seletor de **25/50/100 cards**, botão **Carregar mais** ao final da grade e **busca global** em todos os addons + Cinemeta/Kitsu. O valor escolhido em **Mostrar** é carregado automaticamente; **Carregar mais** serve para ir além dele e busca **uma página por clique**, sem cascata. O Hub contorna buracos de paginação de alguns addons (ex.: página vazia no meio) e descarta itens de erro/placeholder (ex.: “Error Loading Content”/“No Content”). A busca consulta as fontes em paralelo, aplica timeout curto e filtra por similaridade de título.
 - **Diagnóstico por addon**: valida o manifest, lista recursos/tipos/idPrefixes, consulta catálogos e uma amostra de streams (tipo, qualidade, tamanho, seeds e tempo).
 - **Addons da conta**: importação opcional e somente leitura da coleção instalada no Stremio.
@@ -372,7 +372,7 @@ Datas em **UTC ISO 8601**; o calendário agrupa por **data local** no fuso confi
 - **Prioridade**: a ordem da lista define quem é consultado primeiro (metadados e streams). Use as setas para reordenar.
 - **Importar da conta**: opcional, via `addonCollectionGet` (somente leitura). Duplicatas são ignoradas; a conta nunca é alterada.
 - **Diagnóstico**: o botão **Testar** recarrega o manifest, consulta até 3 catálogos e uma amostra de streams, mostrando tempo, tipos (direto/torrent/externo), qualidades, tamanho e seeds. A amostra vem do primeiro catálogo ou, na falta dele, da biblioteca.
-- **Explorar**: lista os catálogos ativos por addon e tipo (Todos/Filmes/Séries/Animes). O seletor **25/50/100 cards** carrega automaticamente essa quantidade (contornando páginas vazias/buracos de `skip` de alguns addons) e o contador mostra “X de Y cards”. Depois disso, **Carregar mais** revela os itens já baixados ou busca **uma página por clique**, sem carregar várias de uma vez. Quando acaba, mostra “fim do catálogo”. Itens de erro/placeholder dos addons (ex.: `tmdb:no-content`, “Error Loading Content”) são descartados. A **busca global** consulta os catálogos pesquisáveis de todos os addons e também Cinemeta (filmes/séries) e Kitsu (animes), em paralelo e com cache; depois filtra por similaridade de título. O **Kitsu** aparece como addon instalado no primeiro boot; se você o remover, os catálogos de anime deixam de aparecer no Explorar.
+- **Explorar**: lista os catálogos ativos por addon e tipo (Todos/Filmes/Séries/Animes). O seletor **25/50/100 cards** carrega automaticamente essa quantidade (contornando páginas vazias/buracos de `skip` de alguns addons) e o contador mostra “X de Y cards”. Depois disso, **Carregar mais** revela os itens já baixados ou busca **uma página por clique**, sem carregar várias de uma vez. Quando acaba, mostra “fim do catálogo”. Itens de erro/placeholder dos addons (ex.: `tmdb:no-content`, “Error Loading Content”) são descartados. A **busca global** consulta os catálogos pesquisáveis de todos os addons e também Cinemeta (filmes/séries) e Kitsu (animes), em paralelo e com cache; depois filtra por similaridade de título. O **Kitsu** aparece como addon instalado no primeiro boot; **Cinemeta** e **OpenSubtitles v3** também entram como padrão. Se você remover qualquer um deles, ele não é recriado e os catálogos/legendas correspondentes deixam de aparecer.
 - **Catálogo com busca obrigatória**: a consulta só é feita depois que você digita um termo.
 - **Tolerância a falhas**: timeout por addon, erros isolados e mensagens claras (401/403/404/429/rede). Um addon quebrado não afeta os outros.
 - **Player no Feed**: a lista de streams é agregada pelos addons e tocada no **card de destaque** (e na tela de detalhes). Streams diretos/HLS usam o player do navegador; torrents usam o **motor embutido** (WebTorrent + FFmpeg), sem exigir o Stremio aberto.
@@ -643,8 +643,8 @@ npm run dist
 
 Gera em `release/`:
 
-- **Instalador:** `Minha-Bolha-Setup-0.4.4.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
-- **Portátil:** `Minha-Bolha-Portable-0.4.4.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
+- **Instalador:** `Minha-Bolha-Setup-0.4.5.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
+- **Portátil:** `Minha-Bolha-Portable-0.4.5.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
 
 As duas versões são independentes:
 
