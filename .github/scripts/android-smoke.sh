@@ -263,6 +263,35 @@ adb shell input tap 160 617 || true
 sleep 6
 adb exec-out screencap -p > android-calendar.png || true
 
+echo "== Stremio: addon, catálogos e título =="
+ADDON="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+  -d '{"url":"https://v3-cinemeta.strem.io/manifest.json"}' "$BASE/api/stremio/addons" || true)"
+ADDON_ID="$(printf '%s' "$ADDON" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("addon",{}).get("id",""))' 2>/dev/null || true)"
+
+if [ -n "$ADDON_ID" ]; then
+  CATALOGS="$(curl -fsS --max-time 20 "$BASE/api/stremio/catalogs" || true)"
+  CAT_COUNT="$(printf '%s' "$CATALOGS" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("catalogs",[])))' 2>/dev/null || echo 0)"
+  echo "catálogos do addon: $CAT_COUNT"
+  [ "$CAT_COUNT" -gt 0 ] || fail "addon instalado sem catálogos"
+
+  CATALOG_ID="$(printf '%s' "$CATALOGS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["catalogs"][0]["catalogId"])')"
+  CATALOG_TYPE="$(printf '%s' "$CATALOGS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["catalogs"][0]["type"])')"
+  PAGE="$(curl -fsS --max-time 30 "$BASE/api/stremio/catalog?addonId=$ADDON_ID&type=$CATALOG_TYPE&catalogId=$CATALOG_ID" || true)"
+  PAGE_COUNT="$(printf '%s' "$PAGE" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' 2>/dev/null || echo 0)"
+  echo "itens do catálogo: $PAGE_COUNT"
+  [ "$PAGE_COUNT" -gt 0 ] || echo "AVISO: catálogo vazio"
+
+  TITLE="$(curl -fsS --max-time 30 "$BASE/api/stremio/title/movie/tt0111161" || true)"
+  case "$TITLE" in
+    *'"name"'*) echo "detalhes do título ok" ;;
+    *) echo "AVISO: detalhes do título indisponíveis" ;;
+  esac
+
+  curl -fsS --max-time 15 -X DELETE "$BASE/api/stremio/addons/$ADDON_ID" > /dev/null || fail "não foi possível remover o addon"
+else
+  echo "AVISO: Cinemeta indisponível (rede externa) — etapa Stremio ignorada"
+fi
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

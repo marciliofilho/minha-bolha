@@ -1298,6 +1298,120 @@ class HubDatabase(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------
+    // Addons do Stremio
+    // ---------------------------------------------------------------------
+
+    fun stremioAddons(): List<StremioAddonRow> {
+        val rows = mutableListOf<StremioAddonRow>()
+        db.rawQuery(
+            "SELECT * FROM stremio_addons ORDER BY enabled DESC, priority ASC, created_at ASC",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) rows.add(stremioAddonFromCursor(cursor))
+        }
+        return rows
+    }
+
+    fun stremioAddon(id: String): StremioAddonRow? {
+        db.rawQuery("SELECT * FROM stremio_addons WHERE id = ?", arrayOf(id)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return stremioAddonFromCursor(cursor)
+        }
+    }
+
+    fun findStremioAddonByHash(urlHash: String): StremioAddonRow? {
+        db.rawQuery("SELECT * FROM stremio_addons WHERE url_hash = ?", arrayOf(urlHash)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return stremioAddonFromCursor(cursor)
+        }
+    }
+
+    private fun stremioAddonFromCursor(cursor: Cursor): StremioAddonRow {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        val encrypted = cursor.getString(cursor.getColumnIndexOrThrow("transport_url_enc"))
+        val transportUrl = SecretCrypto.decrypt(encrypted).orEmpty()
+        val manifestText = cursor.getString(cursor.getColumnIndexOrThrow("manifest_json"))
+        val manifest = try {
+            JSONObject(manifestText)
+        } catch (error: Exception) {
+            JSONObject()
+        }
+
+        return StremioAddonRow(
+            id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+            addonId = text("addon_id"),
+            name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+            version = text("version"),
+            description = text("description"),
+            manifest = manifest,
+            transportUrl = transportUrl,
+            enabled = cursor.getInt(cursor.getColumnIndexOrThrow("enabled")) == 1,
+            priority = cursor.getInt(cursor.getColumnIndexOrThrow("priority")),
+            createdAt = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
+        )
+    }
+
+    fun insertStremioAddon(
+        id: String,
+        urlHash: String,
+        transportUrl: String,
+        addonId: String?,
+        name: String,
+        version: String?,
+        description: String?,
+        manifest: JSONObject,
+        priority: Int
+    ) {
+        val now = nowIso()
+        db.execSQL(
+            """
+            INSERT INTO stremio_addons (
+              id, url_hash, transport_url_enc, addon_id, name, version, description,
+              manifest_json, enabled, priority, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf(
+                id,
+                urlHash,
+                SecretCrypto.encrypt(transportUrl),
+                addonId,
+                name,
+                version,
+                description,
+                manifest.toString(),
+                priority,
+                now,
+                now
+            )
+        )
+    }
+
+    fun setStremioAddonEnabled(id: String, enabled: Boolean) {
+        db.execSQL(
+            "UPDATE stremio_addons SET enabled = ?, updated_at = ? WHERE id = ?",
+            arrayOf(if (enabled) 1 else 0, nowIso(), id)
+        )
+    }
+
+    fun deleteStremioAddon(id: String): Boolean {
+        db.rawQuery("SELECT 1 FROM stremio_addons WHERE id = ?", arrayOf(id)).use { cursor ->
+            if (!cursor.moveToFirst()) return false
+        }
+        db.execSQL("DELETE FROM stremio_addons WHERE id = ?", arrayOf(id))
+        return true
+    }
+
+    fun countStremioAddons(): Int {
+        db.rawQuery("SELECT COUNT(*) FROM stremio_addons", null).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Saúde / estatísticas
     // ---------------------------------------------------------------------
 

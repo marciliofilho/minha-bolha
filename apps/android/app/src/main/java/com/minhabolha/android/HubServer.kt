@@ -81,6 +81,30 @@ class HubServer(
 
             segments == listOf("media", "search") && method == Method.GET -> mediaSearch(session)
 
+            segments == listOf("stremio", "status") && method == Method.GET ->
+                json(StremioCatalog.status(database))
+            segments == listOf("stremio", "addons") && method == Method.GET ->
+                json(JSONObject().put("addons", StremioCatalog.listAddons(database)))
+            segments == listOf("stremio", "addons") && method == Method.POST -> addStremioAddon(session)
+            segments.size == 3 && segments[0] == "stremio" && segments[1] == "addons" &&
+                method == Method.DELETE -> removeStremioAddon(segments[2])
+            segments == listOf("stremio", "catalogs") && method == Method.GET ->
+                json(JSONObject().put("catalogs", StremioCatalog.catalogGroups(database)))
+            segments == listOf("stremio", "catalog") && method == Method.GET -> stremioCatalog(session)
+            segments == listOf("stremio", "search") && method == Method.GET -> stremioSearch(session)
+            segments.size == 4 && segments[0] == "stremio" && segments[1] == "title" &&
+                method == Method.GET -> json(
+                StremioCatalog.title(database, segments[2], segments[3])
+            )
+            segments == listOf("stremio", "library") && method == Method.GET ->
+                json(
+                    JSONObject()
+                        .put("items", JSONArray())
+                        .put("status", StremioCatalog.status(database))
+                )
+            segments == listOf("stremio", "card-info") && method == Method.POST ->
+                json(JSONObject().put("items", JSONArray()))
+
             segments == listOf("calendar") && method == Method.GET -> calendar(session)
             segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
             segments == listOf("calendar", "refresh") && method == Method.POST -> calendarRefresh()
@@ -569,6 +593,56 @@ class HubServer(
         java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "")
             .lowercase()
+
+    // ---------------------------------------------------------------------
+    // Stremio: addons e catálogos
+    // ---------------------------------------------------------------------
+
+    private fun addStremioAddon(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val url = body.optString("url").trim()
+        if (url.length < 3) throw HubException(400, "validation", "Informe a URL do addon.")
+
+        val addon = StremioCatalog.addAddon(database, url)
+        events.broadcast("stremio:changed", JSONObject().put("addons", true))
+        return json(JSONObject().put("addon", addon), Response.Status.CREATED)
+    }
+
+    private fun removeStremioAddon(id: String): Response {
+        if (!StremioCatalog.removeAddon(database, id)) {
+            throw HubException(404, "not_found", "Addon não encontrado.")
+        }
+        events.broadcast("stremio:changed", JSONObject().put("addons", true))
+        return newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
+    }
+
+    private fun stremioCatalog(session: IHTTPSession): Response {
+        val addonId = param(session, "addonId") ?: throw HubException(400, "validation", "Informe o addon.")
+        val type = param(session, "type") ?: throw HubException(400, "validation", "Informe o tipo.")
+        val catalogId = param(session, "catalogId")
+            ?: throw HubException(400, "validation", "Informe o catálogo.")
+        val skip = param(session, "skip")?.toIntOrNull()?.coerceIn(0, 100_000) ?: 0
+
+        return json(
+            StremioCatalog.catalogPage(
+                database = database,
+                addonRowId = addonId,
+                type = type,
+                catalogId = catalogId,
+                search = param(session, "search"),
+                skip = skip,
+                genre = param(session, "genre")
+            )
+        )
+    }
+
+    private fun stremioSearch(session: IHTTPSession): Response {
+        val query = param(session, "query")?.trim().orEmpty()
+        if (query.length < 2) {
+            throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
+        }
+        return json(StremioCatalog.search(database, query, param(session, "type")))
+    }
 
     // ---------------------------------------------------------------------
     // Arquivos estáticos
