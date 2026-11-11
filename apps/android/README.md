@@ -19,6 +19,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   IMDB resolution, release events and feed items for releases/episodes.
 - **Global calendar** (TMDB discover + AniList airing schedule), with the
   automatic `global-releases` source created on first boot.
+- **Stremio addons**: install by manifest URL, catalog groups, catalog browsing
+  and title metadata (the addon URL is encrypted and never exposed).
 - API keys (TMDB/Steam/gg.deals) encrypted with the Android Keystore
   (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
@@ -32,6 +34,10 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   - `GET|POST /api/categories`
   - `GET /api/secrets`, `PUT|DELETE /api/secrets/:id`
   - `GET /api/media/search`
+  - `GET /api/stremio/status`, `GET|POST /api/stremio/addons`,
+    `DELETE /api/stremio/addons/:id`, `GET /api/stremio/catalogs`,
+    `GET /api/stremio/catalog`, `GET /api/stremio/search`,
+    `GET /api/stremio/title/:type/:id`, `GET /api/stremio/library`
   - `GET /api/calendar`, `GET /api/calendar/search`, `POST /api/calendar/refresh`
   - `GET|POST /api/sources`, `POST /api/sources/resolve`,
     `POST /api/sources/bulk-delete`, `PATCH|DELETE /api/sources/:id`,
@@ -46,12 +52,12 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- Steam wishlist, gg.deals, Stremio library and novel connectors.
-- Stremio addons, catalogs, streams, player and playback progress.
-- Torrent engine, FFmpeg/transcoding and background downloads.
+- Stremio account login, library sync and continue-watching.
+- Stremio streams, player, subtitles, HLS proxy and torrent engine.
+- FFmpeg/transcoding, background downloads and notifications.
+- Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
-- Backup import/export, games, library mutations and title details screen.
-- Notifications for background sync (the worker only updates the database).
+- Backup import/export, library mutations and novel connectors.
 
 Because those endpoints do not exist yet, the corresponding screens show their
 normal error state instead of data.
