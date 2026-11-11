@@ -325,26 +325,44 @@ if [ -n "$TORRENTIO_ID" ]; then
   echo "streams: $STREAM_COUNT (com URL reproduzível: $DIRECT_COUNT)"
   [ "$STREAM_COUNT" -gt 0 ] || echo "AVISO: addon de streams não devolveu resultados"
 
-  # Prepara o primeiro torrent para provar que metadados/arquivo funcionam.
+  # Prepara um torrent (prefere MP4, que o WebView reproduz direto).
   PREP_BODY="$(printf '%s' "$STREAMS" | python3 -c '
 import sys,json
 d=json.load(sys.stdin)
-for s in d.get("streams",[]):
-    if s.get("infoHash"):
-        print(json.dumps({"infoHash": s["infoHash"], "fileIdx": s.get("fileIdx"), "sources": s.get("sources") or []}))
-        break
+streams=[s for s in d.get("streams",[]) if s.get("infoHash")]
+def is_mp4(s):
+    text=((s.get("title") or "")+" "+(s.get("name") or "")+" "+(s.get("description") or "")).lower()
+    return ".mp4" in text or " mp4" in text
+chosen=[s for s in streams if is_mp4(s)] or streams
+if chosen:
+    s=chosen[0]
+    print(json.dumps({"infoHash": s["infoHash"], "fileIdx": s.get("fileIdx"), "sources": s.get("sources") or []}))
 ' 2>/dev/null || true)"
 
   if [ -n "$PREP_BODY" ]; then
-    PREP="$(curl -fsS --max-time 90 -X POST -H 'content-type: application/json' -d "$PREP_BODY" \
+    PREP_CODE="$(curl -s -o /tmp/prep.json -w '%{http_code}' --max-time 90 -X POST \
+      -H 'content-type: application/json' -d "$PREP_BODY" \
       "$BASE/api/stremio/torrent/prepare" || true)"
-    SESSION_ID="$(printf '%s' "$PREP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sessionId",""))' 2>/dev/null || true)"
-    if [ -n "$SESSION_ID" ]; then
-      echo "torrent preparado: $(printf '%s' "$PREP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["fileName"], str(d["fileLength"])+" bytes", "directPlayable="+str(d["directPlayable"]))' 2>/dev/null)"
-      curl -fsS --max-time 15 -X DELETE "$BASE/api/stremio/torrent/$SESSION_ID" > /dev/null || true
-    else
-      echo "AVISO: metadados do torrent não chegaram (P2P indisponível no CI)"
-    fi
+    case "$PREP_CODE" in
+      200)
+        SESSION_ID="$(python3 -c 'import json;print(json.load(open("/tmp/prep.json"))["sessionId"])' 2>/dev/null || true)"
+        echo "torrent preparado: $(python3 -c 'import json;d=json.load(open("/tmp/prep.json"));print(d["fileName"], str(d["fileLength"])+" bytes", "directPlayable="+str(d["directPlayable"]))' 2>/dev/null)"
+        RAW_CODE="$(curl -s -o /tmp/raw.bin -w '%{http_code}' --max-time 60 -H 'Range: bytes=0-1023' \
+          "$BASE/api/stremio/torrent/$SESSION_ID/raw" || true)"
+        if [ "$RAW_CODE" = "206" ]; then
+          echo "range ok ($(wc -c < /tmp/raw.bin) bytes)"
+        else
+          echo "AVISO: range retornou $RAW_CODE"
+        fi
+        curl -s --max-time 15 -X DELETE "$BASE/api/stremio/torrent/$SESSION_ID" > /dev/null || true
+        ;;
+      422)
+        echo "motor ok; arquivo precisa de transcodificação: $(cut -c1-160 /tmp/prep.json)"
+        ;;
+      *)
+        echo "AVISO: prepare retornou $PREP_CODE ($(cut -c1-160 /tmp/prep.json))"
+        ;;
+    esac
   fi
 
   curl -fsS --max-time 15 -X DELETE "$BASE/api/stremio/addons/$TORRENTIO_ID" > /dev/null || true

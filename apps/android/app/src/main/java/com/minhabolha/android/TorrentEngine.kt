@@ -187,6 +187,22 @@ object TorrentEngine {
             fileOffset = fileOffset,
             filePath = filePath
         )
+
+        // Sem transcodificação nativa, só containers que o WebView abre direto.
+        val container = fileName.substringAfterLast('.', "").lowercase()
+        if (container !in PLAYABLE_CONTAINERS) {
+            try {
+                sessionManager.remove(handle)
+            } catch (error: Throwable) {
+                Log.w(TAG, "falha ao remover torrent não reproduzível", error)
+            }
+            throw HubException(
+                422,
+                "not_supported",
+                "Este arquivo (.$container) precisa de transcodificação, que ainda não está disponível no Android."
+            )
+        }
+
         sessions[session.id] = session
         Log.i(TAG, "torrent pronto: $fileName (${fileLength / 1024 / 1024} MB)")
         return dto(session)
@@ -348,6 +364,8 @@ object TorrentEngine {
             Log.w(TAG, "falha ao apagar arquivo do torrent", error)
         }
     }
+
+    private val PLAYABLE_CONTAINERS = setOf("mp4", "m4v", "webm")
 
     private val HASH_PATTERN = Regex("^[a-f0-9]{40}$|^[a-z2-7]{32}$")
 

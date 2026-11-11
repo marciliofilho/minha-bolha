@@ -110,7 +110,7 @@ class HubServer(
                 segments[3] == "raw" && method == Method.GET -> torrentRaw(session, segments[2])
             segments.size == 4 && segments[0] == "stremio" && segments[1] == "torrent" &&
                 segments[3] == "status" && method == Method.GET -> torrentStatus(segments[2])
-            segments.size == 4 && segments[0] == "stremio" && segments[1] == "torrent" &&
+            segments.size == 3 && segments[0] == "stremio" && segments[1] == "torrent" &&
                 method == Method.DELETE -> torrentRemove(segments[2])
             segments == listOf("stremio", "server") && method == Method.GET ->
                 json(
