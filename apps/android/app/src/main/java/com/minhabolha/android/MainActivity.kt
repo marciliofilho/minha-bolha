@@ -10,35 +10,19 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import fi.iki.elonen.NanoHTTPD
-import java.net.ServerSocket
 
 class MainActivity : Activity() {
 
     private companion object {
-        /** Porta fixa do servidor local, usada também pelo smoke test do CI. */
-        const val PREFERRED_PORT = 47821
-
         const val TAG = "MinhaBolha"
     }
 
     private lateinit var webView: WebView
-    private var server: HubServer? = null
-    private var database: HubDatabase? = null
-    private var scheduler: HubScheduler? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val hubDatabase = HubDatabase(this)
-        database = hubDatabase
-
-        val events = EventHub()
-        val hubScheduler = HubScheduler(hubDatabase, events)
-        scheduler = hubScheduler
-
-        val port = startServer(hubDatabase, hubScheduler, events)
-        val localServer = server
+        val port = HubRuntime.start(this)
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#080a0f"))
@@ -72,52 +56,11 @@ class MainActivity : Activity() {
             }
         }
 
-        if (localServer != null) {
+        if (port > 0) {
             webView.loadUrl("http://127.0.0.1:$port/")
         } else {
             showServerFailure(port)
         }
-    }
-
-    /**
-     * Sobe o servidor local.
-     *
-     * A porta preferida é fixa para permitir testes automatizados via
-     * `adb forward`; se estiver ocupada, cai para uma porta efêmera.
-     */
-    private fun startServer(
-        database: HubDatabase,
-        scheduler: HubScheduler,
-        events: EventHub
-    ): Int {
-        for (candidate in listOf(PREFERRED_PORT, 0)) {
-            val port = if (candidate == 0) {
-                ServerSocket(0).use { it.localPort }
-            } else {
-                candidate
-            }
-            val started = try {
-                HubServer(
-                    context = this,
-                    port = port,
-                    database = database,
-                    scheduler = scheduler,
-                    events = events,
-                    version = BuildConfig.VERSION_NAME
-                ).also {
-                    it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "falha ao iniciar o servidor local na porta $port", error)
-                null
-            }
-            if (started != null) {
-                server = started
-                scheduler.start()
-                return port
-            }
-        }
-        return 0
     }
 
     private fun showServerFailure(port: Int) {
@@ -185,17 +128,14 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        scheduler?.stop()
-        scheduler = null
-        server?.stop()
-        server = null
+        if (isFinishing) {
+            HubRuntime.stop()
+        }
         if (this::webView.isInitialized) {
             webView.loadUrl("about:blank")
             webView.visibility = View.GONE
             webView.destroy()
         }
-        database?.close()
-        database = null
         super.onDestroy()
     }
 }
