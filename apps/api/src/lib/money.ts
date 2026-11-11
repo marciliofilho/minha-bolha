@@ -21,7 +21,11 @@ export function parseMoneyToCents(value: string | number): number | null {
   if (!normalized) return null;
 
   if (normalized.includes(',') && normalized.includes('.')) {
-    normalized = normalized.replace(/\./g, '').replace(',', '.');
+    // O separador que aparece por último é o decimal ("1.234,56" ou "1,234.56").
+    normalized =
+      normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+        ? normalized.replace(/\./g, '').replace(',', '.')
+        : normalized.replace(/,/g, '');
   } else if (normalized.includes(',')) {
     normalized = normalized.replace(',', '.');
   } else if (normalized.includes('.')) {
