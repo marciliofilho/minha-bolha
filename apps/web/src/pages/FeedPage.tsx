@@ -1550,7 +1550,7 @@ function NetflixHero({
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-line bg-elevated">
-      <div className="relative aspect-video w-full">
+      <div className="relative aspect-[4/3] w-full sm:aspect-video">
         {isChapter && item.thumbnailUrl ? (
           <>
             <img
@@ -1658,7 +1658,9 @@ function NetflixHero({
             {item.title}
           </h2>
           {item.description ? (
-            <p className="mt-1 line-clamp-2 max-w-xl text-xs leading-relaxed text-white/75">{item.description}</p>
+            <p className="mt-1 line-clamp-2 hidden max-w-xl text-xs leading-relaxed text-white/75 sm:block">
+              {item.description}
+            </p>
           ) : null}
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
