@@ -320,10 +320,15 @@ class HubServer(
     }
 
     private fun sse(): Response {
-        val response = newChunkedResponse(
+        // Chromium aceita os headers do EventSource mas não entrega os eventos
+        // quando a resposta usa Transfer-Encoding: chunked no NanoHTTPD.
+        // Declaramos um Content-Length grande e escrevemos direto no socket,
+        // que é como servidores Java costumam fazer streaming de SSE.
+        val response = newFixedLengthResponse(
             Response.Status.OK,
             "text/event-stream; charset=utf-8",
-            events.createStream()
+            events.createStream(),
+            Long.MAX_VALUE
         )
         response.addHeader("Cache-Control", "no-cache")
         response.addHeader("X-Accel-Buffering", "no")
