@@ -65,6 +65,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.5.0-alpha1"
+
+        // libtorrent4j traz bibliotecas nativas: só as ABIs suportadas.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     sourceSets {
@@ -101,4 +106,9 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Motor de torrents (mesma base do LibreTorrent). Uma artifact por ABI.
+    implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39")
 }

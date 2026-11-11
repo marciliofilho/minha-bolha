@@ -99,6 +99,7 @@ object HubRuntime {
         server = null
         events?.closeAll()
         events = null
+        TorrentEngine.stop()
         database = null
         port = 0
         Log.i(TAG, "backend local encerrado")

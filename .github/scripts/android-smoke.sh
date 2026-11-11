@@ -309,6 +309,11 @@ LEFT="$(curl -fsS --max-time 15 "$BASE/api/playback/continue" | python3 -c 'impo
 echo "progresso ok (${PCT})"
 
 echo "== Streams do Stremio =="
+ENGINE="$(curl -fsS --max-time 30 "$BASE/api/stremio/torrent/engine" || true)"
+ENGINE_OK="$(printf '%s' "$ENGINE" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("available"))' 2>/dev/null || echo False)"
+echo "motor de torrents: $ENGINE"
+[ "$ENGINE_OK" = "True" ] || fail "libtorrent não carregou no emulador ($ENGINE)"
+
 TORRENTIO="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
   -d '{"url":"https://torrentio.strem.fun/manifest.json"}' "$BASE/api/stremio/addons" || true)"
 TORRENTIO_ID="$(printf '%s' "$TORRENTIO" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("addon",{}).get("id",""))' 2>/dev/null || true)"
@@ -319,6 +324,29 @@ if [ -n "$TORRENTIO_ID" ]; then
   DIRECT_COUNT="$(printf '%s' "$STREAMS" | python3 -c 'import sys,json;print(sum(1 for s in json.load(sys.stdin).get("streams",[]) if s.get("playbackUrl")))' 2>/dev/null || echo 0)"
   echo "streams: $STREAM_COUNT (com URL reproduzível: $DIRECT_COUNT)"
   [ "$STREAM_COUNT" -gt 0 ] || echo "AVISO: addon de streams não devolveu resultados"
+
+  # Prepara o primeiro torrent para provar que metadados/arquivo funcionam.
+  PREP_BODY="$(printf '%s' "$STREAMS" | python3 -c '
+import sys,json
+d=json.load(sys.stdin)
+for s in d.get("streams",[]):
+    if s.get("infoHash"):
+        print(json.dumps({"infoHash": s["infoHash"], "fileIdx": s.get("fileIdx"), "sources": s.get("sources") or []}))
+        break
+' 2>/dev/null || true)"
+
+  if [ -n "$PREP_BODY" ]; then
+    PREP="$(curl -fsS --max-time 90 -X POST -H 'content-type: application/json' -d "$PREP_BODY" \
+      "$BASE/api/stremio/torrent/prepare" || true)"
+    SESSION_ID="$(printf '%s' "$PREP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sessionId",""))' 2>/dev/null || true)"
+    if [ -n "$SESSION_ID" ]; then
+      echo "torrent preparado: $(printf '%s' "$PREP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["fileName"], str(d["fileLength"])+" bytes", "directPlayable="+str(d["directPlayable"]))' 2>/dev/null)"
+      curl -fsS --max-time 15 -X DELETE "$BASE/api/stremio/torrent/$SESSION_ID" > /dev/null || true
+    else
+      echo "AVISO: metadados do torrent não chegaram (P2P indisponível no CI)"
+    fi
+  fi
+
   curl -fsS --max-time 15 -X DELETE "$BASE/api/stremio/addons/$TORRENTIO_ID" > /dev/null || true
 else
   echo "AVISO: Torrentio indisponível (rede externa) — etapa de streams ignorada"

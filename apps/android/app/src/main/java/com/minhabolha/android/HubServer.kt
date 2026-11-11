@@ -98,6 +98,20 @@ class HubServer(
             )
             segments == listOf("stremio", "streams") && method == Method.GET -> stremioStreams(session)
             segments == listOf("stremio", "subtitles") && method == Method.GET -> stremioSubtitles(session)
+            segments == listOf("stremio", "torrent", "prepare") && method == Method.POST ->
+                prepareTorrent(session)
+            segments == listOf("stremio", "torrent", "engine") && method == Method.GET ->
+                json(
+                    JSONObject()
+                        .put("available", TorrentEngine.ensure(context))
+                        .put("error", TorrentEngine.lastError ?: JSONObject.NULL)
+                )
+            segments.size == 4 && segments[0] == "stremio" && segments[1] == "torrent" &&
+                segments[3] == "raw" && method == Method.GET -> torrentRaw(session, segments[2])
+            segments.size == 4 && segments[0] == "stremio" && segments[1] == "torrent" &&
+                segments[3] == "status" && method == Method.GET -> torrentStatus(segments[2])
+            segments.size == 4 && segments[0] == "stremio" && segments[1] == "torrent" &&
+                method == Method.DELETE -> torrentRemove(segments[2])
             segments == listOf("stremio", "server") && method == Method.GET ->
                 json(
                     JSONObject()
@@ -696,6 +710,102 @@ class HubServer(
     }
 
     // ---------------------------------------------------------------------
+    // Torrents
+    // ---------------------------------------------------------------------
+
+    private fun prepareTorrent(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val infoHash = body.optString("infoHash").trim()
+        if (infoHash.isEmpty()) throw HubException(400, "validation", "Informe o info hash.")
+
+        val fileIdx = if (body.has("fileIdx") && !body.isNull("fileIdx")) {
+            body.optInt("fileIdx")
+        } else {
+            null
+        }
+
+        val sources = mutableListOf<String>()
+        body.optJSONArray("sources")?.let { array ->
+            for (index in 0 until array.length()) {
+                val value = array.optString(index)
+                if (value.isNotEmpty()) sources.add(value)
+            }
+        }
+
+        val prepared = TorrentEngine.prepare(
+            context = context,
+            infoHash = infoHash,
+            fileIdx = fileIdx,
+            sources = sources
+        )
+        return json(prepared)
+    }
+
+    private fun torrentRaw(session: IHTTPSession, sessionId: String): Response {
+        val torrent = TorrentEngine.session(sessionId)
+            ?: throw HubException(404, "not_found", "Sessão de torrent não encontrada.")
+
+        var start = 0L
+        var endInclusive = torrent.fileLength - 1
+        var partial = false
+
+        val range = session.headers["range"]
+        if (!range.isNullOrBlank() && range.startsWith("bytes=")) {
+            val spec = range.removePrefix("bytes=").substringBefore(',').trim()
+            val parts = spec.split('-', limit = 2)
+            val from = parts.getOrNull(0)?.toLongOrNull()
+            val to = parts.getOrNull(1)?.toLongOrNull()
+            when {
+                from != null -> {
+                    start = from.coerceIn(0, torrent.fileLength - 1)
+                    endInclusive = (to ?: endInclusive).coerceAtMost(torrent.fileLength - 1)
+                    partial = true
+                }
+
+                to != null -> {
+                    start = (torrent.fileLength - to).coerceAtLeast(0)
+                    partial = true
+                }
+            }
+        }
+
+        if (endInclusive < start) {
+            throw HubException(400, "validation", "Intervalo inválido.")
+        }
+
+        val length = (endInclusive - start + 1).coerceAtMost(torrent.fileLength - start)
+        val mime = MIME_TYPES[torrent.fileName.substringAfterLast('.', "").lowercase()]
+            ?: "application/octet-stream"
+
+        val response = newFixedLengthResponse(
+            if (partial) Response.Status.PARTIAL_CONTENT else Response.Status.OK,
+            mime,
+            TorrentRangeStream(torrent, start, length),
+            length
+        )
+        response.addHeader("Accept-Ranges", "bytes")
+        response.addHeader("Cache-Control", "no-store")
+        if (partial) {
+            response.addHeader(
+                "Content-Range",
+                "bytes $start-${start + length - 1}/${torrent.fileLength}"
+            )
+        }
+        return response
+    }
+
+    private fun torrentStatus(sessionId: String): Response {
+        val status = TorrentEngine.status(sessionId)
+            ?: throw HubException(404, "not_found", "Sessão de torrent não encontrada.")
+        return json(status)
+    }
+
+    private fun torrentRemove(sessionId: String): Response {
+        TorrentEngine.remove(sessionId)
+        return newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
+    }
+
+    // ---------------------------------------------------------------------
     // Progresso de reprodução
     // ---------------------------------------------------------------------
 
@@ -901,6 +1011,11 @@ class HubServer(
             "txt" to "text/plain; charset=utf-8",
             "webmanifest" to "application/manifest+json",
             "mp4" to "video/mp4",
+            "m4v" to "video/mp4",
+            "mkv" to "video/x-matroska",
+            "webm" to "video/webm",
+            "mov" to "video/quicktime",
+            "avi" to "video/x-msvideo",
             "m3u8" to "application/vnd.apple.mpegurl",
             "vtt" to "text/vtt; charset=utf-8"
         )
