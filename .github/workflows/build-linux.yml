@@ -84,7 +84,8 @@ jobs:
             exit 1
           fi
           cat /tmp/health.json
-          grep -q '"version":"0.4.6"' /tmp/health.json
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          grep -q "\"version\":\"$EXPECTED_VERSION\"" /tmp/health.json
           echo "AppImage smoke test OK (API version $(node -e "console.log(require('/tmp/health.json').version)"))"
           kill "$APP_PID" 2>/dev/null || true
           pkill -f 'minha-bolha' 2>/dev/null || true
