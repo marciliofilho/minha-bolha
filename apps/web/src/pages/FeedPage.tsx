@@ -214,6 +214,38 @@ function isArticleItem(item: FeedItemDto): boolean {
   return item.kind === 'article' || item.categoryId === 'news';
 }
 
+/** Botão/aba do navegador embutido, usado no destaque e no Feed vazio. */
+function FeedBrowserToggle({
+  open,
+  onOpen,
+  onClose,
+  title
+}: {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  title: string;
+}) {
+  if (open) {
+    return (
+      <div className="min-w-0 flex-1">
+        <FeedBrowser onClose={onClose} />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={title}
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-xl border border-line bg-elevated px-3 text-xs font-semibold text-fg shadow-sm transition hover:border-accent/40 hover:bg-elevated/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+    >
+      <Globe className="h-4 w-4 text-accent" />
+      Browser
+    </button>
+  );
+}
+
 function targetFromFeedItem(item: FeedItemDto): StreamTarget | null {  if (!item.imdbId) return null;
   const meta = item.meta ?? {};
   const releaseKind = typeof meta.releaseKind === 'string' ? meta.releaseKind : null;
@@ -1024,38 +1056,58 @@ export function FeedPage() {
       ) : null}
 
       {!feedQuery.isLoading && items.length === 0 ? (
-        sources.length === 0 ? (
-          <EmptyState
-            icon={<Rss className="h-5 w-5" />}
-            title={t('Comece adicionando uma fonte')}
-            description={t(
-              'Cole a URL de um canal do YouTube ou de um feed RSS. Os itens novos aparecem aqui automaticamente.'
+        <div className="space-y-4">
+          <div
+            className={cn(
+              'mx-auto w-full',
+              browserOpen
+                ? 'max-w-[145rem] 2xl:max-w-[161rem]'
+                : 'max-w-[79rem] 2xl:max-w-[87rem]'
             )}
-            action={
-              <Link
-                to="/sources"
-                className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg transition hover:brightness-110"
-              >
-                <Rss className="h-4 w-4" /> {t('Adicionar fonte')}
-              </Link>
-            }
-          />
-        ) : (
-          <EmptyState
-            icon={<Inbox className="h-5 w-5" />}
-            title={t('Nada por aqui ainda')}
-            description={
-              sourceId
-                ? t('Esta fonte ainda não tem itens. Tente atualizar agora.')
-                : t('Nenhum item nesta categoria. Atualize as fontes ou troque de aba.')
-            }
-            action={
-              <Button variant="subtle" size="sm" onClick={() => refreshAll.mutate()} loading={busy}>
-                {t('Atualizar agora')}
-              </Button>
-            }
-          />
-        )
+          >
+            <div className={cn('flex w-full gap-3', browserOpen ? 'items-stretch' : 'items-start')}>
+              <FeedBrowserToggle
+                open={browserOpen}
+                onOpen={() => setBrowserOpen(true)}
+                onClose={() => setBrowserOpen(false)}
+                title={t('Abrir navegador embutido')}
+              />
+            </div>
+          </div>
+
+          {sources.length === 0 ? (
+            <EmptyState
+              icon={<Rss className="h-5 w-5" />}
+              title={t('Comece adicionando uma fonte')}
+              description={t(
+                'Cole a URL de um canal do YouTube ou de um feed RSS. Os itens novos aparecem aqui automaticamente.'
+              )}
+              action={
+                <Link
+                  to="/sources"
+                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg transition hover:brightness-110"
+                >
+                  <Rss className="h-4 w-4" /> {t('Adicionar fonte')}
+                </Link>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<Inbox className="h-5 w-5" />}
+              title={t('Nada por aqui ainda')}
+              description={
+                sourceId
+                  ? t('Esta fonte ainda não tem itens. Tente atualizar agora.')
+                  : t('Nenhum item nesta categoria. Atualize as fontes ou troque de aba.')
+              }
+              action={
+                <Button variant="subtle" size="sm" onClick={() => refreshAll.mutate()} loading={busy}>
+                  {t('Atualizar agora')}
+                </Button>
+              }
+            />
+          )}
+        </div>
       ) : null}
 
       {!feedQuery.isLoading && items.length > 0 ? (
@@ -1149,21 +1201,12 @@ export function FeedPage() {
               onMouseLeave={() => setHeroPaused(false)}
             >
               <div className={cn('flex w-full gap-3', browserOpen ? 'items-stretch' : 'items-start')}>
-                {browserOpen ? (
-                  <div className="min-w-0 flex-1">
-                    <FeedBrowser onClose={() => setBrowserOpen(false)} />
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setBrowserOpen(true)}
-                    title={t('Abrir navegador ao lado do destaque')}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-xl border border-line bg-elevated px-3 text-xs font-semibold text-fg shadow-sm transition hover:border-accent/40 hover:bg-elevated/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-                  >
-                    <Globe className="h-4 w-4 text-accent" />
-                    Browser
-                  </button>
-                )}
+                <FeedBrowserToggle
+                  open={browserOpen}
+                  onOpen={() => setBrowserOpen(true)}
+                  onClose={() => setBrowserOpen(false)}
+                  title={t('Abrir navegador ao lado do destaque')}
+                />
 
                 <div className="min-w-0 flex-1">
                   {streamTarget ? (

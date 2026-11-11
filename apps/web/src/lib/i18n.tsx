@@ -204,6 +204,7 @@ const EN: Record<string, string> = {
   'Remover de ver depois': 'Remove from watch later',
   Browser: 'Browser',
   'Abrir navegador ao lado do destaque': 'Open the browser next to the spotlight',
+  'Abrir navegador embutido': 'Open built-in browser',
   Atualizar: 'Refresh',
 
   'Sua biblioteca e o que você está assistindo, lidos direto da conta do Stremio.':
@@ -1365,8 +1366,8 @@ const EN: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Plays the opening animation sound.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'The change applies the next time the desktop app starts.',
-  '{app} v0.4.1 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.1 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
+  '{app} v0.4.2 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.2 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
 };
 
 const ES: Record<string, string> = {
@@ -1565,6 +1566,7 @@ const ES: Record<string, string> = {
   'Remover de ver depois': 'Quitar de ver después',
   Browser: 'Navegador',
   'Abrir navegador ao lado do destaque': 'Abrir el navegador junto al destacado',
+  'Abrir navegador embutido': 'Abrir navegador integrado',
   Atualizar: 'Actualizar',
 
   'Sua biblioteca e o que você está assistindo, lidos direto da conta do Stremio.':
@@ -2730,8 +2732,8 @@ const ES: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Reproduce el sonido de la animación de apertura.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'El cambio se aplica la próxima vez que se abra la app de escritorio.',
-  '{app} v0.4.1 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.1 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
+  '{app} v0.4.2 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.2 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
 };
 
 function interpolate(template: string, params?: Params): string {
