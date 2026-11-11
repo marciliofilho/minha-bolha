@@ -46,6 +46,21 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Check Android/desktop parity
+        run: node scripts/check-android-parity.mjs
+
+      - name: Build web UI
+        run: npm run build
+
       - name: Build debug APK
         run: gradle -p apps/android :app:assembleDebug --no-daemon
 
@@ -67,8 +82,8 @@ jobs:
       - name: Smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: default
+          api-level: 34
+          target: google_apis
           arch: x86_64
           disable-animations: true
           emulator-boot-timeout: 900
