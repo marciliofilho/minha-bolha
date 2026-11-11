@@ -26,7 +26,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   Direct/HLS streams play in the existing web player (hls.js inside the WebView).
 - **Torrents**: libtorrent4j engine with sequential download, file selection and
   an HTTP Range endpoint, so MP4/WebM torrents play while they download.
-  MKV/AVI torrents are rejected with a clear message until transcoding exists.
+  MKV/HEVC torrents are handed to a **native Media3/ExoPlayer** screen through
+  the `HubNative` bridge, with progress shared with the web player.
 - API keys (TMDB/Steam/gg.deals) encrypted with the Android Keystore
   (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
@@ -62,7 +63,7 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- Torrent transcoding (MKV/AVI → HLS), audio track selection and FFmpeg.
+- Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
 - Foreground service for playback with the screen off and download notifications.
 - Stremio subtitles and account login/library sync.
 - Steam wishlist and gg.deals connectors, games screen.
