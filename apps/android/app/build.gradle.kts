@@ -106,6 +106,7 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.core:core-ktx:1.13.1")
 
     // Motor de torrents (mesma base do LibreTorrent). Uma artifact por ABI.
     implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")

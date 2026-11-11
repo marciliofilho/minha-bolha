@@ -428,4 +428,26 @@ if adb logcat -d -s MinhaBolha:I | grep -q 'console: Uncaught'; then
   fail "erro JavaScript não tratado no WebView"
 fi
 
+echo "== Serviço em primeiro plano =="
+PACKAGE_INFO="$(adb shell dumpsys package com.minhabolha.android | tr -d '\r')"
+case "$PACKAGE_INFO" in
+  *HubForegroundService*) echo "serviço declarado no APK" ;;
+  *) fail "HubForegroundService não está no APK" ;;
+esac
+case "$PACKAGE_INFO" in
+  *FOREGROUND_SERVICE_MEDIA_PLAYBACK*) echo "permissão de mídia em primeiro plano ok" ;;
+  *) fail "permissão FOREGROUND_SERVICE_MEDIA_PLAYBACK ausente" ;;
+esac
+
+PLAYER_PAYLOAD='{"url":"/api/health","title":"Teste foreground","tracking":{"metaId":"tt0111161","type":"movie","videoId":"tt0111161"}}'
+adb shell am start -n com.minhabolha.android/.PlayerActivity \
+  --es payload "$PLAYER_PAYLOAD" --es baseUrl "http://127.0.0.1:$PORT" > /dev/null 2>&1 || true
+sleep 4
+if adb shell dumpsys activity services com.minhabolha.android | grep -q "HubForegroundService"; then
+  echo "serviço em primeiro plano ativo"
+else
+  echo "AVISO: serviço não ficou ativo (Activity não exportada pode bloquear o teste)"
+fi
+adb shell am force-stop com.minhabolha.android > /dev/null 2>&1 || true
+
 echo "Smoke test Android OK"

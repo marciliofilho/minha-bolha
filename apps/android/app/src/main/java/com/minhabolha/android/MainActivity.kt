@@ -1,9 +1,12 @@
 package com.minhabolha.android
 
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -31,6 +34,9 @@ class MainActivity : Activity() {
 
         val port = HubRuntime.start(this)
         backendPort = port
+
+        ForegroundGuard.bind(this)
+        requestNotificationPermission()
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#080a0f"))
@@ -132,6 +138,14 @@ class MainActivity : Activity() {
      * O smoke test do CI usa essa linha para diferenciar "HTML servido" de
      * "interface realmente renderizada".
      */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+    }
+
     private fun reportRootChildren() {
         if (!this::webView.isInitialized) return
         val script =

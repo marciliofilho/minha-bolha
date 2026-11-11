@@ -86,6 +86,7 @@ object TorrentEngine {
 
     fun stop() {
         sessions.clear()
+        ForegroundGuard.resetTorrents()
         try {
             manager?.stop()
         } catch (error: Throwable) {
@@ -189,6 +190,7 @@ object TorrentEngine {
         )
 
         sessions[session.id] = session
+        ForegroundGuard.torrentStarted()
         Log.i(TAG, "torrent pronto: $fileName (${fileLength / 1024 / 1024} MB)")
         return dto(session)
     }
@@ -338,6 +340,7 @@ object TorrentEngine {
 
     fun remove(sessionId: String) {
         val session = sessions.remove(sessionId) ?: return
+        ForegroundGuard.torrentStopped()
         try {
             manager?.remove(session.handle)
         } catch (error: Throwable) {

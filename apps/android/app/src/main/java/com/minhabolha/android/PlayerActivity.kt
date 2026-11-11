@@ -111,6 +111,9 @@ class PlayerActivity : Activity() {
         exo.prepare()
         exo.playWhenReady = true
 
+        ForegroundGuard.bind(this)
+        ForegroundGuard.setPlayback(true, title)
+
         loadSubtitles()
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS)
         Log.i(TAG, "player nativo iniciado: $title")
@@ -182,6 +185,7 @@ class PlayerActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        ForegroundGuard.setPlayback(false)
         player?.release()
         player = null
         view = null
