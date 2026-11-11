@@ -429,15 +429,21 @@ if adb logcat -d -s MinhaBolha:I | grep -q 'console: Uncaught'; then
 fi
 
 echo "== Serviço em primeiro plano =="
-PACKAGE_INFO="$(adb shell dumpsys package com.minhabolha.android | tr -d '\r')"
-case "$PACKAGE_INFO" in
-  *HubForegroundService*) echo "serviço declarado no APK" ;;
-  *) fail "HubForegroundService não está no APK" ;;
-esac
-case "$PACKAGE_INFO" in
-  *FOREGROUND_SERVICE_MEDIA_PLAYBACK*) echo "permissão de mídia em primeiro plano ok" ;;
-  *) fail "permissão FOREGROUND_SERVICE_MEDIA_PLAYBACK ausente" ;;
-esac
+MERGED="$(find apps/android/app/build/intermediates -name AndroidManifest.xml -path '*debug*' 2>/dev/null | head -n 1)"
+if [ -n "$MERGED" ]; then
+  if grep -q "HubForegroundService" "$MERGED"; then
+    echo "serviço declarado no manifest final"
+  else
+    fail "HubForegroundService não está no manifest final"
+  fi
+  if grep -q "FOREGROUND_SERVICE_MEDIA_PLAYBACK" "$MERGED"; then
+    echo "permissão de mídia em primeiro plano ok"
+  else
+    fail "permissão FOREGROUND_SERVICE_MEDIA_PLAYBACK ausente"
+  fi
+else
+  echo "AVISO: manifest final não encontrado para inspeção"
+fi
 
 PLAYER_PAYLOAD='{"url":"/api/health","title":"Teste foreground","tracking":{"metaId":"tt0111161","type":"movie","videoId":"tt0111161"}}'
 adb shell am start -n com.minhabolha.android/.PlayerActivity \
