@@ -331,8 +331,8 @@ class HubServer(
     }
 
     /**
-     * O NanoHTTPD comprime qualquer `text/*` quando o cliente aceita gzip.
-     * Para SSE isso quebra o streaming: o `GZIPOutputStream` segura os dados
+     * O NanoHTTPD comprime respostas de texto quando o cliente aceita gzip.
+     * Para SSE isso quebra o streaming: o GZIPOutputStream segura os dados
      * até fechar a conexão, então o navegador nunca recebe os eventos.
      */
     override fun useGzipWhenAccepted(response: Response): Boolean {
