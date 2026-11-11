@@ -92,6 +92,22 @@ jobs:
           pkill -f 'minha-bolha' 2>/dev/null || true
           pkill -f 'Minha Bolha' 2>/dev/null || true
 
+      - name: Inspect AppImage contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="$(ls release/*.AppImage | head -n1)"
+          chmod +x "$APPIMAGE"
+          "$APPIMAGE" --appimage-extract >/dev/null
+          test -x squashfs-root/resources/bin/ffmpeg
+          test -x squashfs-root/resources/bin/ffprobe
+          test -f squashfs-root/resources/api/index.mjs
+          test -f squashfs-root/resources/web/index.html
+          squashfs-root/resources/bin/ffmpeg -version | head -n1
+          squashfs-root/resources/bin/ffprobe -version | head -n1
+          ls -lh squashfs-root/resources/bin
+          echo "AppImage contents OK"
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
