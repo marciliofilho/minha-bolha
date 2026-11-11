@@ -127,6 +127,35 @@ class HubScheduler(
         }
     }
 
+    /**
+     * Executa agora, de forma síncrona, as fontes vencidas.
+     * Usado pelo WorkManager quando o app está fechado (sem WebView).
+     */
+    fun runDueNow(limit: Int): Int {
+        var refreshed = 0
+        for (row in database.dueSources(limit)) {
+            try {
+                runSource(row.id)
+                refreshed++
+            } catch (error: Exception) {
+                Log.e(TAG, "falha ao sincronizar ${row.name}", error)
+            }
+        }
+
+        // O calendário global precisa rodar mesmo sem fontes vencidas.
+        val global = GlobalReleasesSource.find(database)
+        if (global != null && global.optBoolean("enabled") && refreshed == 0) {
+            try {
+                runSource(global.getString("id"))
+                refreshed++
+            } catch (error: Exception) {
+                Log.e(TAG, "falha ao atualizar o calendário global", error)
+            }
+        }
+
+        return refreshed
+    }
+
     /** Ao iniciar, espalha as fontes atrasadas para evitar uma rajada. */
     private fun spreadInitialSchedule() {
         val now = System.currentTimeMillis()

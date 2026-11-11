@@ -1,4 +1,4 @@
-package com.minhabolha.android
+﻿package com.minhabolha.android
 
 import android.content.Context
 import android.util.Log
@@ -6,10 +6,10 @@ import fi.iki.elonen.NanoHTTPD
 import java.net.ServerSocket
 
 /**
- * Ciclo de vida único do backend local.
+ * Ciclo de vida Ãºnico do backend local.
  *
- * O servidor, o banco e o scheduler pertencem ao processo — não à Activity.
- * Assim uma rotação de tela (ou qualquer recriação da Activity) não abre uma
+ * O servidor, o banco e o scheduler pertencem ao processo â€” nÃ£o Ã  Activity.
+ * Assim uma rotaÃ§Ã£o de tela (ou qualquer recriaÃ§Ã£o da Activity) nÃ£o abre uma
  * segunda porta nem cria um segundo scheduler.
  */
 object HubRuntime {
@@ -23,16 +23,16 @@ object HubRuntime {
     private var server: HubServer? = null
     private var port: Int = 0
 
-    /** Sobe o backend se ainda não estiver ativo e devolve a porta local. */
+    /** Sobe o backend se ainda nÃ£o estiver ativo e devolve a porta local. */
     @Synchronized
     fun start(context: Context): Int {
         server?.let { return port }
 
         val appContext = context.applicationContext
-        val hubDatabase = HubDatabase(appContext)
+        val hubDatabase = HubDb.get(appContext)
         val hubEvents = EventHub()
 
-        // Liga os conectores ao banco: chaves cifradas e mídia já salva.
+        // Liga os conectores ao banco: chaves cifradas e mÃ­dia jÃ¡ salva.
         com.minhabolha.android.connectors.Registry.configure(
             secrets = object : com.minhabolha.android.connectors.SecretAccess {
                 override fun value(key: String): String? = hubDatabase.secretValue(key)
@@ -40,7 +40,7 @@ object HubRuntime {
             mediaLookup = { sourceId -> hubDatabase.mediaBySource(sourceId) }
         )
 
-        // O calendário global é criado no primeiro boot (AniList não exige chave).
+        // O calendÃ¡rio global Ã© criado no primeiro boot (AniList nÃ£o exige chave).
         GlobalReleasesSource.ensure(hubDatabase)
 
         val hubScheduler = HubScheduler(hubDatabase, hubEvents)
@@ -75,17 +75,19 @@ object HubRuntime {
                 port = candidatePort
                 hubScheduler.start()
 
-                // O calendário global é atualizado assim que o app abre.
+                // O calendÃ¡rio global Ã© atualizado assim que o app abre.
                 GlobalReleasesSource.find(hubDatabase)?.let {
                     hubScheduler.enqueueSource(it.getString("id"), false)
                 }
 
                 Log.i(TAG, "backend local ativo em 127.0.0.1:$candidatePort")
+
+                // Sincroniza mesmo com o app fechado (a cada ~6h).
+                BackgroundSync.schedule(appContext)
+
                 return candidatePort
             }
         }
-
-        hubDatabase.close()
         return 0
     }
 
@@ -97,9 +99,9 @@ object HubRuntime {
         server = null
         events?.closeAll()
         events = null
-        database?.close()
         database = null
         port = 0
         Log.i(TAG, "backend local encerrado")
     }
 }
+

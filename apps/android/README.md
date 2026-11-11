@@ -23,6 +23,7 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
   backoff and per-type minimum interval.
+- WorkManager refreshes the sources every ~6 hours when the app is closed.
 - SSE (`/api/events`) with real `source:status`, `items:new`,
   `refresh:state`, `calendar:changed` and `secrets:changed` events.
 - API implemented in Kotlin:
@@ -50,7 +51,7 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - Torrent engine, FFmpeg/transcoding and background downloads.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, games, library mutations and title details screen.
-- WorkManager: the scheduler runs while the app is open; background sync is next.
+- Notifications for background sync (the worker only updates the database).
 
 Because those endpoints do not exist yet, the corresponding screens show their
 normal error state instead of data.
