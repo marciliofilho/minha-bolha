@@ -432,9 +432,14 @@ echo "== Serviço em primeiro plano =="
 MERGED="$(find apps/android/app/build/intermediates -name AndroidManifest.xml -path '*debug*' 2>/dev/null | head -n 1)"
 if [ -n "$MERGED" ]; then
   if grep -q "HubForegroundService" "$MERGED"; then
-    echo "serviço declarado no manifest final"
+    echo "serviço de torrents declarado no manifest final"
   else
     fail "HubForegroundService não está no manifest final"
+  fi
+  if grep -q "PlaybackService" "$MERGED" && grep -q "androidx.media3.session.MediaSessionService" "$MERGED"; then
+    echo "MediaSessionService declarado no manifest final"
+  else
+    fail "PlaybackService/MediaSessionService ausente no manifest final"
   fi
   if grep -q "FOREGROUND_SERVICE_MEDIA_PLAYBACK" "$MERGED"; then
     echo "permissão de mídia em primeiro plano ok"

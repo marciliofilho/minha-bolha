@@ -27,8 +27,6 @@ class HubForegroundService : Service() {
         const val ACTION_START = "com.minhabolha.android.START_FOREGROUND"
         const val ACTION_STOP = "com.minhabolha.android.STOP_FOREGROUND"
         const val EXTRA_TEXT = "text"
-        const val EXTRA_PLAYBACK = "playback"
-        const val EXTRA_TORRENT = "torrent"
     }
 
     override fun onCreate() {
@@ -46,15 +44,11 @@ class HubForegroundService : Service() {
         }
 
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Minha Bolha"
-        val playback = intent?.getBooleanExtra(EXTRA_PLAYBACK, false) ?: false
-        val torrent = intent?.getBooleanExtra(EXTRA_TORRENT, false) ?: false
-
-        var types = 0
-        if (playback) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-        if (torrent) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        if (types == 0) types = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-
-        startForeground(NOTIFICATION_ID, buildNotification(text), types)
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(text),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
         return START_STICKY
     }
 
@@ -110,20 +104,11 @@ class HubForegroundService : Service() {
 object ForegroundGuard {
 
     private var appContext: Context? = null
-    private var playback = false
-    private var playbackTitle: String = "Reprodução"
     private var torrents = 0
 
     @Synchronized
     fun bind(context: Context) {
         appContext = context.applicationContext
-    }
-
-    @Synchronized
-    fun setPlayback(active: Boolean, title: String? = null) {
-        playback = active
-        if (!title.isNullOrBlank()) playbackTitle = title
-        update()
     }
 
     @Synchronized
@@ -146,10 +131,8 @@ object ForegroundGuard {
 
     private fun update() {
         val context = appContext ?: return
-        val needPlayback = playback
-        val needTorrent = torrents > 0
 
-        if (!needPlayback && !needTorrent) {
+        if (torrents <= 0) {
             context.startService(
                 Intent(context, HubForegroundService::class.java)
                     .setAction(HubForegroundService.ACTION_STOP)
@@ -157,18 +140,10 @@ object ForegroundGuard {
             return
         }
 
-        val text = when {
-            needPlayback && needTorrent -> "$playbackTitle · $torrents torrent(s)"
-            needPlayback -> playbackTitle
-            else -> "Baixando ${torrents} torrent(s)"
-        }
-
         context.startForegroundService(
             Intent(context, HubForegroundService::class.java)
                 .setAction(HubForegroundService.ACTION_START)
-                .putExtra(HubForegroundService.EXTRA_TEXT, text)
-                .putExtra(HubForegroundService.EXTRA_PLAYBACK, needPlayback)
-                .putExtra(HubForegroundService.EXTRA_TORRENT, needTorrent)
+                .putExtra(HubForegroundService.EXTRA_TEXT, "Baixando $torrents torrent(s)")
         )
     }
 }

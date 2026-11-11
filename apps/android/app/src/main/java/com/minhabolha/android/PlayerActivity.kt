@@ -1,17 +1,22 @@
 package com.minhabolha.android
 
 import android.app.Activity
+import android.content.ComponentName
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
+import com.google.common.util.concurrent.ListenableFuture
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -19,14 +24,11 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * Player nativo para torrents.
+ * Tela de reprodução nativa.
  *
- * O WebView não abre MKV (e muitos torrents são MKV com HEVC/AC3), então o
- * player web delega para esta Activity, que usa Media3/ExoPlayer e transmite o
- * arquivo pelo endpoint HTTP com Range do motor de torrents.
- *
- * O progresso é gravado na mesma tabela do player web, então "Continuar
- * assistindo" funciona igual nas duas telas.
+ * Conecta-se ao [PlaybackService] por `MediaController`: o player (e a sessão
+ * de mídia) ficam no serviço, então a reprodução continua em segundo plano e
+ * aparece na tela de bloqueio. Esta Activity é só a interface.
  */
 class PlayerActivity : Activity() {
 
@@ -35,7 +37,8 @@ class PlayerActivity : Activity() {
         const val SAVE_INTERVAL_MS = 10_000L
     }
 
-    private var player: ExoPlayer? = null
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
     private var view: PlayerView? = null
     private val handler = Handler(Looper.getMainLooper())
 
@@ -90,41 +93,59 @@ class PlayerActivity : Activity() {
         episode = tracking?.optInt("episode")?.takeIf { tracking.has("episode") && !tracking.isNull("episode") }
         poster = tracking?.optString("poster")?.takeIf { it.isNotEmpty() }
 
-        val exo = ExoPlayer.Builder(this).build()
-        player = exo
-
         view = PlayerView(this).apply {
-            this.player = exo
             setShowNextButton(false)
             setShowPreviousButton(false)
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
         }
         setContentView(view)
 
-        exo.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) persistProgress(completed = true)
-            }
-        })
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        val future = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = future
+        future.addListener(
+            {
+                try {
+                    val mediaController = future.get()
+                    controller = mediaController
+                    view?.player = mediaController
 
-        exo.setMediaItem(MediaItem.fromUri(playbackUrl))
-        exo.prepare()
-        exo.playWhenReady = true
+                    mediaController.addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_ENDED) persistProgress(completed = true)
+                        }
+                    })
 
-        ForegroundGuard.bind(this)
-        ForegroundGuard.setPlayback(true, title)
+                    mediaController.setMediaItem(buildItem(emptyList()))
+                    mediaController.prepare()
+                    mediaController.playWhenReady = true
 
-        loadSubtitles()
-        handler.postDelayed(saveProgress, SAVE_INTERVAL_MS)
-        Log.i(TAG, "player nativo iniciado: $title")
+                    loadSubtitles()
+                    handler.postDelayed(saveProgress, SAVE_INTERVAL_MS)
+                    Log.i(TAG, "player nativo iniciado: $title")
+                } catch (error: Exception) {
+                    Log.e(TAG, "falha ao conectar no serviço de mídia", error)
+                    finish()
+                }
+            },
+            ContextCompat.getMainExecutor(this)
+        )
     }
 
-    /**
-     * Anexa as legendas dos addons ao player.
-     *
-     * Roda em segundo plano (consulta os addons) e, quando termina, refaz o
-     * media item preservando a posição atual da reprodução.
-     */
+    private fun buildItem(subtitles: List<MediaItem.SubtitleConfiguration>): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtworkUri(poster?.let { Uri.parse(it) })
+            .build()
+
+        return MediaItem.Builder()
+            .setUri(playbackUrl)
+            .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitles)
+            .build()
+    }
+
+    /** Anexa as legendas dos addons sem interromper o que já está tocando. */
     private fun loadSubtitles() {
         if (metaId.isEmpty() || baseUrl.isEmpty()) return
 
@@ -165,14 +186,10 @@ class PlayerActivity : Activity() {
             if (configurations.isEmpty()) return@Thread
 
             runOnUiThread {
-                val exo = player ?: return@runOnUiThread
+                val mediaController = controller ?: return@runOnUiThread
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                val item = MediaItem.Builder()
-                    .setUri(playbackUrl)
-                    .setSubtitleConfigurations(configurations)
-                    .build()
-                exo.setMediaItem(item, false)
-                exo.prepare()
+                mediaController.setMediaItem(buildItem(configurations), false)
+                mediaController.prepare()
                 Log.i(TAG, "player nativo: ${configurations.size} faixa(s) de legenda")
             }
         }.start()
@@ -183,21 +200,34 @@ class PlayerActivity : Activity() {
         super.onStop()
     }
 
+    /**
+     * Ao sair, apenas soltamos o controlador: o player continua no serviço e a
+     * notificação de mídia permite pausar/parar.
+     */
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
-        ForegroundGuard.setPlayback(false)
-        player?.release()
-        player = null
+        view?.player = null
         view = null
+        controllerFuture?.let { future ->
+            if (future.isDone) {
+                try {
+                    MediaController.releaseFuture(future)
+                } catch (error: Exception) {
+                    Log.w(TAG, "falha ao liberar o controlador", error)
+                }
+            }
+        }
+        controllerFuture = null
+        controller = null
         super.onDestroy()
     }
 
     private fun persistProgress(completed: Boolean = false) {
-        val exo = player ?: return
+        val mediaController = controller ?: return
         if (metaId.isEmpty() || videoId.isEmpty() || baseUrl.isEmpty()) return
 
-        val position = exo.currentPosition.coerceAtLeast(0)
-        val duration = exo.duration.takeIf { it > 0 }
+        val position = mediaController.currentPosition.coerceAtLeast(0)
+        val duration = mediaController.duration.takeIf { it > 0 }
 
         val body = JSONObject()
             .put("metaId", metaId)
