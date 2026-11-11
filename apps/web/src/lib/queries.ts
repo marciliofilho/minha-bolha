@@ -667,7 +667,7 @@ export function useStremioCatalog(
     initialPageParam: 0,
     getNextPageParam: (last) => last.nextSkip ?? undefined,
     enabled: enabled && Boolean(params.addonId && params.type && params.catalogId),
-    staleTime: 60_000
+    staleTime: 5 * 60_000
   });
 }
 

@@ -410,9 +410,10 @@ export interface StreamsResult {
 export async function fetchAddonStreams(
   transportUrl: string,
   type: string,
-  videoId: string
+  videoId: string,
+  timeoutMs?: number
 ): Promise<StreamsResult> {
-  const result = await fetchAddonJson(buildResourceUrl(transportUrl, 'stream', type, videoId));
+  const result = await fetchAddonJson(buildResourceUrl(transportUrl, 'stream', type, videoId), timeoutMs);
   const data = result.data as { streams?: unknown } | null;
   const rawStreams = Array.isArray(data?.streams) ? data.streams : [];
   const streams: NormalizedStream[] = [];

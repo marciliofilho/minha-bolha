@@ -42,6 +42,7 @@ import { listStremioLibraryRows } from '../db/repositories/stremio';
 import { getSettings } from '../db/repositories/settings';
 import {
   deleteOldStreamCache,
+  deleteStreamCacheRow,
   getStreamCacheRow,
   pruneStreamCache,
   saveStreamCacheRow
@@ -189,6 +190,7 @@ export async function addAddon(rawUrl: string): Promise<StremioAddonDto> {
     manifest,
     priority: nextAddonPriority()
   });
+  clearCatalogCache();
   return toAddonDto(row);
 }
 
@@ -217,12 +219,14 @@ export async function updateAddon(
     enabled: patch.enabled,
     priority: patch.priority
   });
+  clearCatalogCache();
   return toAddonDto(updated);
 }
 
 export function removeAddon(id: string): void {
   requireAddon(id);
   deleteAddonRow(id);
+  clearCatalogCache();
 }
 
 export function reorderAddons(ids: string[]): StremioAddonDto[] {
@@ -278,6 +282,7 @@ export async function importAddonsFromAccount(): Promise<AddonImportResultDto> {
     }
   }
 
+  clearCatalogCache();
   return summary;
 }
 
@@ -389,7 +394,12 @@ async function testStreams(
 
   const started = Date.now();
   try {
-    const result = await fetchAddonStreams(transportUrl, sample.type, sample.videoId);
+    const result = await fetchAddonStreams(
+      transportUrl,
+      sample.type,
+      sample.videoId,
+      STREAM_FETCH_TIMEOUT_MS
+    );
     summary.elapsedMs = result.elapsedMs;
     summary.count = result.streams.length;
     const qualities = new Set<string>();
@@ -702,6 +712,57 @@ function findCatalog(manifest: AddonManifest, type: string, catalogId: string) {
   );
 }
 
+const CATALOG_CACHE_TTL = 5 * 60_000;
+const CATALOG_CACHE_MAX = 200;
+
+interface CatalogCacheEntry {
+  expiresAt: number;
+  value: AddonCatalogPageDto;
+}
+
+const catalogCache = new Map<string, CatalogCacheEntry>();
+
+function catalogCacheKey(input: {
+  addonId: string;
+  type: string;
+  catalogId: string;
+  search?: string;
+  skip?: number;
+  genre?: string;
+}): string {
+  return [
+    input.addonId,
+    input.type,
+    input.catalogId,
+    input.search?.trim() ?? '',
+    input.skip ?? 0,
+    input.genre?.trim() ?? ''
+  ].join('|');
+}
+
+function readCatalogCache(key: string): AddonCatalogPageDto | null {
+  const entry = catalogCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    catalogCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function writeCatalogCache(key: string, value: AddonCatalogPageDto): void {
+  catalogCache.set(key, { expiresAt: Date.now() + CATALOG_CACHE_TTL, value });
+  while (catalogCache.size > CATALOG_CACHE_MAX) {
+    const oldest = catalogCache.keys().next().value;
+    if (!oldest) break;
+    catalogCache.delete(oldest);
+  }
+}
+
+function clearCatalogCache(): void {
+  catalogCache.clear();
+}
+
 export async function getCatalogPage(input: {
   addonId: string;
   type: string;
@@ -710,6 +771,10 @@ export async function getCatalogPage(input: {
   skip?: number;
   genre?: string;
 }): Promise<AddonCatalogPageDto> {
+  const cacheKey = catalogCacheKey(input);
+  const cached = readCatalogCache(cacheKey);
+  if (cached) return cached;
+
   if (input.addonId === BUILTIN_KITSU_ADDON_ID) {
     const catalog = BUILTIN_KITSU_CATALOGS.find(
       (entry) => entry.type === input.type && entry.id === input.catalogId
@@ -739,13 +804,15 @@ export async function getCatalogPage(input: {
       catalog.extraSupported.includes('skip') && result.items.length >= 10
         ? skip + 40
         : null;
-    return {
+    const page: AddonCatalogPageDto = {
       items: result.items.map((item) =>
         toCatalogItemDto(item, BUILTIN_KITSU_ADDON_ID, 'Kitsu')
       ),
       nextSkip,
       elapsedMs: result.elapsedMs
     };
+    writeCatalogCache(cacheKey, page);
+    return page;
   }
 
   const row = requireAddon(input.addonId);
@@ -794,11 +861,13 @@ export async function getCatalogPage(input: {
   const nextSkip =
     skipSupported && result.items.length > 0 ? effectiveSkip + result.items.length : null;
 
-  return {
+  const page: AddonCatalogPageDto = {
     items: result.items.map((item) => toCatalogItemDto(item, row.id, row.name)),
     nextSkip,
     elapsedMs: result.elapsedMs
   };
+  writeCatalogCache(cacheKey, page);
+  return page;
 }
 
 // ---------------------------------------------------------------------------
@@ -1298,6 +1367,10 @@ const DEFAULT_TRACKERS = [
 const STREAM_FRESH_TTL = 15 * 60_000;
 const STREAM_ERROR_TTL = 20_000;
 const STREAM_CACHE_MAX_ROWS = 600;
+/** Tempo máximo para um addon lento terminar e alimentar o cache. */
+const STREAM_FETCH_TIMEOUT_MS = 20_000;
+/** Tempo que a lista espera os addons lentos antes de devolver os rápidos. */
+const STREAM_RESPONSE_DEADLINE_MS = 4_000;
 
 function streamStaleTtlMs(): number {
   try {
@@ -1352,6 +1425,9 @@ function readStreamCache(
   try {
     const parsed = JSON.parse(row.streams_json) as unknown;
     if (!Array.isArray(parsed)) return null;
+    // Resultado vazio pode ser temporário (addon lento/bloqueado); não o
+    // tratamos como cache válido por 15 minutos.
+    if (parsed.length === 0) return null;
     return { streams: parsed as NormalizedStream[], ageMs };
   } catch {
     return null;
@@ -1385,8 +1461,18 @@ async function fetchAndStoreStreams(
   videoId: string,
   addonKey: string
 ): Promise<NormalizedStream[]> {
-  const response = await fetchAddonStreams(addon.transportUrl, type, videoId);
-  writeStreamCache(addonKey, type, videoId, response.streams);
+  const response = await fetchAddonStreams(
+    addon.transportUrl,
+    type,
+    videoId,
+    STREAM_FETCH_TIMEOUT_MS
+  );
+  if (response.streams.length === 0) {
+    // Não guarda lista vazia: o addon pode ter falhado só naquela tentativa.
+    deleteStreamCacheRow(addonKey, type, videoId);
+  } else {
+    writeStreamCache(addonKey, type, videoId, response.streams);
+  }
   streamErrors.delete(streamCacheKey(addonKey, type, videoId));
   return response.streams;
 }
@@ -1500,6 +1586,56 @@ async function fetchStreamsCached(
   }
 }
 
+type StreamFetchResult = Awaited<ReturnType<typeof fetchStreamsCached>>;
+
+/**
+ * Devolve o resultado rápido, mas não deixa um addon lento segurar a lista
+ * inteira. A busca lenta continua em segundo plano e alimenta o cache para as
+ * próximas leituras (o StreamPicker refaz a consulta enquanto `refreshing`).
+ */
+function withResponseDeadline(
+  task: Promise<StreamFetchResult>,
+  addon: EnabledAddon
+): Promise<StreamFetchResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({
+        addon,
+        streams: undefined,
+        error: 'O addon ainda está respondendo; a lista será atualizada em segundo plano.',
+        helpUrl: null,
+        cached: false,
+        refreshing: true
+      });
+    }, STREAM_RESPONSE_DEADLINE_MS);
+    timer.unref?.();
+
+    task
+      .then((result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({
+          addon,
+          streams: undefined,
+          error: error instanceof Error ? error.message : 'Falha ao consultar streams.',
+          helpUrl: null,
+          cached: false,
+          refreshing: false
+        });
+      });
+  });
+}
+
 function qualityRank(quality: string | null): number {
   if (!quality) return 0;
   const match = /(\d{3,4})p/i.exec(quality);
@@ -1598,18 +1734,23 @@ export async function getStreamsForTitle(input: {
 
   const results = await Promise.all(
     addons.map((addon) =>
-      fetchStreamsCached(addon, type, videoId, input.refresh === true)
+      withResponseDeadline(
+        fetchStreamsCached(addon, type, videoId, input.refresh === true),
+        addon
+      )
     )
   );
 
   for (const result of results) {
     if (!result.streams) {
-      errors.push({
-        addonId: result.addon.id,
-        addonName: result.addon.name,
-        message: result.error ?? 'Falha ao consultar streams.',
-        helpUrl: result.helpUrl ?? null
-      });
+      if (!result.refreshing) {
+        errors.push({
+          addonId: result.addon.id,
+          addonName: result.addon.name,
+          message: result.error ?? 'Falha ao consultar streams.',
+          helpUrl: result.helpUrl ?? null
+        });
+      }
       continue;
     }
     result.streams.forEach((stream, index) => {

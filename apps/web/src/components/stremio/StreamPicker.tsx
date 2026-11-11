@@ -132,15 +132,15 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
   const authErrors = (streamsQuery.data?.errors ?? []).filter((error) => error.helpUrl);
   const server = useStremioServerStatus();
 
-  // Se o backend devolveu cache antigo e está atualizando em segundo plano,
-  // faz até duas leituras extras para trazer a lista nova sem o usuário pedir.
+  // Se o backend devolveu cache antigo ou está esperando um addon lento em
+  // segundo plano, faz algumas leituras extras para trazer a lista nova.
   useEffect(() => {
     if (!streamsQuery.data?.cache.refreshing) return;
     let attempts = 0;
     const timer = window.setInterval(() => {
       attempts += 1;
       void streamsQuery.refetch();
-      if (attempts >= 2) window.clearInterval(timer);
+      if (attempts >= 5) window.clearInterval(timer);
     }, 2500);
     return () => window.clearInterval(timer);
   }, [streamsQuery.data?.cache.refreshing]);
