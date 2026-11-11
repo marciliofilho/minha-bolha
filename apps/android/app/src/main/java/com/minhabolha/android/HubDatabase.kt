@@ -968,6 +968,8 @@ class HubDatabase(private val context: Context) {
                 values + existing.id
             )
         } else {
+            val insertValues = mutableListOf<Any?>(UUID.randomUUID().toString(), sourceId)
+            insertValues.addAll(values.toList())
             db.execSQL(
                 """
                 INSERT INTO media (id, source_id, provider, external_id, kind, title, original_title,
@@ -975,7 +977,7 @@ class HubDatabase(private val context: Context) {
                   imdb_id, raw, fetched_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
-                arrayOf(UUID.randomUUID().toString(), sourceId) + values
+                insertValues.toTypedArray()
             )
         }
 
@@ -1039,9 +1041,11 @@ class HubDatabase(private val context: Context) {
                 )
             } else {
                 val placeholders = events.joinToString(", ") { "?" }
+                val deleteArgs = mutableListOf<Any?>(mediaId, today)
+                deleteArgs.addAll(events.map { it.externalKey })
                 db.execSQL(
                     "DELETE FROM release_events WHERE media_id = ? AND release_date > ? AND external_key NOT IN ($placeholders)",
-                    arrayOf<Any?>(mediaId, today) + events.map { it.externalKey }.toTypedArray()
+                    deleteArgs.toTypedArray()
                 )
             }
             db.setTransactionSuccessful()
