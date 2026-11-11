@@ -33,7 +33,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   the `HubNative` bridge, with progress shared with the web player.
 - **Foreground service** (`mediaPlayback|dataSync`) keeps playback and torrents
   alive when the app is in the background, with an ongoing notification and a
-  "Parar" action.
+  "Parar" action. Playback runs in a **MediaSessionService**, so the lockscreen,
+  headphones and system controls work too.
 - API keys (TMDB/Steam/gg.deals) encrypted with the Android Keystore
   (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
@@ -70,8 +71,6 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 ## Not ported yet
 
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
-- MediaSession/lockscreen controls (the foreground service keeps playback alive,
-  but there are no remote controls yet).
 - Stremio account login and library sync.
 - Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
