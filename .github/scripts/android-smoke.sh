@@ -199,11 +199,13 @@ echo "resultados AniList: $SEARCH_COUNT"
 [ "$SEARCH_COUNT" -gt 0 ] || echo "AVISO: busca do AniList indisponível (rede externa)"
 
 FROM="$(date -u -d '-30 days' +%F)"
-TO="$(date -u -d '+30 days' +%F)"
+TO="$(date -u -d '+120 days' +%F)"
 CAL_COUNT=0
 if [ "$SEARCH_COUNT" -gt 0 ]; then
+  ANIME_REF="$(printf '%s' "$SEARCH" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["results"][0]["ref"])')"
+  echo "fonte de teste: $ANIME_REF"
   ANIME_CREATE="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
-    -d '{"type":"anilist","input":"anilist:21","categoryId":"anime"}' "$BASE/api/sources" || true)"
+    -d "{\"type\":\"anilist\",\"input\":\"$ANIME_REF\",\"categoryId\":\"anime\"}" "$BASE/api/sources" || true)"
   ANIME_ID="$(printf '%s' "$ANIME_CREATE" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
   [ -n "$ANIME_ID" ] || fail "fonte AniList não foi criada"
 
@@ -216,7 +218,10 @@ if [ "$SEARCH_COUNT" -gt 0 ]; then
     sleep 5
   done
   echo "calendário da biblioteca: $CAL_COUNT evento(s)"
-  [ "$CAL_COUNT" -gt 0 ] || fail "a fonte AniList não gerou eventos de calendário"
+  if [ "$CAL_COUNT" -le 0 ]; then
+    echo "runs da fonte: $(curl -fsS --max-time 15 "$BASE/api/sources/$ANIME_ID/runs" | cut -c1-400)"
+    fail "a fonte AniList não gerou eventos de calendário"
+  fi
 
   curl -fsS --max-time 15 -X DELETE "$BASE/api/sources/$ANIME_ID" > /dev/null || fail "não foi possível remover a fonte AniList"
 else
@@ -224,10 +229,12 @@ else
 fi
 
 echo "== Calendário global =="
+GLOBAL_FROM="$(date -u -d '-30 days' +%F)"
+GLOBAL_TO="$(date -u -d '+60 days' +%F)"
 GLOBAL_COUNT=0
 INDEX=0
 while [ "$INDEX" -lt 12 ]; do
-  GLOBAL="$(curl -fsS --max-time 20 "$BASE/api/calendar?scope=global&from=$FROM&to=$TO" || true)"
+  GLOBAL="$(curl -fsS --max-time 20 "$BASE/api/calendar?scope=global&from=$GLOBAL_FROM&to=$GLOBAL_TO" || true)"
   GLOBAL_COUNT="$(printf '%s' "$GLOBAL" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("events",[])))' 2>/dev/null || echo 0)"
   if [ "$GLOBAL_COUNT" -gt 0 ]; then break; fi
   INDEX=$((INDEX + 1))

@@ -1052,6 +1052,9 @@ class HubDatabase(private val context: Context) {
         } finally {
             db.endTransaction()
         }
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i("MinhaBolha", "calendário: ${events.size} evento(s) para mídia $mediaId")
+        }
         return events.size
     }
 

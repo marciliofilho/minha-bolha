@@ -502,6 +502,13 @@ class HubServer(
             database.globalReleases(from, to, kinds)
         }
 
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i(
+                "MinhaBolha",
+                "calendar scope=$scope from=$from to=$to kinds=$kinds eventos=${items.length()}"
+            )
+        }
+
         return json(JSONObject().put("from", from).put("to", to).put("events", items))
     }
 
@@ -616,6 +623,9 @@ class HubServer(
     }
 
     private fun jsonError(status: Int, message: String, code: String): Response {
+        if (status >= 500) {
+            android.util.Log.e("MinhaBolha", "erro $status: $message")
+        }
         val payload = JSONObject().put("error", message).put("code", code)
         return newFixedLengthResponse(
             Response.Status.lookup(status) ?: Response.Status.INTERNAL_ERROR,
