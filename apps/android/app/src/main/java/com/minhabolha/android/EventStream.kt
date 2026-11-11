@@ -19,20 +19,20 @@ class EventHub {
 
     internal fun register(stream: EventStream) {
         streams.add(stream)
-        Log.i("MinhaBolha", "sse: cliente conectado (${streams.size})")
+        if (BuildConfig.DEBUG) Log.i("MinhaBolha", "sse: cliente conectado (${streams.size})")
     }
 
     internal fun unregister(stream: EventStream) {
         streams.remove(stream)
-        Log.i("MinhaBolha", "sse: cliente desconectado (${streams.size})")
+        if (BuildConfig.DEBUG) Log.i("MinhaBolha", "sse: cliente desconectado (${streams.size})")
     }
 
     fun broadcast(type: String, payload: JSONObject = JSONObject()) {
         if (streams.isEmpty()) {
-            Log.i("MinhaBolha", "sse: evento $type sem clientes")
+            if (BuildConfig.DEBUG) Log.i("MinhaBolha", "sse: evento $type sem clientes")
             return
         }
-        Log.i("MinhaBolha", "sse: evento $type para ${streams.size} cliente(s)")
+        if (BuildConfig.DEBUG) Log.i("MinhaBolha", "sse: evento $type para ${streams.size} cliente(s)")
 
         val message = JSONObject().put("type", type)
         val keys = payload.keys()

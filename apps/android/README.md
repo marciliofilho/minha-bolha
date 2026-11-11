@@ -99,8 +99,15 @@ HubDatabase (SQLite + desktop migrations)
 
 The server listens only on `127.0.0.1` and is not reachable from other devices.
 
-## Validation status
+### SSE and gzip
 
+NanoHTTPD compresses any `text/*` response when the client sends
+`Accept-Encoding: gzip`. `GZIPOutputStream` only flushes when the stream ends,
+so the EventSource connection opened but no event ever reached the WebView.
+`curl` does not send gzip, which made the bug invisible in manual tests.
+`HubServer.useGzipWhenAccepted` disables gzip for `text/event-stream`.
+
+## Validation status
 The CI emulator test asserts:
 
 1. the APK installs and the activity starts;
