@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -23,11 +24,13 @@ class MainActivity : Activity() {
     }
 
     private lateinit var webView: WebView
+    private var backendPort: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val port = HubRuntime.start(this)
+        backendPort = port
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#080a0f"))
@@ -50,6 +53,10 @@ class MainActivity : Activity() {
             }
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+
+        // Ponte para o player nativo: o WebView não abre MKV/HEVC.
+        webView.addJavascriptInterface(HubBridge(), "HubNative")
+
         setContentView(webView)
 
         // Diagnóstico usado pelo smoke test do CI: confirma que o React montou
@@ -129,10 +136,37 @@ class MainActivity : Activity() {
         if (!this::webView.isInitialized) return
         val script =
             "(function(){var r=document.getElementById('root');" +
-                "return 'rootChildren=' + (r ? r.childElementCount : -1);})()"
+                "return 'rootChildren=' + (r ? r.childElementCount : -1) +" +
+                " ' native=' + (window.HubNative ? 1 : 0);})()"
         webView.evaluateJavascript(script) { value ->
             Log.i(TAG, "webviewReady: $value")
         }
+    }
+
+    /**
+     * Bridge exposta ao React como `window.HubNative`.
+     *
+     * O player web chama `playTorrent(payload)` quando o arquivo do torrent não
+     * toca no WebView (MKV/HEVC) e a Activity nativa assume.
+     */
+    inner class HubBridge {
+        @JavascriptInterface
+        fun playTorrent(payload: String) {
+            runOnUiThread {
+                try {
+                    startActivity(
+                        Intent(this@MainActivity, PlayerActivity::class.java)
+                            .putExtra("payload", payload)
+                            .putExtra("baseUrl", "http://127.0.0.1:$backendPort")
+                    )
+                } catch (error: Exception) {
+                    Log.e(TAG, "falha ao abrir o player nativo", error)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun isAvailable(): Boolean = true
     }
 
     @Deprecated("Deprecated in Android")

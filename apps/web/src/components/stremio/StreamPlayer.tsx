@@ -416,6 +416,22 @@ export function StreamPlayer({
       })
       .then((prep) => {
         if (cancelled) return;
+
+        // Android: MKV/HEVC não toca no WebView, então o player nativo assume.
+        if (!prep.directPlayable && window.HubNative) {
+          window.HubNative.playTorrent(
+            JSON.stringify({
+              url: prep.directUrl,
+              title,
+              fileName: prep.fileName,
+              tracking: tracking ?? null
+            })
+          );
+          setTorrentPreparing(false);
+          onClose();
+          return;
+        }
+
         if (prep.audioTracks.length > 0) {
           const preferred = prep.audioTracks.findIndex((track) =>
             /^(pob|por|pt|pt-br|pt-pt)$/i.test(track.language ?? '')

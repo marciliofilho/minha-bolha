@@ -346,13 +346,18 @@ if chosen:
     case "$PREP_CODE" in
       200)
         SESSION_ID="$(python3 -c 'import json;print(json.load(open("/tmp/prep.json"))["sessionId"])' 2>/dev/null || true)"
+        PLAYABLE="$(python3 -c 'import json;print(json.load(open("/tmp/prep.json"))["directPlayable"])' 2>/dev/null || echo False)"
         echo "torrent preparado: $(python3 -c 'import json;d=json.load(open("/tmp/prep.json"));print(d["fileName"], str(d["fileLength"])+" bytes", "directPlayable="+str(d["directPlayable"]))' 2>/dev/null)"
-        RAW_CODE="$(curl -s -o /tmp/raw.bin -w '%{http_code}' --max-time 60 -H 'Range: bytes=0-1023' \
-          "$BASE/api/stremio/torrent/$SESSION_ID/raw" || true)"
-        if [ "$RAW_CODE" = "206" ]; then
-          echo "range ok ($(wc -c < /tmp/raw.bin) bytes)"
+        if [ "$PLAYABLE" = "True" ]; then
+          RAW_CODE="$(curl -s -o /tmp/raw.bin -w '%{http_code}' --max-time 60 -H 'Range: bytes=0-1023' \
+            "$BASE/api/stremio/torrent/$SESSION_ID/raw" || true)"
+          if [ "$RAW_CODE" = "206" ]; then
+            echo "range ok ($(wc -c < /tmp/raw.bin) bytes)"
+          else
+            echo "AVISO: range retornou $RAW_CODE"
+          fi
         else
-          echo "AVISO: range retornou $RAW_CODE"
+          echo "container exige o player nativo (esperado: Media3/ExoPlayer)"
         fi
         curl -s --max-time 15 -X DELETE "$BASE/api/stremio/torrent/$SESSION_ID" > /dev/null || true
         ;;
@@ -386,6 +391,12 @@ while [ "$ATTEMPT" -lt 10 ]; do
 done
 [ "$READY" -gt 0 ] || fail "o React não montou a interface (rootChildren=0)"
 echo "rootChildren: $READY"
+
+if adb logcat -d -s MinhaBolha:I | grep -q 'native=1'; then
+  echo "ponte HubNative presente"
+else
+  fail "window.HubNative não foi injetada no WebView"
+fi
 
 if adb logcat -d -s MinhaBolha:I | grep -q 'console: Uncaught'; then
   fail "erro JavaScript não tratado no WebView"
