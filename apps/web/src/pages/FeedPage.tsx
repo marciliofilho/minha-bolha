@@ -1,4 +1,4 @@
-/** Tela principal: feed com abas, filtro por fonte, scroll infinito e 3 layouts. */
+﻿/** Tela principal: feed com abas, filtro por fonte, scroll infinito e 3 layouts. */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -143,7 +143,7 @@ function writeStoredStringArray(key: string, value: string[]): void {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Armazenamento indisponível.
+    // Armazenamento indisponÃ­vel.
   }
 }
 
@@ -167,7 +167,7 @@ function RowMoveButtons({
         type="button"
         onClick={onUp}
         disabled={!canUp}
-        aria-label={t('Mover seção para cima')}
+        aria-label={t('Mover seÃ§Ã£o para cima')}
         title={t('Mover para cima')}
         className={base}
       >
@@ -177,7 +177,7 @@ function RowMoveButtons({
         type="button"
         onClick={onDown}
         disabled={!canDown}
-        aria-label={t('Mover seção para baixo')}
+        aria-label={t('Mover seÃ§Ã£o para baixo')}
         title={t('Mover para baixo')}
         className={base}
       >
@@ -199,7 +199,7 @@ function readStoredView(): FeedView {
     const value = window.localStorage.getItem(VIEW_STORAGE_KEY);
     if (value === 'grid' || value === 'netflix' || value === 'list') return value;
   } catch {
-    // localStorage indisponível (modo privado): usa o estilo Netflix.
+    // localStorage indisponÃ­vel (modo privado): usa o estilo Netflix.
   }
   return 'netflix';
 }
@@ -210,12 +210,12 @@ const StreamPicker = lazy(() =>
   }))
 );
 
-/** Notícias e artigos ganham o modo leitura interno. */
+/** NotÃ­cias e artigos ganham o modo leitura interno. */
 function isArticleItem(item: FeedItemDto): boolean {
   return item.kind === 'article' || item.categoryId === 'news';
 }
 
-/** Botão/aba do navegador embutido, usado no destaque e no Feed vazio. */
+/** BotÃ£o/aba do navegador embutido, usado no destaque e no Feed vazio. */
 function FeedBrowserToggle({
   open,
   onOpen,
@@ -345,7 +345,7 @@ export function FeedPage() {
   const items = useMemo(() => {
     const base = feedQuery.data?.pages.flatMap((page) => page.items) ?? [];
     if (tab !== 'novel' && tab !== 'all') return base;
-    // Fontes recém-adicionadas ainda não têm itens sincronizados; mostra a
+    // Fontes recÃ©m-adicionadas ainda nÃ£o tÃªm itens sincronizados; mostra a
     // novel no Feed imediatamente usando os dados resolvidos da fonte.
     const known = new Set(base.map((item) => item.sourceId));
     const synthetic: FeedItemDto[] = [];
@@ -557,7 +557,7 @@ export function FeedPage() {
       categoryTab === 'all'
         ? sources
         : sources.filter((source) => source.categoryId === categoryTab);
-    // Só fontes com itens aparecem no filtro do feed.
+    // SÃ³ fontes com itens aparecem no filtro do feed.
     return base.filter((source) => source.itemCount > 0);
   }, [sources, tab]);
 
@@ -582,7 +582,7 @@ export function FeedPage() {
     setSourceId(undefined);
   }, [tab]);
 
-  // Ao trocar de aba/fonte, o destaque e o player voltam ao começo.
+  // Ao trocar de aba/fonte, o destaque e o player voltam ao comeÃ§o.
   useEffect(() => {
     setPlaying(null);
     setStreamTarget(null);
@@ -593,7 +593,7 @@ export function FeedPage() {
     if (view !== 'netflix') setStreamTarget(null);
   }, [view]);
 
-  // Abre no destaque do Feed o título enviado por Explorar/Biblioteca ou por uma notificação.
+  // Abre no destaque do Feed o tÃ­tulo enviado por Explorar/Biblioteca ou por uma notificaÃ§Ã£o.
   useEffect(() => {
     const state = location.state as {
       streamTarget?: StreamTarget;
@@ -621,7 +621,7 @@ export function FeedPage() {
     navigate(location.pathname + location.search, { replace: true, state: null });
   }, [location.state, location.pathname, location.search, navigate, items]);
 
-  // O destaque alterna como sugestão; pausa ao passar o mouse, reproduzir ou escolher stream.
+  // O destaque alterna como sugestÃ£o; pausa ao passar o mouse, reproduzir ou escolher stream.
   useEffect(() => {
     if (view !== 'netflix' || playing || streamTarget || heroPaused || browserOpen || items.length < 2) return;
     const timer = window.setInterval(() => {
@@ -630,7 +630,7 @@ export function FeedPage() {
     return () => window.clearInterval(timer);
   }, [view, playing, streamTarget, heroPaused, browserOpen, items.length]);
 
-  // Leva o player/destaque para a área visível quando um vídeo ou stream é escolhido.
+  // Leva o player/destaque para a Ã¡rea visÃ­vel quando um vÃ­deo ou stream Ã© escolhido.
   useEffect(() => {
     if (playing || streamTarget) heroRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
   }, [playing, streamTarget]);
@@ -779,7 +779,7 @@ export function FeedPage() {
     onSetNovelProgress: item.kind === 'chapter' ? () => setNovelProgressFromItem(item) : undefined
   });
 
-  // Estilo Netflix: um destaque rotativo (que também aparece nas fileiras abaixo).
+  // Estilo Netflix: um destaque rotativo (que tambÃ©m aparece nas fileiras abaixo).
   const heroItem =
     playing?.item ?? (items.length > 0 ? items[heroIndex % items.length] : undefined);
   const heroVideoId = heroItem ? youtubeVideoId(heroItem) : null;
@@ -881,13 +881,13 @@ export function FeedPage() {
         description={
           <>
             <span className="font-medium text-fg">{unread}</span>{' '}
-            {t(unread === 1 ? 'não lido' : 'não lidos')} ·{' '}
+            {t(unread === 1 ? 'nÃ£o lido' : 'nÃ£o lidos')} Â·{' '}
             {t(sources.length === 1 ? '{count} fonte' : '{count} fontes', {
               count: sources.length
             })}{' '}
-            · {t('mais recentes primeiro')}
+            Â· {t('mais recentes primeiro')}
             {tab === 'youtube'
-              ? ` ${t('· YouTube: últimas {hours}h', { hours: feedWindowHours })}`
+              ? ` ${t('Â· YouTube: Ãºltimas {hours}h', { hours: feedWindowHours })}`
               : ''}
           </>
         }
@@ -909,9 +909,9 @@ export function FeedPage() {
                 size="sm"
                 onClick={() => setNotificationsOpen((open) => !open)}
                 icon={<BellRing className="h-3.5 w-3.5" />}
-                title={t('Escolher quais feeds geram notificação')}
+                title={t('Escolher quais feeds geram notificaÃ§Ã£o')}
               >
-                <span className="hidden sm:inline">{t('Notificações')}</span>
+                <span className="hidden sm:inline">{t('NotificaÃ§Ãµes')}</span>
               </Button>
               {notificationsOpen ? (
                 <div className="absolute right-0 top-full z-[80] mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface p-2 shadow-2xl shadow-black/40">
@@ -955,13 +955,13 @@ export function FeedPage() {
                     ))}
                     {notificationCategories.length === 0 ? (
                       <p className="px-1.5 py-2 text-[11px] text-faint">
-                        {t('Nenhuma categoria disponível.')}
+                        {t('Nenhuma categoria disponÃ­vel.')}
                       </p>
                     ) : null}
                   </div>
                   <p className="border-t border-line/60 px-1.5 pt-1.5 text-[10px] leading-relaxed text-faint">
                     {t(
-                      'Vale para as notificações de novos conteúdos. O botão de teste continua mostrando os três exemplos.'
+                      'Vale para as notificaÃ§Ãµes de novos conteÃºdos. O botÃ£o de teste continua mostrando os trÃªs exemplos.'
                     )}
                   </p>
                 </div>
@@ -983,7 +983,7 @@ export function FeedPage() {
               onClick={() => markAllRead.mutate({ tab, sourceId })}
               disabled={unread === 0 || markAllRead.isPending}
               icon={<CheckCheck className="h-3.5 w-3.5" />}
-              title={t('Marcar todos os itens visíveis como lidos')}
+              title={t('Marcar todos os itens visÃ­veis como lidos')}
             >
               <span className="hidden sm:inline">{t('Marcar lidos')}</span>
             </Button>
@@ -1022,13 +1022,13 @@ export function FeedPage() {
 
           <div className="ml-auto flex items-center gap-2">
             <NovelDownloadStatus />
-            <span className="hidden text-[11px] font-medium text-faint sm:inline">{t('Visualização')}</span>
+            <span className="hidden text-[11px] font-medium text-faint sm:inline">{t('VisualizaÃ§Ã£o')}</span>
             <FeedViewSwitcher view={view} onChange={setView} />
           </div>
         </div>
       </div>
 
-      {/* "Continuar assistindo" só aparece na aba Todos e fora do estilo Netflix. */}
+      {/* "Continuar assistindo" sÃ³ aparece na aba Todos e fora do estilo Netflix. */}
       {view === 'netflix' || tab !== 'all' ? null : (
         <>
           <LocalContinueWatchingSection onPlay={openStreamsFromPlayback} />
@@ -1038,7 +1038,7 @@ export function FeedPage() {
 
       {feedQuery.isError ? (
         <div className="space-y-3">
-          <ErrorBanner message={feedQuery.error instanceof Error ? feedQuery.error.message : t('Não foi possível carregar o feed.')} />
+          <ErrorBanner message={feedQuery.error instanceof Error ? feedQuery.error.message : t('NÃ£o foi possÃ­vel carregar o feed.')} />
           <Button variant="subtle" size="sm" onClick={() => void feedQuery.refetch()}>
             {t('Tentar novamente')}
           </Button>
@@ -1117,7 +1117,7 @@ export function FeedPage() {
               title={t('Nada por aqui ainda')}
               description={
                 sourceId
-                  ? t('Esta fonte ainda não tem itens. Tente atualizar agora.')
+                  ? t('Esta fonte ainda nÃ£o tem itens. Tente atualizar agora.')
                   : t('Nenhum item nesta categoria. Atualize as fontes ou troque de aba.')
               }
               action={
@@ -1424,9 +1424,9 @@ export function FeedPage() {
 
       <div ref={sentinelRef} className="flex h-16 items-center justify-center">
         {feedQuery.isFetchingNextPage ? (
-          <span className="text-xs text-faint">{t('Carregando mais…')}</span>
+          <span className="text-xs text-faint">{t('Carregando maisâ€¦')}</span>
         ) : !feedQuery.hasNextPage && items.length > 0 ? (
-          <span className="text-[11px] text-faint">{t('Você chegou ao fim do feed')}</span>
+          <span className="text-[11px] text-faint">{t('VocÃª chegou ao fim do feed')}</span>
         ) : null}
       </div>
 
@@ -1527,11 +1527,11 @@ function NetflixHero({
 }: {
   item: FeedItemDto;
   onExternal: () => void;
-  /** Abre o modo leitura interno para capítulos de novels. */
+  /** Abre o modo leitura interno para capÃ­tulos de novels. */
   onOpenReader?: () => void;
-  /** Definido apenas para itens do YouTube; abre o player no próprio destaque. */
+  /** Definido apenas para itens do YouTube; abre o player no prÃ³prio destaque. */
   onPlay?: () => void;
-  /** Definido para filmes/séries/animes com ID do IMDB; abre a lista de streams. */
+  /** Definido para filmes/sÃ©ries/animes com ID do IMDB; abre a lista de streams. */
   onWatch?: () => void;
   /** Definido para alertas de jogos; abre o modal de detalhes da Wishlist. */
   onOpenGame?: () => void;
@@ -1635,7 +1635,7 @@ function NetflixHero({
           </button>
         ) : null}
 
-        <div className={cn('absolute inset-x-0 bottom-0 p-4 sm:p-5', isChapter && 'sm:right-[29%]')}>
+        <div className={cn('absolute inset-x-0 bottom-0 p-3 sm:p-5', isChapter && 'sm:right-[29%]')}>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="rounded bg-white/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
               {t(item.categoryLabel)}
@@ -1647,7 +1647,7 @@ function NetflixHero({
             ) : null}
             {item.inStremioLibrary ? <StremioBadge /> : null}
             <span className="text-[10px] text-white/70">
-              {item.sourceName} ·{' '}
+              {item.sourceName} Â·{' '}
               <time dateTime={item.publishedAt} title={formatRelative(item.publishedAt)}>
                 {item.kind === 'chapter' ? formatDateTime(item.publishedAt) : formatRelative(item.publishedAt)}
               </time>
@@ -1684,7 +1684,7 @@ function NetflixHero({
               <button
                 type="button"
                 onClick={onOpenGame}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90"
+                className="hidden h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90 sm:inline-flex"
               >
                 <Gamepad2 className="h-3.5 w-3.5" /> {t('Detalhes do jogo')}
               </button>
@@ -1693,7 +1693,7 @@ function NetflixHero({
               <button
                 type="button"
                 onClick={onOpenReader}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90"
+                className="hidden h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-semibold text-black transition hover:bg-white/90 sm:inline-flex"
               >
                 <BookOpen className="h-3.5 w-3.5" /> {t('Ler aqui')}
               </button>
@@ -1725,13 +1725,13 @@ function NetflixHero({
               <button
                 type="button"
                 onClick={onSetNovelProgress}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white transition hover:bg-white/25"
+                className="hidden h-8 items-center gap-1.5 rounded-lg bg-white/15 px-3 text-xs font-semibold text-white transition hover:bg-white/25 sm:inline-flex"
               >
-                <CheckCheck className="h-3.5 w-3.5" /> {t('Lido até aqui')}
+                <CheckCheck className="h-3.5 w-3.5" /> {t('Lido atÃ© aqui')}
               </button>
             ) : null}
             <IconButton
-              label={item.isRead ? 'Marcar como não lido' : 'Marcar como lido'}
+              label={item.isRead ? 'Marcar como nÃ£o lido' : 'Marcar como lido'}
               onClick={onToggleRead}
               active={item.isRead}
               className="h-8 w-8 bg-white/15 text-white hover:bg-white/25 hover:text-white"
@@ -1761,4 +1761,5 @@ function NetflixHero({
     </section>
   );
 }
+
 
