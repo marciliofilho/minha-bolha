@@ -5,7 +5,7 @@ import { ChevronRight, Clapperboard, Eye, EyeOff, Play, Star, Trash2 } from 'luc
 import type { PlaybackProgressDto, StremioCardInfoDto } from '@hub/shared';
 import { HorizontalScroller } from '@/components/ui/HorizontalScroller';
 import { CardHoverPreview } from '@/components/stremio/CardHoverPreview';
-import { useClearPlaybackProgress, usePlaybackContinue, useSetStremioLibraryState, useStremioCardInfo, useStremioLibrary, useStremioStatus } from '@/lib/queries';
+import { useClearPlaybackProgress, usePlaybackContinue, useSetStremioLibraryState, useStremioCardInfo, useStremioLibrary } from '@/lib/queries';
 import { useI18n } from '@/lib/i18n';
 import { formatRelative } from '@/lib/utils';
 import { useStoredBoolean } from '@/lib/use-stored-boolean';
@@ -167,8 +167,7 @@ export function LocalContinueWatchingSection({
   const query = usePlaybackContinue();
   const [collapsed, toggleCollapsed] = useStoredBoolean('hub.local-continue.collapsed', false);
   const items = query.data?.items ?? [];
-  const status = useStremioStatus();
-  const library = useStremioLibrary(Boolean(status.data?.connected));
+  const library = useStremioLibrary();
   const setState = useSetStremioLibraryState();
   const knownByMetaId = new Map(
     (library.data?.items ?? []).map((item) => [item.metaId, item])

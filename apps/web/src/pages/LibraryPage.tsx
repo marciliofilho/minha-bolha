@@ -129,7 +129,7 @@ export function LibraryPage() {
   const statusQuery = useStremioStatus();
   const connected = Boolean(statusQuery.data?.connected);
   const expired = Boolean(statusQuery.data?.expired);
-  const libraryQuery = useStremioLibrary(connected);
+  const libraryQuery = useStremioLibrary();
   const queryClient = useQueryClient();
 
   const [filter, setFilter] = useState<Filter>('all');
@@ -358,7 +358,7 @@ export function LibraryPage() {
   if (statusQuery.isLoading) {
     return (
       <div>
-        <PageHeader eyebrow="Stremio" title={t('Biblioteca')} description={t('Carregando sua biblioteca…')} />
+        <PageHeader eyebrow={t('Biblioteca')} title={t('Biblioteca')} description={t('Carregando sua biblioteca…')} />
         <div
           className="grid gap-3"
           style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(9.5rem, 45%), 1fr))' }}
@@ -374,72 +374,68 @@ export function LibraryPage() {
     );
   }
 
-  if (!connected) {
-    return (
-      <div>
-        <PageHeader
-          eyebrow="Stremio"
-          title={t('Biblioteca')}
-          description={t(
-            'Sua biblioteca e o que você está assistindo, lidos direto da conta do Stremio.'
-          )}
-        />
-        <EmptyState
-          icon={<Library className="h-5 w-5" />}
-          title={t('Conecte sua conta do Stremio')}
-          description={t(
-            'A conexão é somente leitura: o Hub nunca adiciona, remove ou grava progresso na sua conta.'
+  return (
+    <div>
+      <PageHeader
+        eyebrow={t('Biblioteca')}
+        title={t('Biblioteca')}
+        description={
+          connected ? (
+            <>
+              <span className="font-medium text-fg">{items.length}</span> {t('título(s)')} · Stremio (
+              {t('somente leitura')}) + {t('Minha biblioteca do Hub')}
+              {statusQuery.data?.lastSyncAt
+                ? ` · ${t('sincronizada')} ${formatRelative(statusQuery.data.lastSyncAt)}`
+                : ''}
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-fg">{items.length}</span> {t('título(s)')} ·{' '}
+              {t('Minha biblioteca do Hub')}
+            </>
+          )
+        }
+        actions={
+          connected && !expired ? (
+            <>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => void handleSync()}
+                loading={busy === 'sync'}
+                icon={<RefreshCw className="h-3.5 w-3.5" />}
+              >
+                {t('Sincronizar')}
+              </Button>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => void handleImport()}
+                loading={busy === 'import'}
+                icon={<Upload className="h-3.5 w-3.5" />}
+              >
+                {t('Importar para fontes')}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+
+      {!connected ? (
+        <InfoBanner
+          message={t(
+            'O Stremio é opcional. Sua biblioteca local funciona sem ele; conecte para sincronizar títulos da conta.'
           )}
           action={
             <Link
               to="/settings"
-              className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg transition hover:brightness-110"
+              className="rounded-lg border border-line px-2 py-1 text-[11px] font-medium text-muted transition hover:text-fg"
             >
-              {t('Ir para Configurações')}
+              {t('Conectar Stremio')}
             </Link>
           }
         />
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Stremio"
-        title={t('Biblioteca')}
-        description={
-          <>
-            <span className="font-medium text-fg">{items.length}</span> {t('título(s)')} · Stremio (
-            {t('somente leitura')}) + {t('Minha biblioteca do Hub')}
-            {statusQuery.data?.lastSyncAt
-              ? ` · ${t('sincronizada')} ${formatRelative(statusQuery.data.lastSyncAt)}`
-              : ''}
-          </>
-        }
-        actions={
-          <>
-            <Button
-              variant="subtle"
-              size="sm"
-              onClick={() => void handleSync()}
-              loading={busy === 'sync'}
-              icon={<RefreshCw className="h-3.5 w-3.5" />}
-            >
-              {t('Sincronizar')}
-            </Button>
-            <Button
-              variant="subtle"
-              size="sm"
-              onClick={() => void handleImport()}
-              loading={busy === 'import'}
-              icon={<Upload className="h-3.5 w-3.5" />}
-            >
-              {t('Importar para fontes')}
-            </Button>
-          </>
-        }
-      />
+      ) : null}
 
       {expired ? (
         <InfoBanner
@@ -558,15 +554,24 @@ export function LibraryPage() {
             description={
               items.length === 0
                 ? t(
-                    'Adicione títulos no Stremio ou use a prévia dos cards para salvar na Minha biblioteca do Hub.'
+                    'Adicione títulos pelo Feed ou Explorar usando a prévia dos cards. O Stremio é opcional.'
                   )
                 : t('Tente outro termo ou troque o filtro.')
             }
             action={
               items.length === 0 ? (
-                <Button variant="subtle" size="sm" onClick={() => void handleSync()} loading={busy === 'sync'}>
-                  {t('Sincronizar agora')}
-                </Button>
+                connected ? (
+                  <Button variant="subtle" size="sm" onClick={() => void handleSync()} loading={busy === 'sync'}>
+                    {t('Sincronizar agora')}
+                  </Button>
+                ) : (
+                  <Link
+                    to="/explore"
+                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg transition hover:brightness-110"
+                  >
+                    {t('Explorar')}
+                  </Link>
+                )
               ) : undefined
             }
           />

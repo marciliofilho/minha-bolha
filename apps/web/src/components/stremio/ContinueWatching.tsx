@@ -237,7 +237,9 @@ export function ContinueWatchingSection({
 } = {}) {
   const { t } = useI18n();
   const status = useStremioStatus();
-  const library = useStremioLibrary(Boolean(status.data?.connected));
+  const connected = Boolean(status.data?.connected);
+  const expired = Boolean(status.data?.expired);
+  const library = useStremioLibrary();
   const [collapsed, toggleCollapsed] = useStoredBoolean('hub.stremio-continue.collapsed', false);
   const [accountHidden, toggleAccountHidden] = useStoredBoolean(
     'hub.stremio.account-hidden',
@@ -265,7 +267,7 @@ export function ContinueWatchingSection({
   const searching = searchTerm.length > 0;
   const searchQuery = useStremioLibrarySearch(
     searchTerm,
-    Boolean(status.data?.connected)
+    searchTerm.length >= 2
   );
   const searchResults = searchQuery.data?.items ?? EMPTY_LIBRARY;
   const baseItems = searching ? searchResults : allItems;
@@ -363,23 +365,8 @@ export function ContinueWatchingSection({
     : t('Nenhum título encontrado na sua biblioteca para este filtro.');
   const setState = useSetStremioLibraryState();
 
-  if (!status.data?.connected) return null;
-
-  if (status.data.expired) {
-    return (
-      <InfoBanner
-        message={t('Sessão do Stremio expirada. Reconecte para voltar a sincronizar a biblioteca.')}
-        action={
-          <Link
-            to="/settings"
-            className="rounded-lg border border-line px-2 py-1 text-[11px] font-medium text-muted transition hover:text-fg"
-          >
-            Reconectar
-          </Link>
-        }
-      />
-    );
-  }
+  // Sem conta Stremio, a seção continua existindo para a biblioteca local.
+  if (!connected && candidateItems.length === 0) return null;
 
   const emptyMessage =
     filter === 'favorites'
@@ -396,6 +383,21 @@ export function ContinueWatchingSection({
 
   return (
     <section className="mb-6">
+      {expired ? (
+        <div className="mb-3">
+          <InfoBanner
+            message={t('Sessão do Stremio expirada. Reconecte para voltar a sincronizar a biblioteca.')}
+            action={
+              <Link
+                to="/settings"
+                className="rounded-lg border border-line px-2 py-1 text-[11px] font-medium text-muted transition hover:text-fg"
+              >
+                {t('Reconectar')}
+              </Link>
+            }
+          />
+        </div>
+      ) : null}
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -456,7 +458,11 @@ export function ContinueWatchingSection({
             }`}
             style={{ filter: accountHidden ? 'blur(3px)' : 'none' }}
           >
-            {status.data.email ? `Stremio · ${status.data.email}` : t('Sua biblioteca do Stremio')}
+            {connected
+              ? status.data?.email
+                ? `Stremio · ${status.data.email}`
+                : t('Sua biblioteca do Stremio')
+              : t('Minha biblioteca do Hub')}
           </button>
         </div>
 
@@ -576,10 +582,10 @@ export function ContinueWatchingSection({
           ) : null}
         </div>
       ) : library.isLoading ? (
-        <p className="text-[11px] text-faint">{t('Carregando biblioteca do Stremio…')}</p>
+        <p className="text-[11px] text-faint">{t('Carregando sua biblioteca…')}</p>
       ) : library.isError ? (
         <p className="text-[11px] text-danger">
-          {t('Não foi possível carregar a biblioteca do Stremio.')}
+          {t('Não foi possível carregar a biblioteca.')}
         </p>
       ) : filteredItems.length === 0 ? (
         <p className="rounded-xl border border-line/60 bg-bg/40 px-3 py-2 text-[11px] text-muted">

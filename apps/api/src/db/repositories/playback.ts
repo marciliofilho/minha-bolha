@@ -14,11 +14,12 @@ export function getPlaybackRow(metaId: string, videoId: string): StremioPlayback
   return row ?? null;
 }
 
+/** Progresso local recente; 1 s já conta para "Continuar assistindo". */
 export function listPlaybackRows(limit = 20): StremioPlaybackRow[] {
   return db
     .prepare(
       `SELECT * FROM stremio_playback
-       WHERE completed = 0 AND position_ms > 5000
+       WHERE completed = 0 AND position_ms > 1000
        ORDER BY updated_at DESC
        LIMIT ?`
     )

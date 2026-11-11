@@ -67,6 +67,7 @@ import {
   useRefreshState,
   useSetNovelProgress,
   useSources,
+  useStremioLibrary,
   useStremioStatus,
   useSettings,
   useUpdateItem
@@ -335,6 +336,7 @@ export function FeedPage() {
   const setNovelProgress = useSetNovelProgress();
   const playbackContinue = usePlaybackContinue();
   const stremioStatus = useStremioStatus();
+  const stremioLibrary = useStremioLibrary();
   const gamesQuery = useGames('all', 'discount');
 
   const counts = countsQuery.data ?? FALLBACK_COUNTS;
@@ -800,11 +802,21 @@ export function FeedPage() {
   const sections = useMemo(() => {
     if (view !== 'netflix') return [] as FeedSection[];
     const list: FeedSection[] = [];
+    const streamingItems = stremioLibrary.data?.items ?? [];
+    const hasStreamingContent =
+      stremioStatus.data?.connected ||
+      streamingItems.some(
+        (item) =>
+          item.progress > 0.01 ||
+          (item.isLocal && item.inLibrary) ||
+          item.isFavorite ||
+          item.isWatchLater
+      );
     if (tab === 'all') {
       if ((playbackContinue.data?.items.length ?? 0) > 0) {
         list.push({ id: 'local-continue', kind: 'local' });
       }
-      if (stremioStatus.data?.connected) {
+      if (hasStreamingContent) {
         list.push({ id: 'stremio-continue', kind: 'stremio' });
       }
     }
@@ -824,7 +836,15 @@ export function FeedPage() {
       if (!ordered.some((candidate) => candidate.id === section.id)) ordered.push(section);
     }
     return ordered;
-  }, [view, tab, rows, sectionOrder, playbackContinue.data, stremioStatus.data]);
+  }, [
+    view,
+    tab,
+    rows,
+    sectionOrder,
+    playbackContinue.data,
+    stremioStatus.data,
+    stremioLibrary.data
+  ]);
 
   const updateSectionOrder = (next: string[]): void => {
     setSectionOrder(next);
@@ -1055,7 +1075,7 @@ export function FeedPage() {
         )
       ) : null}
 
-      {!feedQuery.isLoading && items.length === 0 ? (
+      {!feedQuery.isLoading && items.length === 0 && !(view === 'netflix' && sections.length > 0) ? (
         <div className="space-y-4">
           <div
             className={cn(
@@ -1110,7 +1130,7 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {!feedQuery.isLoading && items.length > 0 ? (
+      {!feedQuery.isLoading && (items.length > 0 || (view === 'netflix' && sections.length > 0)) ? (
         view === 'list' ? (
           <div className="space-y-2.5">
             {feedEntries.map((entry) => {

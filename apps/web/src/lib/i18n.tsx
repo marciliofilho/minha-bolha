@@ -228,8 +228,8 @@ const EN: Record<string, string> = {
   'Carregar mais': 'Load more',
   'Sua biblioteca está vazia': 'Your library is empty',
   'Nenhum título encontrado': 'No titles found',
-  'Adicione títulos no Stremio ou use a prévia dos cards para salvar na Minha biblioteca do Hub.':
-    'Add titles in Stremio or use the card preview to save them to Hub My Library.',
+  'Adicione títulos pelo Feed ou Explorar usando a prévia dos cards. O Stremio é opcional.':
+    'Add titles from the Feed or Explore using the card previews. Stremio is optional.',
   'Tente outro termo ou troque o filtro.': 'Try another term or change the filter.',
   'Sincronizar agora': 'Sync now',
   'Sincronização iniciada. A biblioteca atualiza em instantes.':
@@ -934,7 +934,8 @@ const EN: Record<string, string> = {
   'Não foi possível conectar.': 'Could not connect.',
   'Cole a chave de acesso do Stremio.': 'Paste the Stremio access key.',
   'Chave inválida.': 'Invalid key.',
-  'Conta desconectada. O token foi apagado.': 'Account disconnected. The token was deleted.',
+  'Conta desconectada. O token foi apagado; a biblioteca local foi preservada.':
+    'Account disconnected. The token was deleted; your local library was preserved.',
   'Não foi possível desconectar.': 'Could not disconnect.',
   'Sincronização iniciada. Os itens aparecem em instantes.':
     'Sync started. Items will appear shortly.',
@@ -950,8 +951,11 @@ const EN: Record<string, string> = {
   'A sessão expirou. Reconecte para sincronizar novamente.':
     'The session expired. Reconnect to sync again.',
   'item(ns) na biblioteca': 'item(s) in library',
-  'Conecte sua conta para ver a biblioteca, o “Continuar assistindo” e importar títulos.':
-    'Connect your account to see the library, “Continue watching” and import titles.',
+  'Conecte sua conta para sincronizar a biblioteca do Stremio. O Hub funciona normalmente sem ela.':
+    'Connect your account to sync your Stremio library. The Hub works normally without it.',
+  'Conectar Stremio': 'Connect Stremio',
+  'O Stremio é opcional. Sua biblioteca local funciona sem ele; conecte para sincronizar títulos da conta.':
+    'Stremio is optional. Your local library works without it; connect to sync titles from your account.',
   'Abrir biblioteca': 'Open library',
   'Importar títulos para fontes': 'Import titles to sources',
   Desconectar: 'Disconnect',
@@ -1366,8 +1370,8 @@ const EN: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Plays the opening animation sound.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'The change applies the next time the desktop app starts.',
-  '{app} v0.4.2 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.2 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
+  '{app} v0.4.3 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.3 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
 };
 
 const ES: Record<string, string> = {
@@ -1590,8 +1594,8 @@ const ES: Record<string, string> = {
   'Carregar mais': 'Cargar más',
   'Sua biblioteca está vazia': 'Tu biblioteca está vacía',
   'Nenhum título encontrado': 'No se encontraron títulos',
-  'Adicione títulos no Stremio ou use a prévia dos cards para salvar na Minha biblioteca do Hub.':
-    'Agrega títulos en Stremio o usa la vista previa de las tarjetas para guardarlos en Mi biblioteca de Hub.',
+  'Adicione títulos pelo Feed ou Explorar usando a prévia dos cards. O Stremio é opcional.':
+    'Agrega títulos desde el Feed o Explorar usando la vista previa de las tarjetas. Stremio es opcional.',
   'Tente outro termo ou troque o filtro.': 'Prueba otro término o cambia el filtro.',
   'Sincronizar agora': 'Sincronizar ahora',
   'Sincronização iniciada. A biblioteca atualiza em instantes.':
@@ -2297,7 +2301,8 @@ const ES: Record<string, string> = {
   'Não foi possível conectar.': 'No se pudo conectar.',
   'Cole a chave de acesso do Stremio.': 'Pega la clave de acceso de Stremio.',
   'Chave inválida.': 'Clave inválida.',
-  'Conta desconectada. O token foi apagado.': 'Cuenta desconectada. El token se eliminó.',
+  'Conta desconectada. O token foi apagado; a biblioteca local foi preservada.':
+    'Cuenta desconectada. El token se eliminó; tu biblioteca local se conservó.',
   'Não foi possível desconectar.': 'No se pudo desconectar.',
   'Sincronização iniciada. Os itens aparecem em instantes.':
     'Sincronización iniciada. Los elementos aparecerán en breve.',
@@ -2313,8 +2318,11 @@ const ES: Record<string, string> = {
   'A sessão expirou. Reconecte para sincronizar novamente.':
     'La sesión expiró. Reconecta para sincronizar de nuevo.',
   'item(ns) na biblioteca': 'elemento(s) en la biblioteca',
-  'Conecte sua conta para ver a biblioteca, o “Continuar assistindo” e importar títulos.':
-    'Conecta tu cuenta para ver la biblioteca, el “Seguir viendo” e importar títulos.',
+  'Conecte sua conta para sincronizar a biblioteca do Stremio. O Hub funciona normalmente sem ela.':
+    'Conecta tu cuenta para sincronizar la biblioteca de Stremio. El Hub funciona normalmente sin ella.',
+  'Conectar Stremio': 'Conectar Stremio',
+  'O Stremio é opcional. Sua biblioteca local funciona sem ele; conecte para sincronizar títulos da conta.':
+    'Stremio es opcional. Tu biblioteca local funciona sin él; conéctalo para sincronizar títulos de tu cuenta.',
   'Abrir biblioteca': 'Abrir biblioteca',
   'Importar títulos para fontes': 'Importar títulos a fuentes',
   Desconectar: 'Desconectar',
@@ -2732,8 +2740,8 @@ const ES: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Reproduce el sonido de la animación de apertura.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'El cambio se aplica la próxima vez que se abra la app de escritorio.',
-  '{app} v0.4.2 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.2 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
+  '{app} v0.4.3 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.3 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
 };
 
 function interpolate(template: string, params?: Params): string {

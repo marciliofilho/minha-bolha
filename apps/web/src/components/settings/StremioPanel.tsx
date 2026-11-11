@@ -100,7 +100,7 @@ export function StremioPanel() {
       const result = await api.stremioDisconnect();
       queryClient.setQueryData(['stremio-status'], result);
       await refresh();
-      setMessage(t('Conta desconectada. O token foi apagado.'));
+      setMessage(t('Conta desconectada. O token foi apagado; a biblioteca local foi preservada.'));
     } catch (disconnectError) {
       setError(
         disconnectError instanceof Error
@@ -182,7 +182,7 @@ export function StremioPanel() {
                   ? t('A sessão expirou. Reconecte para sincronizar novamente.')
                   : `${status?.libraryCount ?? 0} ${t('item(ns) na biblioteca')} · ${t('última sincronização')} ${formatRelative(status?.lastSyncAt)}`
                 : t(
-                    'Conecte sua conta para ver a biblioteca, o “Continuar assistindo” e importar títulos.'
+                    'Conecte sua conta para sincronizar a biblioteca do Stremio. O Hub funciona normalmente sem ela.'
                   )}
             </p>
           </div>

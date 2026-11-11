@@ -56,14 +56,10 @@ export function countStremioLibrary(): number {
   return Number(row.total);
 }
 
-/** Remove a biblioteca sincronizada (usado ao desconectar a conta). */
+/** Remove apenas a cópia sincronizada do Stremio; a biblioteca local e os
+ *  favoritos/assistir depois do Hub são preservados ao desconectar. */
 export function clearStremioLibrary(): void {
   db.prepare('DELETE FROM stremio_library').run();
-  try {
-    db.prepare('DELETE FROM stremio_library_state').run();
-  } catch {
-    // tabela criada pela migração 010; em instalações antigas pode não existir
-  }
   // A cópia de rollback da migração 006 também contém dados pessoais.
   try {
     db.prepare('DELETE FROM stremio_library_legacy').run();
