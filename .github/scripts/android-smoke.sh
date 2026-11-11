@@ -109,6 +109,11 @@ case "$RESOLVE" in
 esac
 
 if [ "$NETWORK_OK" -eq 1 ]; then
+  # Escuta o SSE antes de criar a fonte para provar que os eventos chegam.
+  curl -sN --max-time 30 "$BASE/api/events" > "$PWD/android-events.txt" 2>/dev/null &
+  SSE_PID=$!
+  sleep 1
+
   CREATE="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
     -d '{"type":"rss","input":"https://hnrss.org/frontpage","categoryId":"news"}' \
     "$BASE/api/sources" || true)"
@@ -139,6 +144,17 @@ if [ "$NETWORK_OK" -eq 1 ]; then
   else
     echo "AVISO: nenhum item sincronizado (rede externa indisponível ou feed fora do ar)"
   fi
+
+  wait "$SSE_PID" 2>/dev/null || true
+  if grep -q '"type":"source:status"' "$PWD/android-events.txt" 2>/dev/null; then
+    echo "SSE entregou source:status"
+  else
+    echo "AVISO: nenhum evento SSE capturado"
+  fi
+
+  # Dá tempo do React Query recarregar o feed via SSE antes do screenshot.
+  sleep 8
+  adb exec-out screencap -p > android-feed.png || true
 
   echo "== Removendo a fonte de teste =="
   curl -fsS --max-time 15 -X DELETE "$BASE/api/sources/$SOURCE_ID" > /dev/null || fail "não foi possível remover a fonte de teste"

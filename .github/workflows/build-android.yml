@@ -98,4 +98,6 @@ jobs:
           if-no-files-found: warn
           path: |
             android-spike.png
+            android-feed.png
             android-logcat.txt
+            android-events.txt
