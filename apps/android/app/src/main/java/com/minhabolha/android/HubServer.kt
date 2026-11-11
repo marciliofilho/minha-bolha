@@ -72,6 +72,19 @@ class HubServer(
                 json(JSONObject().put("categories", database.categories()))
             segments == listOf("categories") && method == Method.POST -> createCategory(session)
 
+            segments == listOf("secrets") && method == Method.GET ->
+                json(JSONObject().put("secrets", Secrets.list(database)))
+            segments.size == 2 && segments[0] == "secrets" && (method == Method.PUT || method == Method.POST) ->
+                setSecret(session, segments[1])
+            segments.size == 2 && segments[0] == "secrets" && method == Method.DELETE ->
+                deleteSecret(segments[1])
+
+            segments == listOf("media", "search") && method == Method.GET -> mediaSearch(session)
+
+            segments == listOf("calendar") && method == Method.GET -> calendar(session)
+            segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
+            segments == listOf("calendar", "refresh") && method == Method.POST -> calendarRefresh()
+
             segments.firstOrNull() == "sources" -> serveSources(session, method, segments)
 
             segments == listOf("feed") && method == Method.GET -> feed(session)
@@ -296,7 +309,7 @@ class HubServer(
             .put("version", version)
             .put("phase", 6)
             .put("platform", "android")
-            .put("keys", JSONObject().put("tmdb", false).put("steam", false).put("ggdeals", false))
+            .put("keys", keyFlags())
             .put("demo", counts.optBoolean("demo"))
             .put(
                 "counts",
@@ -314,10 +327,15 @@ class HubServer(
         return json(
             JSONObject()
                 .put("refresh", scheduler.refreshState())
-                .put("keys", JSONObject().put("tmdb", false).put("steam", false).put("ggdeals", false))
+                .put("keys", keyFlags())
                 .put("demo", counts.optBoolean("demo"))
         )
     }
+
+    private fun keyFlags(): JSONObject = JSONObject()
+        .put("tmdb", Secrets.has(database, "tmdb"))
+        .put("steam", Secrets.has(database, "steam"))
+        .put("ggdeals", Secrets.has(database, "ggdeals"))
 
     private fun sse(): Response {
         val response = newChunkedResponse(
@@ -373,6 +391,177 @@ class HubServer(
         }
         return json(database.createCategory(label, icon, color), Response.Status.CREATED)
     }
+
+    // ---------------------------------------------------------------------
+    // Chaves de API
+    // ---------------------------------------------------------------------
+
+    private fun setSecret(session: IHTTPSession, id: String): Response {
+        val definition = Secrets.definitionOf(id)
+            ?: throw HubException(404, "not_found", "Chave desconhecida.")
+        val body = readJsonBody(session)
+        val value = body.optString("value").trim()
+        if (value.length < 4 || value.length > 512) {
+            throw HubException(400, "validation", "Informe uma chave válida.")
+        }
+        if (!Secrets.isValidFormat(id, value)) {
+            throw HubException(
+                422,
+                "validation",
+                "A chave da Steam deve ter 32 caracteres hexadecimais, sem espaços ou símbolos."
+            )
+        }
+
+        database.setSecretValue(definition.envVar, value)
+        events.broadcast("secrets:changed", JSONObject().put("id", id))
+
+        // Reexecuta as fontes afetadas para aplicar a chave imediatamente.
+        val affectedType = when (id) {
+            "tmdb" -> "tmdb"
+            "steam" -> "steam-wishlist"
+            else -> null
+        }
+        if (affectedType != null) {
+            val sources = database.sources()
+            for (index in 0 until sources.length()) {
+                val source = sources.optJSONObject(index) ?: continue
+                if (source.optString("type") == affectedType && source.optBoolean("enabled")) {
+                    scheduler.enqueueSource(source.optString("id"), true)
+                }
+            }
+        }
+
+        return json(JSONObject().put("secrets", Secrets.list(database)))
+    }
+
+    private fun deleteSecret(id: String): Response {
+        val definition = Secrets.definitionOf(id)
+            ?: throw HubException(404, "not_found", "Chave desconhecida.")
+        database.deleteSecretValue(definition.envVar)
+        events.broadcast("secrets:changed", JSONObject().put("id", id))
+        return json(JSONObject().put("secrets", Secrets.list(database)))
+    }
+
+    // ---------------------------------------------------------------------
+    // Mídia e calendário
+    // ---------------------------------------------------------------------
+
+    private fun mediaSearch(session: IHTTPSession): Response {
+        val provider = param(session, "provider").orEmpty()
+        val query = param(session, "q")?.trim().orEmpty()
+        if (!Registry.has(provider) || (provider != "tmdb" && provider != "anilist")) {
+            throw HubException(400, "validation", "Provedor inválido. Use \"tmdb\" ou \"anilist\".")
+        }
+        if (query.length < 2) {
+            throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
+        }
+
+        val connector = Registry.get(provider)
+        val results = connector.search(query, database.settings())
+        val payload = JSONArray()
+        for (result in results) {
+            payload.put(
+                JSONObject()
+                    .put("provider", result.provider)
+                    .put("ref", result.ref)
+                    .put("mediaType", result.mediaType)
+                    .put("title", result.title)
+                    .put("originalTitle", result.originalTitle ?: JSONObject.NULL)
+                    .put("year", result.year ?: JSONObject.NULL)
+                    .put("posterUrl", result.posterUrl ?: JSONObject.NULL)
+                    .put("overview", result.overview ?: JSONObject.NULL)
+            )
+        }
+        return json(JSONObject().put("results", payload))
+    }
+
+    private fun calendar(session: IHTTPSession): Response {
+        val settings = database.settings()
+        val timezone = settings.optString("timezone", "America/Sao_Paulo")
+        val today = Dates.todayInZone(timezone)
+
+        val from = param(session, "from") ?: today
+        val to = param(session, "to") ?: Dates.addDaysToDate(from, 30)
+
+        if (!DATE_PATTERN.matches(from) || !DATE_PATTERN.matches(to)) {
+            throw HubException(400, "validation", "Datas devem estar no formato YYYY-MM-DD.")
+        }
+        val span = daysBetween(from, to)
+        if (span < 0) throw HubException(400, "validation", "\"from\" precisa ser anterior a \"to\".")
+        if (span > 370) throw HubException(400, "validation", "Intervalo máximo de 370 dias.")
+
+        val kinds = (param(session, "types") ?: "")
+            .split(',')
+            .map { it.trim() }
+            .filter { it == "movie" || it == "series" || it == "anime" }
+
+        val scope = if (param(session, "scope") == "library") "library" else "global"
+        val items = if (scope == "library") {
+            database.calendarEvents(from, to, kinds)
+        } else {
+            database.globalReleases(from, to, kinds)
+        }
+
+        return json(JSONObject().put("from", from).put("to", to).put("events", items))
+    }
+
+    private fun calendarSearch(session: IHTTPSession): Response {
+        val query = param(session, "q")?.trim().orEmpty()
+        if (query.length < 2) {
+            throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
+        }
+        if (query.length > 100) throw HubException(400, "validation", "Busca grande demais.")
+
+        val timezone = database.settings().optString("timezone", "America/Sao_Paulo")
+        val today = Dates.todayInZone(timezone)
+        val from = Dates.addDaysToDate(today, -400)
+        val to = Dates.addDaysToDate(today, 400)
+        val scope = if (param(session, "scope") == "library") "library" else "global"
+
+        val events = if (scope == "library") {
+            database.calendarEvents(from, to, emptyList())
+        } else {
+            database.globalReleases(from, to, emptyList())
+        }
+
+        val needle = normalizeSearch(query)
+        val matches = JSONArray()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: continue
+            val haystack = listOf(
+                event.optString("title"),
+                event.optString("originalTitle"),
+                event.optString("episodeTitle"),
+                event.optString("sourceName")
+            ).filter { it.isNotEmpty() }.joinToString(" ")
+            if (normalizeSearch(haystack).contains(needle)) {
+                matches.put(event)
+                if (matches.length() >= 100) break
+            }
+        }
+
+        return json(JSONObject().put("from", from).put("to", to).put("events", matches))
+    }
+
+    private fun calendarRefresh(): Response {
+        val source = GlobalReleasesSource.ensure(database)
+        val queued = scheduler.enqueueSource(source.getString("id"), true)
+        return json(JSONObject().put("queued", queued), Response.Status.ACCEPTED)
+    }
+
+    private fun daysBetween(from: String, to: String): Long = try {
+        java.time.temporal.ChronoUnit.DAYS.between(
+            java.time.LocalDate.parse(from),
+            java.time.LocalDate.parse(to)
+        )
+    } catch (error: Exception) {
+        -1
+    }
+
+    private fun normalizeSearch(value: String): String =
+        java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+            .lowercase()
 
     // ---------------------------------------------------------------------
     // Arquivos estáticos
@@ -466,6 +655,7 @@ class HubServer(
 
     private companion object {
         val COLOR_PATTERN = Regex("^#[0-9a-fA-F]{6}$")
+        val DATE_PATTERN = Regex("^\\d{4}-\\d{2}-\\d{2}$")
 
         val MIME_TYPES = mapOf(
             "html" to "text/html; charset=utf-8",

@@ -3,6 +3,7 @@ package com.minhabolha.android.connectors
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -43,18 +44,39 @@ object Http {
         headers: Map<String, String> = emptyMap(),
         retries: Int = 2,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS
+    ): HttpResult = request(url, null, accept, headers, retries, timeoutMs)
+
+    /** POST JSON (GraphQL do AniList). */
+    fun postJson(
+        url: String,
+        body: String,
+        headers: Map<String, String> = emptyMap(),
+        retries: Int = 2,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS
+    ): HttpResult = request(url, body, "application/json", headers, retries, timeoutMs)
+
+    private fun request(
+        url: String,
+        body: String?,
+        accept: String,
+        extraHeaders: Map<String, String>,
+        retries: Int,
+        timeoutMs: Long
     ): HttpResult {
         var lastError: Throwable? = null
 
         for (attempt in 0..retries) {
             try {
+                val requestBody = body?.toRequestBody("application/json".toMediaTypeOrNull())
                 val request = Request.Builder()
                     .url(url)
                     .header("user-agent", USER_AGENT)
                     .header("accept", accept)
                     .header("accept-language", "pt-BR,pt;q=0.9,en;q=0.7")
-                    .apply { headers.forEach { (key, value) -> header(key, value) } }
-                    .get()
+                    .apply { extraHeaders.forEach { (key, value) -> header(key, value) } }
+                    .apply {
+                        if (requestBody != null) post(requestBody) else get()
+                    }
                     .build()
 
                 val callClient = client.newBuilder()

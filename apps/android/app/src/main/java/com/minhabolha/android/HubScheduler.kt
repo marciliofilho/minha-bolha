@@ -160,7 +160,46 @@ class HubScheduler(
             val state = row.state?.let { parseObject(it) }
             val result = connector.fetch(row, config, state, settings)
 
-            val inserted = database.insertItems(row.id, row.categoryId, result.items)
+            // Títulos acompanhados alimentam o calendário e podem gerar itens
+            // de feed quando um lançamento/episódio acontece.
+            val generated = result.items.toMutableList()
+            val timezone = settings.optString("timezone", "America/Sao_Paulo")
+            if (result.media != null) {
+                val media = database.upsertMedia(row.id, result.media)
+                if (result.releaseEvents.isNotEmpty()) {
+                    database.upsertReleaseEvents(
+                        media.id,
+                        result.releaseEvents,
+                        Dates.todayInZone(timezone)
+                    )
+                    generated.addAll(
+                        ReleaseItems.forSource(database, row, media, result.releaseEvents, timezone)
+                    )
+                    events.broadcast(
+                        "calendar:changed",
+                        JSONObject().put("sourceId", row.id)
+                    )
+                }
+            }
+
+            // Calendário global: substitui apenas os provedores que responderam.
+            if (result.globalReleases.isNotEmpty() && result.globalReleaseProviders.isNotEmpty()) {
+                val saved = database.replaceGlobalReleases(
+                    result.globalReleases,
+                    result.globalReleaseProviders
+                )
+                events.broadcast(
+                    "calendar:changed",
+                    JSONObject().put("saved", saved).put("sourceId", row.id)
+                )
+                Log.i(TAG, "calendário global: $saved lançamento(s)")
+            }
+
+            if (result.warnings.isNotEmpty()) {
+                Log.w(TAG, "${row.name}: ${result.warnings.joinToString(" ")}")
+            }
+
+            val inserted = database.insertItems(row.id, row.categoryId, generated)
             val checkedAt = Dates.nowIso()
 
             database.recordSuccess(
@@ -196,7 +235,7 @@ class HubScheduler(
                 )
             }
 
-            Log.i(TAG, "${row.name}: ${result.items.size} item(ns), $inserted novo(s)")
+            Log.i(TAG, "${row.name}: ${generated.size} item(ns), $inserted novo(s)")
         } catch (error: Exception) {
             val code = if (error is ConnectorError) error.code else "unknown"
             val message = error.message ?: error.javaClass.simpleName

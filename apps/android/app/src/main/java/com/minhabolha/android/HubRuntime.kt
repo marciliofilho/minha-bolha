@@ -31,6 +31,18 @@ object HubRuntime {
         val appContext = context.applicationContext
         val hubDatabase = HubDatabase(appContext)
         val hubEvents = EventHub()
+
+        // Liga os conectores ao banco: chaves cifradas e mídia já salva.
+        com.minhabolha.android.connectors.Registry.configure(
+            secrets = object : com.minhabolha.android.connectors.SecretAccess {
+                override fun value(key: String): String? = hubDatabase.secretValue(key)
+            },
+            mediaLookup = { sourceId -> hubDatabase.mediaBySource(sourceId) }
+        )
+
+        // O calendário global é criado no primeiro boot (AniList não exige chave).
+        GlobalReleasesSource.ensure(hubDatabase)
+
         val hubScheduler = HubScheduler(hubDatabase, hubEvents)
 
         for (candidate in listOf(PREFERRED_PORT, 0)) {
@@ -62,6 +74,12 @@ object HubRuntime {
                 scheduler = hubScheduler
                 port = candidatePort
                 hubScheduler.start()
+
+                // O calendário global é atualizado assim que o app abre.
+                GlobalReleasesSource.find(hubDatabase)?.let {
+                    hubScheduler.enqueueSource(it.getString("id"), false)
+                }
+
                 Log.i(TAG, "backend local ativo em 127.0.0.1:$candidatePort")
                 return candidatePort
             }

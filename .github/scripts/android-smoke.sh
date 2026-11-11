@@ -176,6 +176,66 @@ else
   echo "AVISO: resolução de fonte indisponível (rede externa) — etapa de sincronização ignorada"
 fi
 
+echo "== Chaves de API (criptografia) =="
+SECRETS0="$(curl -fsS --max-time 15 "$BASE/api/secrets" || true)"
+printf '%s' "$SECRETS0" | grep -q '"id":"tmdb"' || fail "/api/secrets não devolveu as chaves esperadas"
+
+curl -fsS --max-time 15 -X PUT -H 'content-type: application/json' \
+  -d '{"value":"TESTE123456"}' "$BASE/api/secrets/ggdeals" > /tmp/secret-set.json \
+  || fail "não foi possível salvar uma chave"
+CONFIGURED="$(python3 -c 'import sys,json;d=json.load(open("/tmp/secret-set.json"));print([s["configured"] for s in d["secrets"] if s["id"]=="ggdeals"][0])')"
+[ "$CONFIGURED" = "True" ] || fail "chave salva não apareceu como configurada"
+
+curl -fsS --max-time 15 -X DELETE "$BASE/api/secrets/ggdeals" > /tmp/secret-del.json \
+  || fail "não foi possível remover a chave"
+CONFIGURED="$(python3 -c 'import sys,json;d=json.load(open("/tmp/secret-del.json"));print([s["configured"] for s in d["secrets"] if s["id"]=="ggdeals"][0])')"
+[ "$CONFIGURED" = "False" ] || fail "chave removida continuou configurada"
+echo "chaves de API ok (salvar/remover)"
+
+echo "== Busca e fonte AniList (sem chave de API) =="
+SEARCH="$(curl -fsS --max-time 30 "$BASE/api/media/search?provider=anilist&q=one%20piece" || true)"
+SEARCH_COUNT="$(printf '%s' "$SEARCH" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("results",[])))' 2>/dev/null || echo 0)"
+echo "resultados AniList: $SEARCH_COUNT"
+[ "$SEARCH_COUNT" -gt 0 ] || echo "AVISO: busca do AniList indisponível (rede externa)"
+
+FROM="$(date -u -d '-30 days' +%F)"
+TO="$(date -u -d '+30 days' +%F)"
+CAL_COUNT=0
+if [ "$SEARCH_COUNT" -gt 0 ]; then
+  ANIME_CREATE="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+    -d '{"type":"anilist","input":"anilist:21","categoryId":"anime"}' "$BASE/api/sources" || true)"
+  ANIME_ID="$(printf '%s' "$ANIME_CREATE" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+  [ -n "$ANIME_ID" ] || fail "fonte AniList não foi criada"
+
+  INDEX=0
+  while [ "$INDEX" -lt 12 ]; do
+    CAL="$(curl -fsS --max-time 20 "$BASE/api/calendar?scope=library&from=$FROM&to=$TO" || true)"
+    CAL_COUNT="$(printf '%s' "$CAL" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("events",[])))' 2>/dev/null || echo 0)"
+    if [ "$CAL_COUNT" -gt 0 ]; then break; fi
+    INDEX=$((INDEX + 1))
+    sleep 5
+  done
+  echo "calendário da biblioteca: $CAL_COUNT evento(s)"
+  [ "$CAL_COUNT" -gt 0 ] || fail "a fonte AniList não gerou eventos de calendário"
+
+  curl -fsS --max-time 15 -X DELETE "$BASE/api/sources/$ANIME_ID" > /dev/null || fail "não foi possível remover a fonte AniList"
+else
+  echo "AVISO: etapa AniList ignorada"
+fi
+
+echo "== Calendário global =="
+GLOBAL_COUNT=0
+INDEX=0
+while [ "$INDEX" -lt 12 ]; do
+  GLOBAL="$(curl -fsS --max-time 20 "$BASE/api/calendar?scope=global&from=$FROM&to=$TO" || true)"
+  GLOBAL_COUNT="$(printf '%s' "$GLOBAL" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("events",[])))' 2>/dev/null || echo 0)"
+  if [ "$GLOBAL_COUNT" -gt 0 ]; then break; fi
+  INDEX=$((INDEX + 1))
+  sleep 5
+done
+echo "calendário global: $GLOBAL_COUNT evento(s)"
+[ "$GLOBAL_COUNT" -gt 0 ] || echo "AVISO: calendário global vazio (rede externa ou AniList fora do ar)"
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

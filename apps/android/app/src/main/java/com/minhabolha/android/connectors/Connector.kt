@@ -52,7 +52,108 @@ data class SourceRow(
 /** Resultado de uma sincronização. */
 data class ConnectorResult(
     val items: List<RawItem>,
-    val state: JSONObject
+    val state: JSONObject,
+    val media: RawMedia? = null,
+    val releaseEvents: List<RawReleaseEvent> = emptyList(),
+    val globalReleases: List<RawGlobalRelease> = emptyList(),
+    val globalReleaseProviders: List<String> = emptyList(),
+    val warnings: List<String> = emptyList()
+)
+
+/** Título acompanhado (filme, série ou anime). */
+data class RawMedia(
+    val provider: String,
+    val externalId: String,
+    val kind: String,
+    val title: String,
+    val originalTitle: String? = null,
+    val posterUrl: String? = null,
+    val backdropUrl: String? = null,
+    val year: Int? = null,
+    val status: String? = null,
+    val totalSeasons: Int? = null,
+    val nextEpisodeAt: String? = null,
+    val url: String? = null,
+    val imdbId: String? = null,
+    val raw: JSONObject? = null
+)
+
+/** Lançamento ou episódio de um título acompanhado. */
+data class RawReleaseEvent(
+    val externalKey: String,
+    val kind: String,
+    /** YYYY-MM-DD no fuso configurado. */
+    val releaseDate: String,
+    val releaseTime: String? = null,
+    val releaseAt: String? = null,
+    val timezone: String,
+    val region: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val episodeTitle: String? = null,
+    val url: String? = null
+)
+
+/** Lançamento do calendário global, independente das fontes seguidas. */
+data class RawGlobalRelease(
+    val externalKey: String,
+    val provider: String,
+    val mediaKind: String,
+    val title: String,
+    val originalTitle: String? = null,
+    val posterUrl: String? = null,
+    val kind: String,
+    val releaseDate: String,
+    val releaseTime: String? = null,
+    val releaseAt: String? = null,
+    val timezone: String,
+    val region: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val episodeTitle: String? = null,
+    val url: String? = null,
+    val imdbId: String? = null
+)
+
+/** Resultado da busca de títulos (TMDB/AniList). */
+data class MediaSearchResult(
+    val provider: String,
+    val ref: String,
+    val mediaType: String,
+    val title: String,
+    val originalTitle: String?,
+    val year: Int?,
+    val posterUrl: String?,
+    val overview: String?
+)
+
+/** Título acompanhado já persistido no banco. */
+data class MediaRow(
+    val id: String,
+    val sourceId: String,
+    val provider: String,
+    val externalId: String,
+    val kind: String,
+    val title: String,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+    val url: String?,
+    val imdbId: String?
+)
+
+/** Evento de calendário já persistido no banco. */
+data class ReleaseEventRow(
+    val id: String,
+    val externalKey: String,
+    val kind: String,
+    val season: Int?,
+    val episode: Int?,
+    val episodeTitle: String?,
+    val releaseDate: String,
+    val releaseTime: String?,
+    val releaseAt: String?,
+    val region: String?,
+    val url: String?
 )
 
 interface Connector {
@@ -64,6 +165,10 @@ interface Connector {
 
     /** Transforma o que o usuário colou em configuração validada. */
     fun resolve(input: String, settings: JSONObject): ResolvedSource
+
+    /** Busca títulos por nome (TMDB/AniList). */
+    fun search(query: String, settings: JSONObject): List<MediaSearchResult> =
+        throw ConnectorError("not_supported", "Este tipo de fonte não aceita busca.")
 
     fun fetch(source: SourceRow, config: JSONObject, state: JSONObject?, settings: JSONObject): ConnectorResult
 }

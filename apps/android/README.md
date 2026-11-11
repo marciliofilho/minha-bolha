@@ -15,14 +15,23 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - System categories seeded on first boot, mirroring `@hub/shared`.
 - Connectors **YouTube** (public Atom feed + channel page fallback) and
   **RSS/Atom/RDF**, with the same SSRF guard and HTTP policy as the desktop.
+- **TMDB** (movies/series) and **AniList** (anime) connectors, including
+  IMDB resolution, release events and feed items for releases/episodes.
+- **Global calendar** (TMDB discover + AniList airing schedule), with the
+  automatic `global-releases` source created on first boot.
+- API keys (TMDB/Steam/gg.deals) encrypted with the Android Keystore
+  (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
   backoff and per-type minimum interval.
-- SSE (`/api/events`) with real `source:status`, `items:new` and
-  `refresh:state` events, so the UI updates after a sync.
+- SSE (`/api/events`) with real `source:status`, `items:new`,
+  `refresh:state`, `calendar:changed` and `secrets:changed` events.
 - API implemented in Kotlin:
   - `GET /api/health`, `GET /api/status`, `GET /api/events`
   - `GET|PATCH /api/settings`
   - `GET|POST /api/categories`
+  - `GET /api/secrets`, `PUT|DELETE /api/secrets/:id`
+  - `GET /api/media/search`
+  - `GET /api/calendar`, `GET /api/calendar/search`, `POST /api/calendar/refresh`
   - `GET|POST /api/sources`, `POST /api/sources/resolve`,
     `POST /api/sources/bulk-delete`, `PATCH|DELETE /api/sources/:id`,
     `POST /api/sources/:id/refresh`, `GET /api/sources/:id/runs`
@@ -36,11 +45,11 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- TMDB, AniList, Steam wishlist, gg.deals, Stremio library and novel connectors.
+- Steam wishlist, gg.deals, Stremio library and novel connectors.
 - Stremio addons, catalogs, streams, player and playback progress.
 - Torrent engine, FFmpeg/transcoding and background downloads.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
-- Backup import/export, secrets, games, calendar and library mutations.
+- Backup import/export, games, library mutations and title details screen.
 - WorkManager: the scheduler runs while the app is open; background sync is next.
 
 Because those endpoints do not exist yet, the corresponding screens show their

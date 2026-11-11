@@ -30,6 +30,40 @@ object Dates {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // Datas locais (fuso configurado) — o calendário agrupa por dia local.
+    // ---------------------------------------------------------------------
+
+    private fun zoneOf(timeZone: String?): java.time.ZoneId = try {
+        if (timeZone.isNullOrBlank()) ZoneOffset.UTC else java.time.ZoneId.of(timeZone)
+    } catch (error: Exception) {
+        ZoneOffset.UTC
+    }
+
+    /** Data YYYY-MM-DD de um instante no fuso informado. */
+    fun dateInZone(instant: Instant, timeZone: String?): String =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(zoneOf(timeZone)).format(instant)
+
+    /** Hora HH:mm de um instante no fuso informado. */
+    fun timeInZone(instant: Instant, timeZone: String?): String =
+        DateTimeFormatter.ofPattern("HH:mm").withZone(zoneOf(timeZone)).format(instant)
+
+    fun todayInZone(timeZone: String?): String = dateInZone(Instant.now(), timeZone)
+
+    /** Soma dias a uma data YYYY-MM-DD. */
+    fun addDaysToDate(date: String, days: Long): String = try {
+        java.time.LocalDate.parse(date).plusDays(days).toString()
+    } catch (error: Exception) {
+        date
+    }
+
+    /** Converte YYYY-MM-DD (meio-dia UTC) em ISO. */
+    fun dateToIso(date: String): String = try {
+        java.time.LocalDate.parse(date).atStartOfDay().plusHours(12).toInstant(ZoneOffset.UTC).let { ISO.format(it) }
+    } catch (error: Exception) {
+        "$date" + "T12:00:00.000Z"
+    }
+
     /** Normaliza datas em vários formatos para ISO UTC. */
     fun safeIso(value: String?, fallback: String): String {
         if (value.isNullOrBlank()) return fallback

@@ -5,7 +5,12 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.util.Base64
+import com.minhabolha.android.connectors.MediaRow
+import com.minhabolha.android.connectors.RawGlobalRelease
 import com.minhabolha.android.connectors.RawItem
+import com.minhabolha.android.connectors.RawMedia
+import com.minhabolha.android.connectors.RawReleaseEvent
+import com.minhabolha.android.connectors.ReleaseEventRow
 import com.minhabolha.android.connectors.SourceRow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -250,6 +255,11 @@ class HubDatabase(private val context: Context) {
 
     fun source(id: String): JSONObject? {
         val rows = querySources("WHERE s.id = ?", arrayOf(id))
+        return if (rows.length() > 0) rows.getJSONObject(0) else null
+    }
+
+    fun sourceByType(type: String): JSONObject? {
+        val rows = querySources("WHERE s.type = ?", arrayOf(type))
         return if (rows.length() > 0) rows.getJSONObject(0) else null
     }
 
@@ -847,6 +857,437 @@ class HubDatabase(private val context: Context) {
             put("read_at", nowIso())
         }
         return db.update("items", values, where.joinToString(" AND "), args.toTypedArray())
+    }
+
+    // ---------------------------------------------------------------------
+    // Chaves de API (criptografadas com o Android Keystore)
+    // ---------------------------------------------------------------------
+
+    fun secretValue(key: String): String? {
+        db.rawQuery("SELECT value FROM secrets WHERE key = ?", arrayOf(key)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            val stored = cursor.getString(0)
+            return SecretCrypto.decrypt(stored)
+        }
+    }
+
+    fun setSecretValue(key: String, value: String) {
+        db.execSQL(
+            """
+            INSERT INTO secrets (key, value, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """.trimIndent(),
+            arrayOf(key, SecretCrypto.encrypt(value.trim()), nowIso())
+        )
+    }
+
+    fun deleteSecretValue(key: String) {
+        db.execSQL("DELETE FROM secrets WHERE key = ?", arrayOf(key))
+    }
+
+    // ---------------------------------------------------------------------
+    // Títulos acompanhados (TMDB/AniList)
+    // ---------------------------------------------------------------------
+
+    fun mediaBySource(sourceId: String): MediaRow? {
+        db.rawQuery("SELECT * FROM media WHERE source_id = ?", arrayOf(sourceId)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return mediaFromCursor(cursor)
+        }
+    }
+
+    fun findMediaByExternal(provider: String, externalId: String): MediaRow? {
+        db.rawQuery(
+            "SELECT * FROM media WHERE provider = ? AND external_id = ?",
+            arrayOf(provider, externalId)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return mediaFromCursor(cursor)
+        }
+    }
+
+    fun mediaByImdb(imdbId: String): MediaRow? {
+        db.rawQuery("SELECT * FROM media WHERE imdb_id = ? LIMIT 1", arrayOf(imdbId)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return mediaFromCursor(cursor)
+        }
+    }
+
+    private fun mediaFromCursor(cursor: Cursor): MediaRow {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        return MediaRow(
+            id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+            sourceId = cursor.getString(cursor.getColumnIndexOrThrow("source_id")),
+            provider = cursor.getString(cursor.getColumnIndexOrThrow("provider")),
+            externalId = cursor.getString(cursor.getColumnIndexOrThrow("external_id")),
+            kind = cursor.getString(cursor.getColumnIndexOrThrow("kind")),
+            title = cursor.getString(cursor.getColumnIndexOrThrow("title")),
+            posterUrl = text("poster_url"),
+            backdropUrl = text("backdrop_url"),
+            url = text("url"),
+            imdbId = text("imdb_id")
+        )
+    }
+
+    /** Cria ou atualiza o título vinculado a uma fonte (1:1). */
+    fun upsertMedia(sourceId: String, raw: RawMedia): MediaRow {
+        val now = nowIso()
+        val existing = mediaBySource(sourceId)
+        val imdbId = raw.imdbId ?: existing?.imdbId
+
+        val values = arrayOf<Any?>(
+            raw.provider,
+            raw.externalId,
+            raw.kind,
+            raw.title,
+            raw.originalTitle,
+            raw.posterUrl,
+            raw.backdropUrl,
+            raw.year,
+            raw.status,
+            raw.totalSeasons,
+            raw.nextEpisodeAt,
+            raw.url,
+            imdbId,
+            raw.raw?.toString(),
+            now
+        )
+
+        if (existing != null) {
+            db.execSQL(
+                """
+                UPDATE media SET provider = ?, external_id = ?, kind = ?, title = ?, original_title = ?,
+                  poster_url = ?, backdrop_url = ?, year = ?, status = ?, total_seasons = ?,
+                  next_episode_at = ?, url = ?, imdb_id = ?, raw = ?, fetched_at = ?
+                WHERE id = ?
+                """.trimIndent(),
+                values + existing.id
+            )
+        } else {
+            db.execSQL(
+                """
+                INSERT INTO media (id, source_id, provider, external_id, kind, title, original_title,
+                  poster_url, backdrop_url, year, status, total_seasons, next_episode_at, url,
+                  imdb_id, raw, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf(UUID.randomUUID().toString(), sourceId) + values
+            )
+        }
+
+        return mediaBySource(sourceId) ?: throw HubException(500, "database", "Título não foi salvo.")
+    }
+
+    // ---------------------------------------------------------------------
+    // Calendário
+    // ---------------------------------------------------------------------
+
+    fun upsertReleaseEvents(mediaId: String, events: List<RawReleaseEvent>, today: String): Int {
+        val now = nowIso()
+        db.beginTransaction()
+        try {
+            for (event in events) {
+                db.execSQL(
+                    """
+                    INSERT INTO release_events (
+                      id, media_id, external_key, kind, season, episode, episode_title,
+                      release_date, release_time, release_at, timezone, region, url, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(external_key) DO UPDATE SET
+                      media_id = excluded.media_id,
+                      kind = excluded.kind,
+                      season = excluded.season,
+                      episode = excluded.episode,
+                      episode_title = excluded.episode_title,
+                      release_date = excluded.release_date,
+                      release_time = excluded.release_time,
+                      release_at = excluded.release_at,
+                      timezone = excluded.timezone,
+                      region = excluded.region,
+                      url = excluded.url,
+                      updated_at = excluded.updated_at
+                    """.trimIndent(),
+                    arrayOf(
+                        UUID.randomUUID().toString(),
+                        mediaId,
+                        event.externalKey,
+                        event.kind,
+                        event.season,
+                        event.episode,
+                        event.episodeTitle,
+                        event.releaseDate,
+                        event.releaseTime,
+                        event.releaseAt,
+                        event.timezone,
+                        event.region,
+                        event.url,
+                        now,
+                        now
+                    )
+                )
+            }
+
+            // Só apaga eventos estritamente futuros que sumiram da fonte.
+            if (events.isEmpty()) {
+                db.execSQL(
+                    "DELETE FROM release_events WHERE media_id = ? AND release_date > ?",
+                    arrayOf(mediaId, today)
+                )
+            } else {
+                val placeholders = events.joinToString(", ") { "?" }
+                db.execSQL(
+                    "DELETE FROM release_events WHERE media_id = ? AND release_date > ? AND external_key NOT IN ($placeholders)",
+                    arrayOf<Any?>(mediaId, today) + events.map { it.externalKey }.toTypedArray()
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return events.size
+    }
+
+    fun eventsForMedia(mediaId: String, from: String, to: String): List<ReleaseEventRow> {
+        val rows = mutableListOf<ReleaseEventRow>()
+        db.rawQuery(
+            """
+            SELECT * FROM release_events
+            WHERE media_id = ? AND release_date >= ? AND release_date <= ?
+            ORDER BY release_date ASC, COALESCE(release_time, '99:99') ASC
+            """.trimIndent(),
+            arrayOf(mediaId, from, to)
+        ).use { cursor ->
+            while (cursor.moveToNext()) rows.add(releaseEventFromCursor(cursor))
+        }
+        return rows
+    }
+
+    private fun releaseEventFromCursor(cursor: Cursor): ReleaseEventRow {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        fun intOrNull(column: String): Int? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
+        }
+
+        return ReleaseEventRow(
+            id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+            externalKey = cursor.getString(cursor.getColumnIndexOrThrow("external_key")),
+            kind = cursor.getString(cursor.getColumnIndexOrThrow("kind")),
+            season = intOrNull("season"),
+            episode = intOrNull("episode"),
+            episodeTitle = text("episode_title"),
+            releaseDate = cursor.getString(cursor.getColumnIndexOrThrow("release_date")),
+            releaseTime = text("release_time"),
+            releaseAt = text("release_at"),
+            region = text("region"),
+            url = text("url")
+        )
+    }
+
+    /** Eventos dos títulos acompanhados, já no formato da interface. */
+    fun calendarEvents(from: String, to: String, kinds: List<String>): JSONArray {
+        val where = mutableListOf("e.release_date >= ?", "e.release_date <= ?")
+        val args = mutableListOf<String>(from, to)
+        if (kinds.isNotEmpty()) {
+            where.add("m.kind IN (${kinds.joinToString(", ") { "?" }})")
+            args.addAll(kinds)
+        }
+
+        val result = JSONArray()
+        db.rawQuery(
+            """
+            SELECT e.*, m.source_id, s.name AS source_name, m.provider, m.kind AS media_kind,
+                   m.title AS media_title, m.original_title AS media_original_title,
+                   m.poster_url AS media_poster_url, m.url AS media_url, m.imdb_id AS media_imdb_id,
+                   EXISTS (
+                     SELECT 1 FROM stremio_library l
+                     WHERE l.removed = 0 AND l.imdb_id = m.imdb_id
+                   ) OR EXISTS (
+                     SELECT 1 FROM stremio_library_state st
+                     WHERE st.in_library = 1 AND m.imdb_id IS NOT NULL AND st.meta_id = m.imdb_id
+                   ) AS in_stremio_library
+            FROM release_events e
+            JOIN media m ON m.id = e.media_id
+            JOIN sources s ON s.id = m.source_id
+            WHERE ${where.joinToString(" AND ")}
+            ORDER BY e.release_date ASC, COALESCE(e.release_time, '99:99') ASC, m.title ASC
+            """.trimIndent(),
+            args.toTypedArray()
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                fun text(column: String): String? {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+                }
+
+                fun intOrNull(column: String): Int? {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
+                }
+
+                result.put(
+                    JSONObject()
+                        .put("id", text("id"))
+                        .put("mediaId", text("media_id"))
+                        .put("sourceId", text("source_id"))
+                        .put("sourceName", text("source_name"))
+                        .put("provider", text("provider"))
+                        .put("mediaKind", text("media_kind"))
+                        .put("title", text("media_title"))
+                        .put("originalTitle", text("media_original_title") ?: JSONObject.NULL)
+                        .put("posterUrl", text("media_poster_url") ?: JSONObject.NULL)
+                        .put("episodeTitle", text("episode_title") ?: JSONObject.NULL)
+                        .put("kind", text("kind"))
+                        .put("season", intOrNull("season") ?: JSONObject.NULL)
+                        .put("episode", intOrNull("episode") ?: JSONObject.NULL)
+                        .put("releaseDate", text("release_date"))
+                        .put("releaseTime", text("release_time") ?: JSONObject.NULL)
+                        .put("releaseAt", text("release_at") ?: JSONObject.NULL)
+                        .put("timezone", text("timezone"))
+                        .put("region", text("region") ?: JSONObject.NULL)
+                        .put("url", text("url") ?: text("media_url") ?: JSONObject.NULL)
+                        .put("imdbId", text("media_imdb_id") ?: JSONObject.NULL)
+                        .put("inStremioLibrary", cursor.getInt(cursor.getColumnIndexOrThrow("in_stremio_library")) == 1)
+                )
+            }
+        }
+        return result
+    }
+
+    fun replaceGlobalReleases(events: List<RawGlobalRelease>, providers: List<String>): Int {
+        if (providers.isEmpty()) return 0
+        val now = nowIso()
+        db.beginTransaction()
+        try {
+            db.execSQL(
+                "DELETE FROM global_releases WHERE provider IN (${providers.joinToString(", ") { "?" }})",
+                providers.toTypedArray()
+            )
+            var saved = 0
+            for (item in events) {
+                if (!providers.contains(item.provider)) continue
+                db.execSQL(
+                    """
+                    INSERT INTO global_releases (
+                      id, external_key, provider, media_kind, title, original_title, poster_url,
+                      kind, release_date, release_time, release_at, timezone, region,
+                      season, episode, episode_title, url, imdb_id, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(external_key) DO UPDATE SET
+                      provider = excluded.provider,
+                      media_kind = excluded.media_kind,
+                      title = excluded.title,
+                      original_title = excluded.original_title,
+                      poster_url = excluded.poster_url,
+                      kind = excluded.kind,
+                      release_date = excluded.release_date,
+                      release_time = excluded.release_time,
+                      release_at = excluded.release_at,
+                      timezone = excluded.timezone,
+                      region = excluded.region,
+                      season = excluded.season,
+                      episode = excluded.episode,
+                      episode_title = excluded.episode_title,
+                      url = excluded.url,
+                      imdb_id = excluded.imdb_id,
+                      updated_at = excluded.updated_at
+                    """.trimIndent(),
+                    arrayOf(
+                        UUID.randomUUID().toString(),
+                        item.externalKey,
+                        item.provider,
+                        item.mediaKind,
+                        item.title,
+                        item.originalTitle,
+                        item.posterUrl,
+                        item.kind,
+                        item.releaseDate,
+                        item.releaseTime,
+                        item.releaseAt,
+                        item.timezone,
+                        item.region,
+                        item.season,
+                        item.episode,
+                        item.episodeTitle,
+                        item.url,
+                        item.imdbId,
+                        now
+                    )
+                )
+                saved++
+            }
+            db.setTransactionSuccessful()
+            return saved
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun globalReleases(from: String, to: String, kinds: List<String>): JSONArray {
+        val where = mutableListOf("release_date >= ?", "release_date <= ?")
+        val args = mutableListOf<String>(from, to)
+        if (kinds.isNotEmpty()) {
+            where.add("media_kind IN (${kinds.joinToString(", ") { "?" }})")
+            args.addAll(kinds)
+        }
+
+        val result = JSONArray()
+        db.rawQuery(
+            """
+            SELECT * FROM global_releases
+            WHERE ${where.joinToString(" AND ")}
+            ORDER BY release_date ASC, COALESCE(release_time, '99:99') ASC, title ASC
+            """.trimIndent(),
+            args.toTypedArray()
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                fun text(column: String): String? {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+                }
+
+                fun intOrNull(column: String): Int? {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
+                }
+
+                val provider = text("provider").orEmpty()
+                val id = text("id")
+                result.put(
+                    JSONObject()
+                        .put("id", id)
+                        .put("mediaId", id)
+                        .put("sourceId", "global:$provider")
+                        .put("sourceName", if (provider == "anilist") "AniList — exibições" else "TMDB — lançamentos")
+                        .put("provider", provider)
+                        .put("mediaKind", text("media_kind"))
+                        .put("title", text("title"))
+                        .put("originalTitle", text("original_title") ?: JSONObject.NULL)
+                        .put("posterUrl", text("poster_url") ?: JSONObject.NULL)
+                        .put("episodeTitle", text("episode_title") ?: JSONObject.NULL)
+                        .put("kind", text("kind"))
+                        .put("season", intOrNull("season") ?: JSONObject.NULL)
+                        .put("episode", intOrNull("episode") ?: JSONObject.NULL)
+                        .put("releaseDate", text("release_date"))
+                        .put("releaseTime", text("release_time") ?: JSONObject.NULL)
+                        .put("releaseAt", text("release_at") ?: JSONObject.NULL)
+                        .put("timezone", text("timezone"))
+                        .put("region", text("region") ?: JSONObject.NULL)
+                        .put("url", text("url") ?: JSONObject.NULL)
+                        .put("imdbId", text("imdb_id") ?: JSONObject.NULL)
+                        .put("inStremioLibrary", false)
+                )
+            }
+        }
+        return result
     }
 
     // ---------------------------------------------------------------------
