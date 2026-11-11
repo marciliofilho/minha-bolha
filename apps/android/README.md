@@ -24,6 +24,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Stremio streams**: aggregation across enabled addons (direct, HLS, external
   and torrent entries) and local playback progress with "continue watching".
   Direct/HLS streams play in the existing web player (hls.js inside the WebView).
+- **Stremio subtitles**: tracks from the enabled addons, downloaded through a
+  same-origin proxy that detects UTF-8/Windows-1252, converts SRT/ASS to WebVTT
+  and is attached to both the web and the native player.
 - **Torrents**: libtorrent4j engine with sequential download, file selection and
   an HTTP Range endpoint, so MP4/WebM torrents play while they download.
   MKV/HEVC torrents are handed to a **native Media3/ExoPlayer** screen through
@@ -65,7 +68,7 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
 - Foreground service for playback with the screen off and download notifications.
-- Stremio subtitles and account login/library sync.
+- Stremio account login and library sync.
 - Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, library mutations and novel connectors.
