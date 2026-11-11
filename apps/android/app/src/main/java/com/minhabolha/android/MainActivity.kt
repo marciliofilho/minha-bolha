@@ -1,6 +1,8 @@
 package com.minhabolha.android
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -72,6 +74,24 @@ class MainActivity : Activity() {
                 error: WebResourceError
             ) {
                 Log.w(TAG, "net ${error.errorCode} ${error.description} ${request.url}")
+            }
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                val url = request.url
+                val host = url.host.orEmpty()
+                // Só o servidor local fica dentro do WebView; links externos
+                // abrem no navegador do aparelho, como no desktop.
+                if (host == "127.0.0.1" || host == "localhost") return false
+                return try {
+                    startActivity(Intent(Intent.ACTION_VIEW, url))
+                    true
+                } catch (error: ActivityNotFoundException) {
+                    Log.w(TAG, "nenhum app para abrir $url")
+                    true
+                }
             }
         }
 

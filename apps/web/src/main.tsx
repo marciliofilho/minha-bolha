@@ -4,7 +4,13 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { I18nProvider } from './lib/i18n';
+import { isAndroidShell } from './lib/platform';
 import './styles/index.css';
+
+// Marca o shell Android para ajustes de CSS/interação (hover, área segura).
+if (isAndroidShell()) {
+  document.documentElement.dataset.platform = 'android';
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

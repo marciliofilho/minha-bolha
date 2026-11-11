@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { Check, Clock, ExternalLink, Play, Plus, Star } from 'lucide-react';
 import type { StremioCardInfoDto } from '@hub/shared';
 import { useI18n } from '@/lib/i18n';
+import { supportsHover } from '@/lib/platform';
 import { useSettings, useStremioCardInfo } from '@/lib/queries';
 
 const DEFAULT_HOVER_DELAY_MS = 3000;
@@ -17,11 +18,9 @@ const CLOSE_DELAY_MS = 220;
 const PANEL_WIDTH = 360;
 
 function canHover(): boolean {
-  try {
-    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  } catch {
-    return false;
-  }
+  // No WebView do Android (e em telas de toque) a prévia não deve abrir:
+  // o navegador sintetiza hover no toque e o painel cobre o feed.
+  return supportsHover();
 }
 
 export function CardHoverPreview({

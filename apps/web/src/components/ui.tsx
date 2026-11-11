@@ -204,7 +204,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="card flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+    <div className="card flex flex-col items-center justify-center gap-3 px-5 py-10 text-center sm:px-6 sm:py-16">
       <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-line bg-elevated text-accent">
         {icon}
       </div>
