@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minha Bolha</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07090e;
+    --surface: #0f1420;
+    --line: #232b3d;
+    --fg: #eef2ff;
+    --muted: #93a0b8;
+    --accent: #8b5cf6;
+    --accent-2: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    color: var(--fg);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    user-select: none;
+  }
+  body {
+    padding: 0;
+    overflow: hidden;
+  }
+  .window {
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: radial-gradient(circle at 20% 0%, #1b2340 0%, #0f1420 55%);
+    padding: 22px;
+    overflow: hidden;
+  }
+  .drag { -webkit-app-region: drag; }
+  button, .options { -webkit-app-region: no-drag; }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .window-controls {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+  }
+  .control {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font: 16px/1 "Segoe UI", system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .control:hover {
+    border-color: var(--line);
+    background: #1a2233;
+    color: var(--fg);
+  }
+  .control.close:hover {
+    border-color: #991b1b;
+    background: #7f1d1d;
+    color: #fff;
+  }
+  header img {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 18px rgba(139, 92, 246, 0.35));
+  }
+  .brand {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .sub {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+  }
+  h1 {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+  .hint {
+    margin: 7px 0 16px;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .options {
+    display: grid;
+    gap: 9px;
+  }
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: #0b101a;
+    color: var(--fg);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease, transform .1s ease;
+  }
+  .option:hover, .option:focus-visible {
+    outline: none;
+    border-color: rgba(139, 92, 246, 0.7);
+    background: #121a2b;
+  }
+  .option:active { transform: scale(0.995); }
+  .badge {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(34, 211, 238, 0.2));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+  }
+  .option strong { display: block; font-size: 14px; }
+  .option small { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; }
+  .footer {
+    margin-top: 15px;
+    color: #6f7d96;
+    font-size: 10.5px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="window">
+    <header class="drag">
+      <img src="../assets/icon-pt-BR.png" alt="">
+      <div>
+        <p class="brand">Minha Bolha</p>
+        <p class="sub">Escolha o idioma · Choose your language · Elige tu idioma</p>
+      </div>
+      <div class="window-controls">
+        <button type="button" class="control" id="minimize" aria-label="Minimize · Minimizar" title="Minimize · Minimizar">&#8211;</button>
+        <button type="button" class="control close" id="close" aria-label="Close · Fechar" title="Close · Fechar">&#215;</button>
+      </div>
+    </header>
+
+    <h1>Em qual idioma você quer abrir o app? · Which language do you want to use? · ¿En qué idioma quieres abrir la app?</h1>
+    <p class="hint">
+      Você pode mudar depois em Configurações. · You can change this later in Settings. · Puedes cambiarlo después en Ajustes.
+    </p>
+
+    <div class="options">
+      <button class="option" type="button" data-lang="pt">
+        <span class="badge">PT</span>
+        <span><strong>Português</strong><small>Brasil</small></span>
+      </button>
+      <button class="option" type="button" data-lang="en">
+        <span class="badge">EN</span>
+        <span><strong>English</strong><small>English</small></span>
+      </button>
+      <button class="option" type="button" data-lang="es">
+        <span class="badge">ES</span>
+        <span><strong>Español</strong><small>Español</small></span>
+      </button>
+    </div>
+
+    <p class="footer">Minha Bolha</p>
+  </div>
+
+  <script>
+    document.querySelectorAll('button[data-lang]').forEach((button) => {
+      button.addEventListener('click', () => {
+        window.languagePicker?.choose(button.dataset.lang);
+      });
+    });
+    document.getElementById('minimize')?.addEventListener('click', () => {
+      window.languagePicker?.minimize();
+    });
+    document.getElementById('close')?.addEventListener('click', () => {
+      window.languagePicker?.close();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MINHA BOLHA — splash</title>
+<style>
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    transition: opacity .45s ease;
+    pointer-events: none;
+  }
+
+  #stage.on { opacity: 1; }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  #loading {
+    position: fixed;
+    left: 50%;
+    bottom: 7%;
+    width: 6px;
+    height: 6px;
+    margin-left: -3px;
+    border-radius: 50%;
+    background: #7df4ff;
+    box-shadow: 0 0 18px rgba(125, 244, 255, .95), 0 0 44px rgba(125, 244, 255, .45);
+    opacity: 0;
+    transition: opacity .35s ease;
+  }
+
+  #loading.on {
+    opacity: .9;
+    animation: pulse 1.15s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    50% { transform: scale(1.7); opacity: .35; }
+  }
+
+  body.out #stage,
+  body.out #loading {
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <video id="v" autoplay playsinline preload="auto"></video>
+  </div>
+  <div id="loading"></div>
+
+  <script>
+    const video = document.getElementById("v");
+    const stage = document.getElementById("stage");
+    const loading = document.getElementById("loading");
+    const params = new URLSearchParams(location.search);
+    const muted = params.get("muted") === "1";
+    const videoPath = params.get("video") || "pt-BR/intro.webm";
+    const splashTitle = params.get("title");
+    if (splashTitle) document.title = splashTitle + " — splash";
+
+    video.src = "assets/" + videoPath;
+    video.muted = muted;
+    video.volume = 0.78;
+    let ended = false;
+
+    video.addEventListener("canplay", () => {
+      stage.classList.add("on");
+      video.play().catch(() => {
+        // Se o autoplay falhar, não trava a abertura do app.
+        setTimeout(() => window.splashAPI?.done(), 700);
+      });
+    });
+
+    video.addEventListener("ended", () => {
+      ended = true;
+      loading.classList.add("on");
+      window.splashAPI?.done();
+    });
+
+    video.addEventListener("error", () => {
+      window.splashAPI?.done();
+    });
+
+    // Rede de segurança: nunca deixa o splash preso.
+    setTimeout(() => {
+      if (!ended) window.splashAPI?.done();
+    }, 7500);
+  </script>
+</body>
+</html>

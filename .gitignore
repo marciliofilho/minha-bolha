@@ -1,0 +1,39 @@
+# Dependências
+node_modules/
+
+# Banco de dados local e arquivos gerados
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Builds
+dist/
+apps/web/dist/
+release/
+out/
+
+# Segredos (qualquer variação do .env, exceto o exemplo)
+.env*
+!.env.example
+.npmrc
+id_rsa
+*.pem
+*.p12
+*.pfx
+
+# Fontes das animações: o que o app usa está em apps/desktop/splash/assets
+minha-bolha-intro/
+minha-bolha-intro-Global/
+
+# Logs e temporários
+*.log
+tmp/
+tmp-*.*
+*.zip
+.DS_Store
+Thumbs.db
+
+# Playwright
+playwright-report/
+test-results/
