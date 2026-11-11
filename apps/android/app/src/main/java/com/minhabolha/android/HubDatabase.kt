@@ -189,7 +189,8 @@ class HubDatabase(private val context: Context) {
         }
     }
 
-    fun categories(): JSONArray {        val result = JSONArray()
+    fun categories(): JSONArray {
+        val result = JSONArray()
         db.rawQuery(
             "SELECT id, label, icon, color, sort_order, is_system FROM categories ORDER BY sort_order ASC, label ASC",
             null

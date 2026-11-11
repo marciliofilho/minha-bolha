@@ -1,13 +1,13 @@
-﻿package com.minhabolha.android.connectors
+package com.minhabolha.android.connectors
 
 import com.minhabolha.android.Dates
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Conector TMDB (filmes e sÃ©ries).
+ * Conector TMDB (filmes e séries).
  *
- * Aceita link do IMDB, referÃªncia `tmdb:movie:603` / `tmdb:tv:1399` ou busca
+ * Aceita link do IMDB, referência `tmdb:movie:603` / `tmdb:tv:1399` ou busca
  * por nome. Nunca faz scraping do IMDB: usa `/find?external_source=imdb_id`.
  */
 class TmdbConnector(private val secrets: SecretAccess) : Connector {
@@ -32,10 +32,11 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
     private fun apiKey(): String = secrets.value("TMDB_API_KEY")?.takeIf { it.isNotBlank() }
         ?: throw ConnectorError(
             "auth",
-            "Chave do TMDB nÃ£o configurada. Adicione em ConfiguraÃ§Ãµes â†’ Chaves de API."
+            "Chave do TMDB não configurada. Adicione em Configurações → Chaves de API."
         )
 
-    internal fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject {        val key = apiKey()
+    internal fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject {
+        val key = apiKey()
         val bearer = key.startsWith("eyJ")
         val query = mutableListOf<String>()
         if (!bearer) query.add("api_key=" + enc(key))
@@ -54,7 +55,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
         return try {
             JSONObject(response.text)
         } catch (error: Exception) {
-            throw ConnectorError("layout_changed", "O TMDB devolveu uma resposta que nÃ£o Ã© JSON.")
+            throw ConnectorError("layout_changed", "O TMDB devolveu uma resposta que não é JSON.")
         }
     }
 
@@ -69,7 +70,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
     private fun yearOf(date: String?): Int? = date?.take(4)?.toIntOrNull()
 
     // ---------------------------------------------------------------------
-    // Busca e resoluÃ§Ã£o
+    // Busca e resolução
     // ---------------------------------------------------------------------
 
     private fun searchMulti(query: String): List<JSONObject> {
@@ -96,7 +97,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                 provider = PROVIDER,
                 ref = "tmdb:${if (isMovie) "movie" else "tv"}:${item.optInt("id")}",
                 mediaType = if (isMovie) "movie" else "series",
-                title = title.ifEmpty { "Sem tÃ­tulo" },
+                title = title.ifEmpty { "Sem título" },
                 originalTitle = original.ifEmpty { null },
                 year = yearOf(date),
                 posterUrl = imageUrl(item.optString("poster_path").ifEmpty { null }),
@@ -121,13 +122,13 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
             data.optJSONArray("tv_results")?.optJSONObject(0)?.let {
                 return Target("tv", it.optInt("id"), imdbId)
             }
-            throw ConnectorError("not_found", "O IMDB $imdbId nÃ£o foi encontrado no TMDB.")
+            throw ConnectorError("not_found", "O IMDB $imdbId não foi encontrado no TMDB.")
         }
 
         Regex("^tmdb:(movie|tv|series):(\\d+)$", RegexOption.IGNORE_CASE).find(value)?.let { match ->
             val kind = if (match.groupValues[1].lowercase() == "movie") "movie" else "tv"
             val id = match.groupValues[2].toIntOrNull()
-            if (id == null || id <= 0) throw ConnectorError("config", "ID do TMDB invÃ¡lido.")
+            if (id == null || id <= 0) throw ConnectorError("config", "ID do TMDB inválido.")
             return Target(kind, id)
         }
 
@@ -138,13 +139,13 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
         val first = searchMulti(value).firstOrNull()
             ?: throw ConnectorError(
                 "not_found",
-                "Nenhum filme ou sÃ©rie encontrado. Tente outro nome ou cole o link do IMDB."
+                "Nenhum filme ou série encontrado. Tente outro nome ou cole o link do IMDB."
             )
         return Target(if (first.optString("media_type") == "tv") "tv" else "movie", first.optInt("id"))
     }
 
     // ---------------------------------------------------------------------
-    // Detalhes â†’ mÃ­dia + eventos
+    // Detalhes → mídia + eventos
     // ---------------------------------------------------------------------
 
     private fun movieEvents(details: JSONObject, settings: JSONObject): List<RawReleaseEvent> {
@@ -250,7 +251,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
             val season = try {
                 get("/tv/$id/season/$seasonNumber")
             } catch (error: ConnectorError) {
-                // Temporada ainda sem detalhes publicados nÃ£o derruba a fonte.
+                // Temporada ainda sem detalhes publicados não derruba a fonte.
                 if (error.code == "not_found") continue
                 throw error
             }
@@ -291,7 +292,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                     provider = PROVIDER,
                     externalId = "movie:$id",
                     kind = "movie",
-                    title = details.optString("title").ifEmpty { "Sem tÃ­tulo" },
+                    title = details.optString("title").ifEmpty { "Sem título" },
                     originalTitle = details.optString("original_title").ifEmpty { null },
                     posterUrl = imageUrl(details.optString("poster_path").ifEmpty { null }),
                     backdropUrl = imageUrl(details.optString("backdrop_path").ifEmpty { null }),
@@ -312,7 +313,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                     provider = PROVIDER,
                     externalId = "tv:$id",
                     kind = "series",
-                    title = details.optString("name").ifEmpty { "Sem tÃ­tulo" },
+                    title = details.optString("name").ifEmpty { "Sem título" },
                     originalTitle = details.optString("original_name").ifEmpty { null },
                     posterUrl = imageUrl(details.optString("poster_path").ifEmpty { null }),
                     backdropUrl = imageUrl(details.optString("backdrop_path").ifEmpty { null }),
@@ -334,7 +335,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
         if (genres != null) {
             for (index in 0 until genres.length()) {
                 val name = genres.optJSONObject(index)?.optString("name").orEmpty()
-                if (Regex("anima[cÃ§]", RegexOption.IGNORE_CASE).containsMatchIn(name)) return "anime"
+                if (Regex("anima[cç]", RegexOption.IGNORE_CASE).containsMatchIn(name)) return "anime"
             }
         }
         return if (media.kind == "movie") "movie" else "series"
@@ -344,12 +345,12 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
         val parts = event.releaseDate.split('-')
         val date = if (parts.size == 3) "${parts[2]}/${parts[1]}/${parts[0]}" else event.releaseDate
         return when (event.kind) {
-            "cinema" -> "Estreia nos cinemas â€” $date"
-            "digital" -> "LanÃ§amento digital â€” $date"
+            "cinema" -> "Estreia nos cinemas — $date"
+            "digital" -> "Lançamento digital — $date"
             else -> {
                 val code = "S${event.season ?: "?"}E${event.episode ?: "?"}"
-                if (event.episodeTitle != null) "$code Â· ${event.episodeTitle} â€” $date"
-                else "EpisÃ³dio $code â€” $date"
+                if (event.episodeTitle != null) "$code · ${event.episodeTitle} — $date"
+                else "Episódio $code — $date"
             }
         }
     }
@@ -394,7 +395,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
     ): ConnectorResult {
         val tmdbId = config.optInt("tmdbId")
         val mediaType = if (config.optString("mediaType") == "tv") "tv" else "movie"
-        if (tmdbId <= 0) throw ConnectorError("config", "Fonte TMDB sem tmdbId vÃ¡lido.")
+        if (tmdbId <= 0) throw ConnectorError("config", "Fonte TMDB sem tmdbId válido.")
 
         val bundle = bundle(mediaType, tmdbId, settings)
         return ConnectorResult(
@@ -405,7 +406,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
         )
     }
 
-    /** Descobre o IMDB de um tÃ­tulo (usado por animes do AniList). */
+    /** Descobre o IMDB de um título (usado por animes do AniList). */
     fun findImdbIdByTitle(query: String, prefer: String = "tv"): String? {
         if (secrets.value("TMDB_API_KEY").isNullOrBlank()) return null
         return try {
@@ -426,7 +427,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
     }
 }
 
-/** Acesso Ã s chaves de API, injetado para manter o conector testÃ¡vel. */
+/** Acesso às chaves de API, injetado para manter o conector testável. */
 interface SecretAccess {
     fun value(key: String): String?
 }
