@@ -30,6 +30,9 @@ class HubServer(
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i("MinhaBolha", "req ${session.method.name} $uri")
+        }
         return try {
             if (uri == "/api" || uri.startsWith("/api/")) {
                 serveApi(session)
