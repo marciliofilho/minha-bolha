@@ -5,6 +5,7 @@ import java.io.InputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import android.util.Log
 
 /**
  * Hub SSE: mantém os clientes de `/api/events` e entrega os eventos do
@@ -18,14 +19,20 @@ class EventHub {
 
     internal fun register(stream: EventStream) {
         streams.add(stream)
+        Log.i("MinhaBolha", "sse: cliente conectado (${streams.size})")
     }
 
     internal fun unregister(stream: EventStream) {
         streams.remove(stream)
+        Log.i("MinhaBolha", "sse: cliente desconectado (${streams.size})")
     }
 
     fun broadcast(type: String, payload: JSONObject = JSONObject()) {
-        if (streams.isEmpty()) return
+        if (streams.isEmpty()) {
+            Log.i("MinhaBolha", "sse: evento $type sem clientes")
+            return
+        }
+        Log.i("MinhaBolha", "sse: evento $type para ${streams.size} cliente(s)")
 
         val message = JSONObject().put("type", type)
         val keys = payload.keys()
