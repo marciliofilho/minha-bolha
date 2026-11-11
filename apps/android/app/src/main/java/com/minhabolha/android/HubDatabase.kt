@@ -33,14 +33,20 @@ class HubDatabase(private val context: Context) {
         file.parentFile?.mkdirs()
 
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
-        database.execSQL("PRAGMA journal_mode = WAL")
-        database.execSQL("PRAGMA foreign_keys = ON")
-        database.execSQL("PRAGMA busy_timeout = 5000")
-        database.execSQL("PRAGMA synchronous = NORMAL")
+        // PRAGMAs devolvem linha (journal_mode) e o execSQL do Android recusa
+        // comandos que retornam resultados, então usamos rawQuery.
+        pragma(database, "PRAGMA journal_mode = WAL")
+        pragma(database, "PRAGMA foreign_keys = ON")
+        pragma(database, "PRAGMA busy_timeout = 5000")
+        pragma(database, "PRAGMA synchronous = NORMAL")
 
         migrate(database)
         ensureSystemCategories(database)
         return database
+    }
+
+    private fun pragma(database: SQLiteDatabase, sql: String) {
+        database.rawQuery(sql, null).use { cursor -> cursor.moveToFirst() }
     }
 
     private fun migrate(database: SQLiteDatabase) {
