@@ -97,6 +97,9 @@ echo "== Migrations aplicadas =="
 adb shell "run-as $PACKAGE ls databases" | tr -d '\r' || fail "banco não foi criado"
 adb shell "run-as $PACKAGE sh -c 'ls databases/hub.db*'" | tr -d '\r' || fail "hub.db ausente"
 
+echo "== Amostra bruta do SSE =="
+curl -sv --max-time 3 "$BASE/api/events" 2>&1 | sed -n '1,24p' || true
+
 echo "== Resolvendo e criando uma fonte RSS =="
 RESOLVE="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
   -d '{"type":"rss","input":"https://hnrss.org/frontpage"}' "$BASE/api/sources/resolve" || true)"
