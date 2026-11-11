@@ -56,33 +56,48 @@ jobs:
           if-no-files-found: error
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || echo "/dev/kvm ausente: emulador rodará sem aceleração"
+
       - name: Smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
+          api-level: 30
+          target: default
           arch: x86_64
           disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
+            set -o pipefail
             adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -W -n com.minhabolha.android/.MainActivity
-            sleep 8
+            sleep 12
+            adb logcat -d > android-logcat.txt || true
+            adb exec-out screencap -p > android-spike.png || true
             PID="$(adb shell pidof com.minhabolha.android | tr -d '\r')"
             if [ -z "$PID" ]; then
               echo "App process is not running"
-              adb logcat -d -s AndroidRuntime:E
+              adb logcat -d -s AndroidRuntime:E || true
               exit 1
             fi
             if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
-              adb logcat -d -s AndroidRuntime:E
+              adb logcat -d -s AndroidRuntime:E || true
               exit 1
             fi
-            adb exec-out screencap -p > android-spike.png
             echo "Android spike process PID: $PID"
 
       - name: Upload Android smoke screenshot
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: minha-bolha-android-smoke
-          if-no-files-found: error
-          path: android-spike.png
+          if-no-files-found: warn
+          path: |
+            android-spike.png
+            android-logcat.txt
