@@ -21,6 +21,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   automatic `global-releases` source created on first boot.
 - **Stremio addons**: install by manifest URL, catalog groups, catalog browsing
   and title metadata (the addon URL is encrypted and never exposed).
+- **Stremio streams**: aggregation across enabled addons (direct, HLS, external
+  and torrent entries) and local playback progress with "continue watching".
+  Direct/HLS streams play in the existing web player (hls.js inside the WebView).
 - API keys (TMDB/Steam/gg.deals) encrypted with the Android Keystore
   (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
@@ -37,7 +40,11 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   - `GET /api/stremio/status`, `GET|POST /api/stremio/addons`,
     `DELETE /api/stremio/addons/:id`, `GET /api/stremio/catalogs`,
     `GET /api/stremio/catalog`, `GET /api/stremio/search`,
-    `GET /api/stremio/title/:type/:id`, `GET /api/stremio/library`
+    `GET /api/stremio/title/:type/:id`, `GET /api/stremio/streams`,
+    `GET /api/stremio/subtitles`, `GET /api/stremio/server`,
+    `GET /api/stremio/library`
+  - `GET /api/playback/progress`, `GET /api/playback/continue`,
+    `PUT|POST|DELETE /api/playback/progress`
   - `GET /api/calendar`, `GET /api/calendar/search`, `POST /api/calendar/refresh`
   - `GET|POST /api/sources`, `POST /api/sources/resolve`,
     `POST /api/sources/bulk-delete`, `PATCH|DELETE /api/sources/:id`,
@@ -52,9 +59,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- Stremio account login, library sync and continue-watching.
-- Stremio streams, player, subtitles, HLS proxy and torrent engine.
-- FFmpeg/transcoding, background downloads and notifications.
+- Torrent playback (libtorrent), Stremio Server, HLS transcoding and FFmpeg.
+- Stremio subtitles and account login/library sync.
+- Background downloads and notifications.
 - Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, library mutations and novel connectors.
