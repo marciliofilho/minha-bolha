@@ -1,6 +1,6 @@
 {
   "name": "@hub/desktop",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "Shell desktop do Minha Bolha com navegador Chromium embutido no card.",
@@ -8,7 +8,8 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --config electron-builder.config.cjs"
+    "dist": "electron-builder --config electron-builder.config.cjs",
+    "dist:linux": "electron-builder --config electron-builder.config.cjs --linux --publish never"
   },
   "devDependencies": {
     "electron": "40.10.6",

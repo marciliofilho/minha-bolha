@@ -10,6 +10,11 @@ import fs from 'node:fs';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+if (process.platform !== 'win32') {
+  console.log('O ZIP portátil é exclusivo do Windows; ignorando neste sistema.');
+  process.exit(0);
+}
+
 const root = process.cwd();
 const release = path.join(root, 'release');
 const unpacked = path.join(release, 'win-unpacked');

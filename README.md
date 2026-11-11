@@ -31,6 +31,9 @@ Get the latest release from the [Releases page](https://github.com/marciliofilho
 | --- | --- | --- |
 | Installer | `Minha-Bolha-Setup-<version>.exe` | Per-user install; data in `%APPDATA%\Minha Bolha` |
 | Portable | `Minha-Bolha-Portable-<version>.zip` | Extract anywhere; data in `data\` next to the executable |
+| Linux (AppImage, preview) | `Minha-Bolha-<version>-x64.AppImage` | x64; data in `~/.config/Minha Bolha` |
+
+The Linux AppImage is built by the `Build Linux AppImage` workflow on Ubuntu. It uses the same local database, addons and updater model; the Windows portable ZIP remains Windows-only.
 
 Both builds are independent and keep their own data. Choose one and stick to it to keep your library and offline chapters.
 
@@ -40,7 +43,7 @@ The application is **not code-signed**. Windows SmartScreen may show a warning o
 
 ## Requirements
 
-**To use the app:** Windows 10/11 x64. Chromium, FFmpeg and FFprobe are bundled — nothing else to install.
+**To use the app:** Windows 10/11 x64, or Linux x64 via the AppImage preview. Chromium, FFmpeg and FFprobe are bundled — nothing else to install.
 
 **To build from source:** Node.js 20+ and npm.
 
@@ -64,7 +67,8 @@ Useful scripts:
 | `npm run typecheck` | Type-check API and web |
 | `npm test` | Run the API regression tests |
 | `npm run check:secrets` | Scan the repository for leaked secrets |
-| `npm run dist` | Build the installer and portable ZIP into `release/` |
+| `npm run dist` | Build the Windows installer and portable ZIP into `release/` |
+| `npm run dist:linux` | Build the Linux AppImage into `release/` (run on Linux/CI) |
 
 During development the desktop shell talks to the local API on port `4000`. The Vite dev server proxies `/api` to it.
 
@@ -159,6 +163,19 @@ This generates:
 - `release/latest.yml`
 
 Publish those files as a GitHub Release tagged `v<version>`. The updater compares the installed version with `latest.yml`.
+
+### Linux
+
+```bash
+npm run dist:linux
+```
+
+This must run on Linux (or the `Build Linux AppImage` GitHub Actions workflow). It generates:
+
+- `release/Minha-Bolha-<version>-x64.AppImage`
+- `release/latest-linux.yml`
+
+Publish both files in the same GitHub Release. The AppImage updates itself through `electron-updater` and keeps its data in `~/.config/Minha Bolha`. There is no Linux portable mode; the AppImage itself is the portable build.
 
 The build intentionally excludes local data, `.env`, logs, source maps and the debug builder file. The portable staging folder is removed automatically after the ZIP is created.
 

@@ -52,7 +52,9 @@ const healthUrl = () => `http://127.0.0.1:${apiPort}/api/health`;
 const isPackaged = app.isPackaged;
 const exeDir = path.dirname(process.execPath);
 // O ZIP portátil inclui "portable.txt" ao lado do .exe; o instalador não.
-const isPortable = isPackaged && fs.existsSync(path.join(exeDir, 'portable.txt'));
+// No Linux/macOS o app usa sempre a pasta de dados padrão do sistema.
+const isPortable =
+  isPackaged && process.platform === 'win32' && fs.existsSync(path.join(exeDir, 'portable.txt'));
 // Instalado: %APPDATA%\Minha Bolha. Portátil: data\ ao lado do executável.
 const dataDir = isPackaged
   ? isPortable

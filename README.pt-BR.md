@@ -81,7 +81,8 @@ npm run desktop
 | `npm run dev:web` | Só o frontend |
 | `npm run build` | Compila o frontend em `apps/web/dist` |
 | `npm run build:api` | Compila a API em um arquivo ESM (`apps/api/dist`) |
-| `npm run dist` | Gera o instalador NSIS e o portátil em ZIP |
+| `npm run dist` | Gera o instalador NSIS e o portátil em ZIP (Windows) |
+| `npm run dist:linux` | Gera o AppImage Linux em `release/` (rodar no Linux/CI) |
 | `npm run icon` | Regenera o `icon.ico` a partir da arte PT-BR |
 | `npm start` | Só a API (serve o build, se existir) |
 | `npm run desktop` | Compila e abre o app desktop com navegador embutido |
@@ -643,8 +644,8 @@ npm run dist
 
 Gera em `release/`:
 
-- **Instalador:** `Minha-Bolha-Setup-0.4.5.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
-- **Portátil:** `Minha-Bolha-Portable-0.4.5.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
+- **Instalador:** `Minha-Bolha-Setup-0.4.6.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
+- **Portátil:** `Minha-Bolha-Portable-0.4.6.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
 
 As duas versões são independentes:
 
@@ -652,6 +653,19 @@ As duas versões são independentes:
 - portátil guarda dados em `data\` ao lado do `.exe` (por causa do `portable.txt`);
 - cada instância escolhe uma porta livre para a API, então instalado e portátil podem rodar ao mesmo tempo;
 - o pacote já inclui Electron, frontend, API, FFmpeg, FFprobe e o Chromium usado por novels/navegador auxiliar. Não exige Node, npm, Chrome ou Edge instalados.
+
+### Linux
+
+```bash
+npm run dist:linux
+```
+
+O build precisa rodar em Linux ou pelo workflow **Build Linux AppImage** no GitHub Actions. Gera:
+
+- `release/Minha-Bolha-<versão>-x64.AppImage`
+- `release/latest-linux.yml`
+
+Publique os dois na mesma release. O AppImage guarda dados em `~/.config/Minha Bolha`, atualiza sozinho pelo `electron-updater` e não tem modo portátil separado — o próprio AppImage é o executável portátil. O ZIP portátil continua exclusivo do Windows.
 
 O instalador não é assinado digitalmente; o Windows pode exibir um aviso do SmartScreen. O desinstalador preserva os dados em `%APPDATA%\Minha Bolha` (`deleteAppDataOnUninstall: false`).
 

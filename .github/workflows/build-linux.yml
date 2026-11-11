@@ -1,0 +1,87 @@
+name: Build Linux AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build AppImage
+        run: npm run dist:linux
+
+      - name: Install smoke-test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Smoke test AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="$(ls release/*.AppImage | head -n1)"
+          chmod +x "$APPIMAGE"
+          DATA_DIR="$HOME/.config/Minha Bolha"
+          mkdir -p "$DATA_DIR"
+
+          # Preenche o idioma para o app não parar no seletor do primeiro boot.
+          PORT=45140 \
+          XDG_CONFIG_HOME="$HOME/.config" \
+          HUB_DATA_DIR="$DATA_DIR" \
+          HUB_DB_PATH="$DATA_DIR/hub.db" \
+          HUB_INITIAL_LANGUAGE=pt \
+          HUB_SEED_DEMO=false \
+          NODE_OPTIONS=--experimental-sqlite \
+          NODE_PATH="$PWD/apps/api/dist/vendor" \
+          HUB_NODE_DATACHANNEL="$PWD/apps/api/dist/vendor/node-datachannel/dist/cjs/lib/index.cjs" \
+          node apps/api/dist/index.mjs > /tmp/seed.log 2>&1 &
+          SEED_PID=$!
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:45140/api/health >/dev/null 2>&1; then break; fi
+            sleep 0.5
+          done
+          curl -fsS http://127.0.0.1:45140/api/health
+          kill "$SEED_PID" 2>/dev/null || true
+          sleep 1
+
+          XDG_CONFIG_HOME="$HOME/.config" HUB_SPLASH=0 APPIMAGE_EXTRACT_AND_RUN=1 \
+            xvfb-run -a "$APPIMAGE" --no-sandbox --disable-gpu > /tmp/appimage.log 2>&1 &
+          APP_PID=$!
+          LOG="$DATA_DIR/api.log"
+          PORT=""
+          for _ in $(seq 1 120); do
+            PORT="$(grep -o 'http://127.0.0.1:[0-9]*' "$LOG" 2>/dev/null | tail -n1 | grep -o '[0-9]*$' || true)"
+            if [ -n "$PORT" ] && curl -fsS "http://127.0.0.1:$PORT/api/health" > /tmp/health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cat /tmp/health.json
+          grep -q '"version":"0.4.6"' /tmp/health.json
+          echo "AppImage smoke test OK (API version $(node -e "console.log(require('/tmp/health.json').version)"))"
+          kill "$APP_PID" 2>/dev/null || true
+          pkill -f 'minha-bolha' 2>/dev/null || true
+          pkill -f 'Minha Bolha' 2>/dev/null || true
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: minha-bolha-linux-${{ github.ref_name }}
+          if-no-files-found: error
+          path: |
+            release/*.AppImage
+            release/latest-linux.yml
