@@ -151,7 +151,7 @@ class HubDatabase(private val context: Context) {
                     null,
                     ContentValues().apply {
                         put("key", key)
-                        put("value", JSONObject.valueToString(patch.get(key)))
+                        put("value", encodeSettingValue(patch.get(key)))
                         put("updated_at", updatedAt)
                     },
                     SQLiteDatabase.CONFLICT_REPLACE
@@ -652,6 +652,14 @@ class HubDatabase(private val context: Context) {
     }
 
     private fun boolean(value: Any?, fallback: Boolean): Boolean = value as? Boolean ?: fallback
+
+    /** Serializa um valor escalar de configuração como JSON. */
+    private fun encodeSettingValue(value: Any?): String = when (value) {
+        null, JSONObject.NULL -> "null"
+        is String -> JSONObject.quote(value)
+        is Boolean, is Number -> value.toString()
+        else -> JSONObject.quote(value.toString())
+    }
 
     private fun string(value: Any?, fallback: String): String = value as? String ?: fallback
 
