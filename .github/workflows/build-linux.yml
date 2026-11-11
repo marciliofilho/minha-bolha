@@ -47,6 +47,7 @@ jobs:
           XDG_CONFIG_HOME="$HOME/.config" \
           HUB_DATA_DIR="$DATA_DIR" \
           HUB_DB_PATH="$DATA_DIR/hub.db" \
+          HUB_MIGRATIONS="$PWD/apps/api/dist/migrations" \
           HUB_INITIAL_LANGUAGE=pt \
           HUB_SEED_DEMO=false \
           NODE_OPTIONS=--experimental-sqlite \
@@ -54,10 +55,16 @@ jobs:
           HUB_NODE_DATACHANNEL="$PWD/apps/api/dist/vendor/node-datachannel/dist/cjs/lib/index.cjs" \
           node apps/api/dist/index.mjs > /tmp/seed.log 2>&1 &
           SEED_PID=$!
+          SEED_OK=0
           for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:45140/api/health >/dev/null 2>&1; then break; fi
+            if curl -fsS http://127.0.0.1:45140/api/health >/dev/null 2>&1; then SEED_OK=1; break; fi
             sleep 0.5
           done
+          if [ "$SEED_OK" != "1" ]; then
+            echo "Seed API did not start:"
+            cat /tmp/seed.log
+            exit 1
+          fi
           curl -fsS http://127.0.0.1:45140/api/health
           kill "$SEED_PID" 2>/dev/null || true
           sleep 1
@@ -72,6 +79,12 @@ jobs:
             if [ -n "$PORT" ] && curl -fsS "http://127.0.0.1:$PORT/api/health" > /tmp/health.json 2>/dev/null; then break; fi
             sleep 1
           done
+          if [ ! -s /tmp/health.json ]; then
+            echo "AppImage did not start:"
+            cat /tmp/appimage.log 2>/dev/null || true
+            cat "$LOG" 2>/dev/null || true
+            exit 1
+          fi
           cat /tmp/health.json
           grep -q '"version":"0.4.6"' /tmp/health.json
           echo "AppImage smoke test OK (API version $(node -e "console.log(require('/tmp/health.json').version)"))"
