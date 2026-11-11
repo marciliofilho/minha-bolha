@@ -24,6 +24,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Stremio streams**: aggregation across enabled addons (direct, HLS, external
   and torrent entries) and local playback progress with "continue watching".
   Direct/HLS streams play in the existing web player (hls.js inside the WebView).
+- **Torrents**: libtorrent4j engine with sequential download, file selection and
+  an HTTP Range endpoint, so MP4/WebM torrents play while they download.
+  MKV/AVI torrents are rejected with a clear message until transcoding exists.
 - API keys (TMDB/Steam/gg.deals) encrypted with the Android Keystore
   (AES-GCM); the UI only ever sees a masked status.
 - Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
@@ -59,9 +62,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- Torrent playback (libtorrent), Stremio Server, HLS transcoding and FFmpeg.
+- Torrent transcoding (MKV/AVI → HLS), audio track selection and FFmpeg.
+- Foreground service for playback with the screen off and download notifications.
 - Stremio subtitles and account login/library sync.
-- Background downloads and notifications.
 - Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, library mutations and novel connectors.
