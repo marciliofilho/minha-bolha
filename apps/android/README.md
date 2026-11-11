@@ -13,27 +13,35 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - SQLite database created from the **same migrations** as the desktop
   (`apps/api/src/db/migrations`), with `_migrations` tracking.
 - System categories seeded on first boot, mirroring `@hub/shared`.
+- Connectors **YouTube** (public Atom feed + channel page fallback) and
+  **RSS/Atom/RDF**, with the same SSRF guard and HTTP policy as the desktop.
+- Scheduler in-process: 30s tick, 2 concurrent jobs, jitter, exponential
+  backoff and per-type minimum interval.
+- SSE (`/api/events`) with real `source:status`, `items:new` and
+  `refresh:state` events, so the UI updates after a sync.
 - API implemented in Kotlin:
-  - `GET /api/health`
-  - `GET /api/status`
-  - `GET /api/events` (SSE keep-alive)
+  - `GET /api/health`, `GET /api/status`, `GET /api/events`
   - `GET|PATCH /api/settings`
   - `GET|POST /api/categories`
-  - `GET /api/sources`
+  - `GET|POST /api/sources`, `POST /api/sources/resolve`,
+    `POST /api/sources/bulk-delete`, `PATCH|DELETE /api/sources/:id`,
+    `POST /api/sources/:id/refresh`, `GET /api/sources/:id/runs`
+  - `POST /api/refresh`
   - `GET /api/feed`, `/api/feed/counts`, `POST /api/feed/mark-all-read`
   - `GET|PATCH /api/items/:id`
 - SPA fallback: React Router routes are served from `index.html`.
 - Debug APK built by GitHub Actions.
-- Emulator smoke test that checks the API, the database, and that React
-  actually mounted inside the WebView.
+- Emulator smoke test that creates a real RSS source, waits for the scheduler,
+  checks the feed, checks the run history and deletes the source.
 
 ## Not ported yet
 
-- Connectors and scheduler (YouTube, RSS, TMDB, AniList, Steam, gg.deals, novels).
+- TMDB, AniList, Steam wishlist, gg.deals, Stremio library and novel connectors.
 - Stremio addons, catalogs, streams, player and playback progress.
 - Torrent engine, FFmpeg/transcoding and background downloads.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, secrets, games, calendar and library mutations.
+- WorkManager: the scheduler runs while the app is open; background sync is next.
 
 Because those endpoints do not exist yet, the corresponding screens show their
 normal error state instead of data.
@@ -82,9 +90,11 @@ HubDatabase (SQLite + desktop migrations)
 ```
 
 - `HubServer.kt` — routes, static assets, SPA fallback and JSON helpers.
-- `HubDatabase.kt` — schema, settings, categories, sources, feed and item flags.
+- `HubDatabase.kt` — schema, settings, categories, sources, runs, feed and item flags.
+- `HubScheduler.kt` — tick, queue, backoff and synchronization bookkeeping.
+- `connectors/` — HTTP client, SSRF guard, XML parsing, RSS and YouTube connectors.
+- `EventStream.kt` — SSE hub and stream for `/api/events`.
 - `SqlScript.kt` — splits the shared `.sql` migrations into statements.
-- `EventStream.kt` — minimal SSE stream for `/api/events`.
 - `MainActivity.kt` — WebView bootstrap, fixed local port and readiness check.
 
 The server listens only on `127.0.0.1` and is not reachable from other devices.
@@ -101,7 +111,11 @@ The CI emulator test asserts:
 6. `/api/settings`, `/api/feed` and `/api/feed/counts` return valid JSON;
 7. `/` and a React Router route (`/settings`) serve the app HTML;
 8. the WebView mounted the React tree (`rootChildren > 0` in logcat);
-9. no uncaught JavaScript error was logged.
+9. no uncaught JavaScript error was logged;
+10. a real RSS source is resolved, created, synced by the scheduler, appears in
+    `/api/feed`, records a successful run and is deleted again.
+    If the external feed is unreachable, step 10 prints a warning instead of
+    failing the build.
 
 ### Emulator requirements in CI
 

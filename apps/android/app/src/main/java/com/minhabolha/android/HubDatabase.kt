@@ -5,12 +5,15 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.util.Base64
+import com.minhabolha.android.connectors.RawItem
+import com.minhabolha.android.connectors.SourceRow
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 /**
  * Banco local do Minha Bolha no Android.
@@ -174,8 +177,14 @@ class HubDatabase(private val context: Context) {
     // Categorias
     // ---------------------------------------------------------------------
 
-    fun categories(): JSONArray {
-        val result = JSONArray()
+    fun categoryExists(id: String): Boolean {
+        if (id.isEmpty()) return false
+        db.rawQuery("SELECT 1 FROM categories WHERE id = ?", arrayOf(id)).use { cursor ->
+            return cursor.moveToFirst()
+        }
+    }
+
+    fun categories(): JSONArray {        val result = JSONArray()
         db.rawQuery(
             "SELECT id, label, icon, color, sort_order, is_system FROM categories ORDER BY sort_order ASC, label ASC",
             null
@@ -237,8 +246,16 @@ class HubDatabase(private val context: Context) {
     // Fontes
     // ---------------------------------------------------------------------
 
-    fun sources(): JSONArray {
+    fun sources(): JSONArray = querySources("", emptyArray())
+
+    fun source(id: String): JSONObject? {
+        val rows = querySources("WHERE s.id = ?", arrayOf(id))
+        return if (rows.length() > 0) rows.getJSONObject(0) else null
+    }
+
+    private fun querySources(whereClause: String, args: Array<String>): JSONArray {
         val cutoff = feedCutoffIso(48)
+        val queryArgs = arrayOf(cutoff, cutoff, cutoff, cutoff) + args
         val result = JSONArray()
         db.rawQuery(
             """
@@ -250,13 +267,281 @@ class HubDatabase(private val context: Context) {
               (SELECT i.published_at FROM items i WHERE i.source_id = s.id AND $VISIBLE_ITEM_FILTER
                 ORDER BY i.published_at DESC, i.id DESC LIMIT 1) AS latest_item_published_at
             FROM sources s
+            $whereClause
             ORDER BY s.is_demo ASC, s.name ASC
             """.trimIndent(),
-            arrayOf(cutoff, cutoff, cutoff, cutoff)
+            queryArgs
         ).use { cursor ->
             while (cursor.moveToNext()) result.put(sourceFromCursor(cursor))
         }
         return result
+    }
+
+    /** Linha crua da tabela `sources`, usada pelo scheduler e conectores. */
+    fun sourceRow(id: String): SourceRow? {
+        db.rawQuery("SELECT * FROM sources WHERE id = ?", arrayOf(id)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return sourceRowFromCursor(cursor)
+        }
+    }
+
+    fun dueSources(limit: Int): List<SourceRow> {
+        val rows = mutableListOf<SourceRow>()
+        db.rawQuery(
+            """
+            SELECT * FROM sources
+            WHERE enabled = 1 AND (next_run_at IS NULL OR next_run_at <= ?)
+            ORDER BY next_run_at ASC
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(nowIso(), limit.coerceIn(1, 100).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) rows.add(sourceRowFromCursor(cursor))
+        }
+        return rows
+    }
+
+    fun allSourceRows(): List<SourceRow> {
+        val rows = mutableListOf<SourceRow>()
+        db.rawQuery("SELECT * FROM sources WHERE enabled = 1", null).use { cursor ->
+            while (cursor.moveToNext()) rows.add(sourceRowFromCursor(cursor))
+        }
+        return rows
+    }
+
+    private fun sourceRowFromCursor(cursor: Cursor): SourceRow = SourceRow(
+        id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+        type = cursor.getString(cursor.getColumnIndexOrThrow("type")),
+        name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+        categoryId = cursor.getString(cursor.getColumnIndexOrThrow("category_id")),
+        config = cursor.getString(cursor.getColumnIndexOrThrow("config")),
+        state = cursor.getString(cursor.getColumnIndexOrThrow("state")),
+        enabled = cursor.getInt(cursor.getColumnIndexOrThrow("enabled")) == 1,
+        intervalMinutes = cursor.getInt(cursor.getColumnIndexOrThrow("interval_minutes")),
+        nextRunAt = cursor.getString(cursor.getColumnIndexOrThrow("next_run_at")),
+        consecutiveFailures = cursor.getInt(cursor.getColumnIndexOrThrow("consecutive_failures")),
+        isDemo = cursor.getInt(cursor.getColumnIndexOrThrow("is_demo")) == 1,
+        lastSuccessAt = cursor.getString(cursor.getColumnIndexOrThrow("last_success_at"))
+    )
+
+    fun createSource(
+        type: String,
+        name: String,
+        categoryId: String,
+        config: JSONObject,
+        intervalMinutes: Int,
+        isDemo: Boolean = false
+    ): JSONObject {
+        val id = UUID.randomUUID().toString()
+        val now = nowIso()
+        db.execSQL(
+            """
+            INSERT INTO sources (id, type, name, category_id, config, state, enabled, interval_minutes,
+               next_run_at, is_demo, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf(id, type, name, categoryId, config.toString(), intervalMinutes, now, if (isDemo) 1 else 0, now, now)
+        )
+        return source(id) ?: throw HubException(500, "database", "Fonte não foi criada.")
+    }
+
+    fun updateSource(
+        id: String,
+        name: String? = null,
+        categoryId: String? = null,
+        intervalMinutes: Int? = null,
+        enabled: Boolean? = null,
+        config: JSONObject? = null
+    ): JSONObject? {
+        val sets = mutableListOf<String>()
+        val args = mutableListOf<Any?>()
+
+        name?.let { sets.add("name = ?"); args.add(it) }
+        categoryId?.let { sets.add("category_id = ?"); args.add(it) }
+        intervalMinutes?.let { sets.add("interval_minutes = ?"); args.add(it) }
+        enabled?.let { sets.add("enabled = ?"); args.add(if (it) 1 else 0) }
+        config?.let { sets.add("config = ?"); args.add(it.toString()) }
+
+        if (sets.isNotEmpty()) {
+            sets.add("updated_at = ?")
+            args.add(nowIso())
+            args.add(id)
+            db.execSQL("UPDATE sources SET ${sets.joinToString(", ")} WHERE id = ?", args.toTypedArray())
+        }
+        return source(id)
+    }
+
+    fun deleteSource(id: String): Boolean {
+        if (countSourcesWhere("id = ?", arrayOf(id)) == 0) return false
+        db.execSQL("DELETE FROM sources WHERE id = ?", arrayOf(id))
+        return true
+    }
+
+    fun deleteSources(ids: List<String>): Int {
+        if (ids.isEmpty()) return 0
+        val unique = ids.distinct()
+        val placeholders = unique.joinToString(", ") { "?" }
+        val before = countSourcesWhere(null, null)
+        db.execSQL("DELETE FROM sources WHERE id IN ($placeholders)", unique.toTypedArray())
+        return before - countSourcesWhere(null, null)
+    }
+
+    private fun countSourcesWhere(where: String?, args: Array<String>?): Int {
+        val sql = if (where == null) "SELECT COUNT(*) FROM sources" else "SELECT COUNT(*) FROM sources WHERE $where"
+        db.rawQuery(sql, args).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    fun setNextRun(id: String, nextRunAt: String) {
+        db.execSQL(
+            "UPDATE sources SET next_run_at = ?, updated_at = ? WHERE id = ?",
+            arrayOf(nextRunAt, nowIso(), id)
+        )
+    }
+
+    fun recordSuccess(id: String, state: String, nextRunAt: String, checkedAt: String) {
+        db.execSQL(
+            """
+            UPDATE sources SET
+              state = ?, last_checked_at = ?, last_success_at = ?,
+              last_error_at = NULL, last_error_code = NULL, last_error_message = NULL,
+              consecutive_failures = 0, next_run_at = ?, updated_at = ?
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(state, checkedAt, checkedAt, nextRunAt, nowIso(), id)
+        )
+    }
+
+    fun recordFailure(
+        id: String,
+        code: String,
+        message: String,
+        consecutiveFailures: Int,
+        nextRunAt: String,
+        checkedAt: String
+    ) {
+        db.execSQL(
+            """
+            UPDATE sources SET
+              last_checked_at = ?, last_error_at = ?, last_error_code = ?, last_error_message = ?,
+              consecutive_failures = ?, next_run_at = ?, updated_at = ?
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(
+                checkedAt,
+                checkedAt,
+                code,
+                message.take(500),
+                consecutiveFailures,
+                nextRunAt,
+                nowIso(),
+                id
+            )
+        )
+    }
+
+    fun startRun(sourceId: String, startedAt: String): Long {
+        db.execSQL(
+            "INSERT INTO source_runs (source_id, started_at, ok) VALUES (?, ?, 0)",
+            arrayOf(sourceId, startedAt)
+        )
+        db.rawQuery("SELECT last_insert_rowid()", null).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+    }
+
+    fun finishRun(
+        id: Long,
+        ok: Boolean,
+        itemsFound: Int,
+        itemsNew: Int,
+        errorCode: String?,
+        errorMessage: String?,
+        durationMs: Long
+    ) {
+        db.execSQL(
+            """
+            UPDATE source_runs SET finished_at = ?, ok = ?, items_found = ?, items_new = ?,
+              error_code = ?, error_message = ?, duration_ms = ?
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(
+                nowIso(),
+                if (ok) 1 else 0,
+                itemsFound,
+                itemsNew,
+                errorCode,
+                errorMessage,
+                durationMs,
+                id
+            )
+        )
+    }
+
+    fun listRuns(sourceId: String, limit: Int = 10): JSONArray {
+        val result = JSONArray()
+        db.rawQuery(
+            "SELECT * FROM source_runs WHERE source_id = ? ORDER BY started_at DESC LIMIT ?",
+            arrayOf(sourceId, limit.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.put(
+                    JSONObject()
+                        .put("id", cursor.getLong(cursor.getColumnIndexOrThrow("id")))
+                        .put("startedAt", cursor.getString(cursor.getColumnIndexOrThrow("started_at")))
+                        .put("finishedAt", cursor.getString(cursor.getColumnIndexOrThrow("finished_at")) ?: JSONObject.NULL)
+                        .put("ok", cursor.getInt(cursor.getColumnIndexOrThrow("ok")) == 1)
+                        .put("itemsFound", cursor.getInt(cursor.getColumnIndexOrThrow("items_found")))
+                        .put("itemsNew", cursor.getInt(cursor.getColumnIndexOrThrow("items_new")))
+                        .put("errorCode", cursor.getString(cursor.getColumnIndexOrThrow("error_code")) ?: JSONObject.NULL)
+                        .put("errorMessage", cursor.getString(cursor.getColumnIndexOrThrow("error_message")) ?: JSONObject.NULL)
+                        .put("durationMs", cursor.getLong(cursor.getColumnIndexOrThrow("duration_ms")))
+                )
+            }
+        }
+        return result
+    }
+
+    /** Insere itens ignorando duplicatas; devolve quantos são realmente novos. */
+    fun insertItems(sourceId: String, categoryId: String, items: List<RawItem>): Int {
+        if (items.isEmpty()) return 0
+        val discoveredAt = nowIso()
+        var inserted = 0
+
+        db.beginTransaction()
+        try {
+            for (item in items) {
+                val values = ContentValues().apply {
+                    put("id", UUID.randomUUID().toString())
+                    put("source_id", sourceId)
+                    put("external_id", item.externalId)
+                    put("dedupe_key", item.dedupeKey)
+                    put("category_id", categoryId)
+                    put("kind", item.kind)
+                    put("title", item.title)
+                    put("url", item.url)
+                    put("thumbnail_url", item.thumbnailUrl)
+                    put("description", item.description)
+                    put("author", item.author)
+                    put("published_at", item.publishedAt)
+                    put("discovered_at", discoveredAt)
+                    put("meta", item.meta?.toString())
+                }
+                val rowId = db.insertWithOnConflict(
+                    "items",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+                )
+                if (rowId != -1L) inserted++
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+
+        return inserted
     }
 
     private fun sourceFromCursor(cursor: Cursor): JSONObject {

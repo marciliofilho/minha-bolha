@@ -97,6 +97,58 @@ echo "== Migrations aplicadas =="
 adb shell "run-as $PACKAGE ls databases" | tr -d '\r' || fail "banco não foi criado"
 adb shell "run-as $PACKAGE sh -c 'ls databases/hub.db*'" | tr -d '\r' || fail "hub.db ausente"
 
+echo "== Resolvendo e criando uma fonte RSS =="
+RESOLVE="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+  -d '{"type":"rss","input":"https://hnrss.org/frontpage"}' "$BASE/api/sources/resolve" || true)"
+echo "resolve: $(printf '%s' "$RESOLVE" | cut -c1-160)"
+
+NETWORK_OK=1
+case "$RESOLVE" in
+  *'"config"'*) : ;;
+  *) NETWORK_OK=0 ;;
+esac
+
+if [ "$NETWORK_OK" -eq 1 ]; then
+  CREATE="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+    -d '{"type":"rss","input":"https://hnrss.org/frontpage","categoryId":"news"}' \
+    "$BASE/api/sources" || true)"
+  echo "create: $(printf '%s' "$CREATE" | cut -c1-160)"
+  SOURCE_ID="$(printf '%s' "$CREATE" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+  [ -n "$SOURCE_ID" ] || fail "fonte RSS não foi criada"
+
+  echo "== Aguardando o scheduler sincronizar =="
+  INDEX=0
+  ITEMS=0
+  while [ "$INDEX" -lt 12 ]; do
+    FEED2="$(curl -fsS --max-time 15 "$BASE/api/feed" || true)"
+    ITEMS="$(printf '%s' "$FEED2" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' 2>/dev/null || echo 0)"
+    if [ "$ITEMS" -gt 0 ]; then break; fi
+    INDEX=$((INDEX + 1))
+    sleep 5
+  done
+
+  RUNS="$(curl -fsS --max-time 15 "$BASE/api/sources/$SOURCE_ID/runs" || true)"
+  echo "runs: $(printf '%s' "$RUNS" | cut -c1-200)"
+
+  if [ "$ITEMS" -gt 0 ]; then
+    echo "feed com $ITEMS item(ns) após sincronizar"
+    case "$RUNS" in
+      *'"ok":true'*) ;;
+      *) fail "fonte sincronizou itens mas o histórico não registrou sucesso" ;;
+    esac
+  else
+    echo "AVISO: nenhum item sincronizado (rede externa indisponível ou feed fora do ar)"
+  fi
+
+  echo "== Removendo a fonte de teste =="
+  curl -fsS --max-time 15 -X DELETE "$BASE/api/sources/$SOURCE_ID" > /dev/null || fail "não foi possível remover a fonte de teste"
+  if curl -fsS --max-time 15 "$BASE/api/sources" | grep -q "\"id\":\"$SOURCE_ID\""; then
+    fail "fonte de teste continuou após DELETE"
+  fi
+else
+  echo "AVISO: resolução de fonte indisponível (rede externa) — etapa de sincronização ignorada"
+fi
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

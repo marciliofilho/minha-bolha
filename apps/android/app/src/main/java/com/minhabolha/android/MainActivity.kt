@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var server: HubServer? = null
     private var database: HubDatabase? = null
+    private var scheduler: HubScheduler? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,7 +33,11 @@ class MainActivity : Activity() {
         val hubDatabase = HubDatabase(this)
         database = hubDatabase
 
-        val port = startServer(hubDatabase)
+        val events = EventHub()
+        val hubScheduler = HubScheduler(hubDatabase, events)
+        scheduler = hubScheduler
+
+        val port = startServer(hubDatabase, hubScheduler, events)
         val localServer = server
 
         webView = WebView(this).apply {
@@ -80,7 +85,11 @@ class MainActivity : Activity() {
      * A porta preferida é fixa para permitir testes automatizados via
      * `adb forward`; se estiver ocupada, cai para uma porta efêmera.
      */
-    private fun startServer(database: HubDatabase): Int {
+    private fun startServer(
+        database: HubDatabase,
+        scheduler: HubScheduler,
+        events: EventHub
+    ): Int {
         for (candidate in listOf(PREFERRED_PORT, 0)) {
             val port = if (candidate == 0) {
                 ServerSocket(0).use { it.localPort }
@@ -88,14 +97,23 @@ class MainActivity : Activity() {
                 candidate
             }
             val started = try {
-                HubServer(this, port, database, BuildConfig.VERSION_NAME).also {
+                HubServer(
+                    context = this,
+                    port = port,
+                    database = database,
+                    scheduler = scheduler,
+                    events = events,
+                    version = BuildConfig.VERSION_NAME
+                ).also {
                     it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
                 }
             } catch (error: Exception) {
+                Log.e(TAG, "falha ao iniciar o servidor local na porta $port", error)
                 null
             }
             if (started != null) {
                 server = started
+                scheduler.start()
                 return port
             }
         }
@@ -167,6 +185,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        scheduler?.stop()
+        scheduler = null
         server?.stop()
         server = null
         if (this::webView.isInitialized) {

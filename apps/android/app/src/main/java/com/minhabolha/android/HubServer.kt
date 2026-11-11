@@ -1,6 +1,8 @@
 package com.minhabolha.android
 
 import android.content.Context
+import com.minhabolha.android.connectors.ConnectorError
+import com.minhabolha.android.connectors.Registry
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.IHTTPSession
 import fi.iki.elonen.NanoHTTPD.Method
@@ -21,6 +23,8 @@ class HubServer(
     private val context: Context,
     private val port: Int,
     private val database: HubDatabase,
+    private val scheduler: HubScheduler,
+    private val events: EventHub,
     private val version: String
 ) : NanoHTTPD("127.0.0.1", port) {
 
@@ -34,6 +38,8 @@ class HubServer(
             }
         } catch (error: HubException) {
             jsonError(error.status, error.message ?: "Erro", error.code)
+        } catch (error: ConnectorError) {
+            jsonError(errorCodeToStatus(error.code), error.message ?: "Erro na fonte.", error.code)
         } catch (error: JSONException) {
             jsonError(400, "Corpo da requisição inválido.", "validation")
         } catch (error: Exception) {
@@ -48,50 +54,235 @@ class HubServer(
     private fun serveApi(session: IHTTPSession): Response {
         val path = session.uri.removePrefix("/api")
         val method = session.method
+        val segments = path.trim('/').split('/').filter { it.isNotEmpty() }
 
         return when {
-            path == "/health" && method == Method.GET -> health()
-            path == "/status" && method == Method.GET -> status()
-            path == "/events" && method == Method.GET -> events()
+            segments == listOf("health") && method == Method.GET -> health()
+            segments == listOf("status") && method == Method.GET -> status()
+            segments == listOf("events") && method == Method.GET -> sse()
 
-            path == "/settings" && method == Method.GET -> json(database.settings())
-            path == "/settings" && (method == Method.PATCH || method == Method.PUT) ->
+            segments == listOf("settings") && method == Method.GET -> json(database.settings())
+            segments == listOf("settings") && (method == Method.PATCH || method == Method.PUT) ->
                 json(database.updateSettings(readJsonBody(session)))
 
-            path == "/categories" && method == Method.GET ->
+            segments == listOf("categories") && method == Method.GET ->
                 json(JSONObject().put("categories", database.categories()))
-            path == "/categories" && method == Method.POST -> createCategory(session)
+            segments == listOf("categories") && method == Method.POST -> createCategory(session)
 
-            path == "/sources" && method == Method.GET ->
+            segments.firstOrNull() == "sources" -> serveSources(session, method, segments)
+
+            segments == listOf("feed") && method == Method.GET -> feed(session)
+            segments == listOf("feed", "counts") && method == Method.GET ->
+                json(JSONObject().put("counts", database.counts()))
+            segments == listOf("feed", "mark-all-read") && method == Method.POST -> markAllRead(session)
+
+            segments == listOf("refresh") && method == Method.POST ->
+                json(
+                    JSONObject()
+                        .put("queued", scheduler.enqueueAll(true))
+                        .put("refresh", scheduler.refreshState()),
+                    Response.Status.ACCEPTED
+                )
+
+            segments.firstOrNull() == "items" && segments.size == 2 -> serveItem(session, method, segments[1])
+
+            else -> throw HubException(404, "not_found", "Rota não encontrada: ${session.uri}")
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Fontes
+    // ---------------------------------------------------------------------
+
+    private fun serveSources(session: IHTTPSession, method: Method, segments: List<String>): Response {
+        return when {
+            segments.size == 1 && method == Method.GET ->
                 json(JSONObject().put("sources", database.sources()))
 
-            path == "/feed" && method == Method.GET -> feed(session)
-            path == "/feed/counts" && method == Method.GET ->
-                json(JSONObject().put("counts", database.counts()))
-            path == "/feed/mark-all-read" && method == Method.POST -> markAllRead(session)
+            segments.size == 2 && segments[1] == "resolve" && method == Method.POST -> resolveSource(session)
+            segments.size == 2 && segments[1] == "bulk-delete" && method == Method.POST -> bulkDeleteSources(session)
+            segments.size == 2 && method == Method.POST -> createSource(session)
+            segments.size == 2 && (method == Method.PATCH || method == Method.PUT) -> updateSource(session, segments[1])
+            segments.size == 2 && method == Method.DELETE -> deleteSource(segments[1])
 
-            path.startsWith("/items/") && method == Method.GET -> {
-                val id = path.removePrefix("/items/")
+            segments.size == 3 && segments[2] == "refresh" && method == Method.POST -> refreshSource(segments[1])
+            segments.size == 3 && segments[2] == "runs" && method == Method.GET -> sourceRuns(segments[1])
+
+            else -> throw HubException(404, "not_found", "Rota não encontrada: ${session.uri}")
+        }
+    }
+
+    private fun resolveSource(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val type = body.optString("type")
+        val input = body.optString("input").trim()
+        if (input.isEmpty()) throw HubException(400, "validation", "Informe a URL ou o canal.")
+
+        val connector = requireConnector(type)
+        val resolved = connector.resolve(input, database.settings())
+
+        val samples = JSONArray()
+        for (sample in resolved.samples) {
+            samples.put(
+                JSONObject()
+                    .put("title", sample.title)
+                    .put("url", sample.url)
+                    .put("publishedAt", sample.publishedAt ?: JSONObject.NULL)
+            )
+        }
+
+        return json(
+            JSONObject()
+                .put("name", resolved.name)
+                .put("categoryId", resolved.categoryId)
+                .put("config", resolved.config)
+                .put("samples", samples)
+        )
+    }
+
+    private fun createSource(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val type = body.optString("type")
+        val input = body.optString("input").trim()
+        val categoryId = body.optString("categoryId")
+        if (input.isEmpty()) throw HubException(400, "validation", "Informe a URL ou o canal.")
+        if (!database.categoryExists(categoryId)) {
+            throw HubException(400, "validation", "Categoria inexistente.")
+        }
+
+        val connector = requireConnector(type)
+        val settings = database.settings()
+        val resolved = connector.resolve(input, settings)
+
+        val defaultInterval = maxOf(
+            settings.optInt("defaultIntervalMinutes", 30),
+            connector.defaultIntervalMinutes
+        )
+        val requested = if (body.has("intervalMinutes")) body.optInt("intervalMinutes", defaultInterval) else defaultInterval
+        val intervalMinutes = maxOf(requested, connector.minIntervalMinutes)
+
+        val source = database.createSource(
+            type = type,
+            name = body.optString("name").trim().ifEmpty { resolved.name },
+            categoryId = categoryId,
+            config = resolved.config,
+            intervalMinutes = intervalMinutes
+        )
+
+        scheduler.enqueueSource(source.getString("id"), true)
+        return json(source, Response.Status.CREATED)
+    }
+
+    private fun updateSource(session: IHTTPSession, id: String): Response {
+        val row = database.sourceRow(id) ?: throw HubException(404, "not_found", "Fonte não encontrada.")
+        val body = readJsonBody(session)
+
+        val categoryId = body.optString("categoryId").takeIf { it.isNotEmpty() }
+        if (categoryId != null && !database.categoryExists(categoryId)) {
+            throw HubException(400, "validation", "Categoria inexistente.")
+        }
+
+        val connector = requireConnector(row.type)
+        var config: JSONObject? = null
+        var name: String? = body.optString("name").trim().takeIf { it.isNotEmpty() }
+        var reResolved = false
+
+        val input = body.optString("input").trim()
+        if (input.isNotEmpty()) {
+            val resolved = connector.resolve(input, database.settings())
+            config = resolved.config
+            if (name == null) name = resolved.name
+            reResolved = true
+        }
+
+        val intervalMinutes = if (body.has("intervalMinutes")) {
+            maxOf(body.optInt("intervalMinutes"), connector.minIntervalMinutes)
+        } else {
+            null
+        }
+
+        val enabled = if (body.has("enabled")) body.optBoolean("enabled") else null
+
+        val updated = database.updateSource(
+            id = id,
+            name = name,
+            categoryId = categoryId,
+            intervalMinutes = intervalMinutes,
+            enabled = enabled,
+            config = config
+        ) ?: throw HubException(404, "not_found", "Fonte não encontrada.")
+
+        if (reResolved) scheduler.enqueueSource(id, true)
+        return json(updated)
+    }
+
+    private fun deleteSource(id: String): Response {
+        if (!database.deleteSource(id)) {
+            throw HubException(404, "not_found", "Fonte não encontrada.")
+        }
+        return newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
+    }
+
+    private fun bulkDeleteSources(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val ids = body.optJSONArray("ids")
+            ?: throw HubException(400, "validation", "Envie a lista de fontes.")
+        val list = mutableListOf<String>()
+        for (index in 0 until ids.length()) {
+            val id = ids.optString(index).trim()
+            if (id.isNotEmpty()) list.add(id)
+        }
+        if (list.isEmpty()) throw HubException(400, "validation", "Nenhuma fonte informada.")
+        return json(JSONObject().put("deleted", database.deleteSources(list)))
+    }
+
+    private fun refreshSource(id: String): Response {
+        if (database.source(id) == null) {
+            throw HubException(404, "not_found", "Fonte não encontrada.")
+        }
+        return json(
+            JSONObject().put("queued", scheduler.enqueueSource(id, true)),
+            Response.Status.ACCEPTED
+        )
+    }
+
+    private fun sourceRuns(id: String): Response {
+        if (database.source(id) == null) {
+            throw HubException(404, "not_found", "Fonte não encontrada.")
+        }
+        return json(JSONObject().put("runs", database.listRuns(id)))
+    }
+
+    private fun requireConnector(type: String): com.minhabolha.android.connectors.Connector {
+        if (!Registry.has(type)) {
+            throw HubException(
+                400,
+                "not_supported",
+                "O tipo \"$type\" ainda não está disponível no Android."
+            )
+        }
+        return Registry.get(type)
+    }
+
+    // ---------------------------------------------------------------------
+    // Itens, feed e sistema
+    // ---------------------------------------------------------------------
+
+    private fun serveItem(session: IHTTPSession, method: Method, id: String): Response {
+        return when (method) {
+            Method.GET -> {
                 val item = database.item(id)
                     ?: throw HubException(404, "not_found", "Item não encontrado.")
                 json(item)
             }
 
-            path.startsWith("/items/") && (method == Method.PATCH || method == Method.PUT) -> {
-                val id = path.removePrefix("/items/")
+            Method.PATCH, Method.PUT -> {
                 val item = database.updateItemFlags(id, readJsonBody(session))
                     ?: throw HubException(404, "not_found", "Item não encontrado.")
                 json(item)
             }
 
-            path in KNOWN_API_PATHS || path.startsWith("/items/") ->
-                throw HubException(405, "method_not_allowed", "Método não permitido.")
-
-            else -> throw HubException(
-                404,
-                "not_found",
-                "Rota não encontrada: ${session.uri}"
-            )
+            else -> throw HubException(405, "method_not_allowed", "Método não permitido.")
         }
     }
 
@@ -119,17 +310,17 @@ class HubServer(
         val counts = database.healthCounts()
         return json(
             JSONObject()
-                .put("refresh", JSONObject().put("active", 0).put("queued", 0))
+                .put("refresh", scheduler.refreshState())
                 .put("keys", JSONObject().put("tmdb", false).put("steam", false).put("ggdeals", false))
                 .put("demo", counts.optBoolean("demo"))
         )
     }
 
-    private fun events(): Response {
+    private fun sse(): Response {
         val response = newChunkedResponse(
             Response.Status.OK,
             "text/event-stream; charset=utf-8",
-            EventStream()
+            events.createStream()
         )
         response.addHeader("Cache-Control", "no-cache")
         response.addHeader("X-Accel-Buffering", "no")
@@ -166,8 +357,7 @@ class HubServer(
         if (color != null && !COLOR_PATTERN.matches(color)) {
             throw HubException(400, "validation", "Cor inválida.")
         }
-        val category = database.createCategory(label, icon, color)
-        return json(category, Response.Status.CREATED)
+        return json(database.createCategory(label, icon, color), Response.Status.CREATED)
     }
 
     // ---------------------------------------------------------------------
@@ -222,10 +412,6 @@ class HubServer(
         return newFixedLengthResponse(status, "application/json; charset=utf-8", payload.toString())
     }
 
-    private fun json(payload: JSONArray): Response {
-        return newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", payload.toString())
-    }
-
     private fun jsonError(status: Int, message: String, code: String): Response {
         val payload = JSONObject().put("error", message).put("code", code)
         return newFixedLengthResponse(
@@ -233,6 +419,16 @@ class HubServer(
             "application/json; charset=utf-8",
             payload.toString()
         )
+    }
+
+    private fun errorCodeToStatus(code: String): Int = when (code) {
+        "config", "validation" -> 400
+        "not_found" -> 404
+        "not_supported" -> 400
+        "auth" -> 401
+        "blocked", "private" -> 403
+        "rate_limited" -> 429
+        else -> 502
     }
 
     private fun readJsonBody(session: IHTTPSession): JSONObject {
@@ -281,18 +477,6 @@ class HubServer(
             "mp4" to "video/mp4",
             "m3u8" to "application/vnd.apple.mpegurl",
             "vtt" to "text/vtt; charset=utf-8"
-        )
-
-        val KNOWN_API_PATHS = setOf(
-            "/health",
-            "/status",
-            "/events",
-            "/settings",
-            "/categories",
-            "/sources",
-            "/feed",
-            "/feed/counts",
-            "/feed/mark-all-read"
         )
     }
 }
