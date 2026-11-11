@@ -1,18 +1,22 @@
 package com.minhabolha.android
 
 import android.app.Activity
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 /**
  * Player nativo para torrents.
@@ -107,8 +111,68 @@ class PlayerActivity : Activity() {
         exo.prepare()
         exo.playWhenReady = true
 
+        loadSubtitles()
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS)
         Log.i(TAG, "player nativo iniciado: $title")
+    }
+
+    /**
+     * Anexa as legendas dos addons ao player.
+     *
+     * Roda em segundo plano (consulta os addons) e, quando termina, refaz o
+     * media item preservando a posição atual da reprodução.
+     */
+    private fun loadSubtitles() {
+        if (metaId.isEmpty() || baseUrl.isEmpty()) return
+
+        Thread {
+            val configurations = mutableListOf<MediaItem.SubtitleConfiguration>()
+            try {
+                val query = buildString {
+                    append(baseUrl).append("/api/stremio/subtitles")
+                    append("?type=").append(URLEncoder.encode(metaType, "UTF-8"))
+                    append("&id=").append(URLEncoder.encode(metaId, "UTF-8"))
+                    if (videoId.isNotEmpty()) {
+                        append("&videoId=").append(URLEncoder.encode(videoId, "UTF-8"))
+                    }
+                }
+                val connection = URL(query).openConnection() as HttpURLConnection
+                connection.connectTimeout = 8000
+                connection.readTimeout = 20_000
+                val text = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+
+                val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
+                for (index in 0 until subtitles.length()) {
+                    val item = subtitles.optJSONObject(index) ?: continue
+                    val proxyUrl = item.optString("proxyUrl")
+                    if (proxyUrl.isEmpty()) continue
+                    configurations.add(
+                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
+                            .setMimeType(MimeTypes.TEXT_VTT)
+                            .setLanguage(item.optString("lang").ifEmpty { "und" })
+                            .setLabel(item.optString("language").ifEmpty { "Legenda" })
+                            .build()
+                    )
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "falha ao carregar legendas", error)
+            }
+
+            if (configurations.isEmpty()) return@Thread
+
+            runOnUiThread {
+                val exo = player ?: return@runOnUiThread
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val item = MediaItem.Builder()
+                    .setUri(playbackUrl)
+                    .setSubtitleConfigurations(configurations)
+                    .build()
+                exo.setMediaItem(item, false)
+                exo.prepare()
+                Log.i(TAG, "player nativo: ${configurations.size} faixa(s) de legenda")
+            }
+        }.start()
     }
 
     override fun onStop() {

@@ -375,6 +375,32 @@ else
   echo "AVISO: Torrentio indisponível (rede externa) — etapa de streams ignorada"
 fi
 
+echo "== Legendas do Stremio =="
+OPENSUBS="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+  -d '{"url":"https://opensubtitles-v3.strem.io/manifest.json"}' "$BASE/api/stremio/addons" || true)"
+OPENSUBS_ID="$(printf '%s' "$OPENSUBS" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("addon",{}).get("id",""))' 2>/dev/null || true)"
+
+if [ -n "$OPENSUBS_ID" ]; then
+  SUBS="$(curl -fsS --max-time 60 "$BASE/api/stremio/subtitles?type=movie&id=tt0111161" || true)"
+  SUBS_COUNT="$(printf '%s' "$SUBS" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("subtitles",[])))' 2>/dev/null || echo 0)"
+  echo "legendas: $SUBS_COUNT"
+  if [ "$SUBS_COUNT" -gt 0 ]; then
+    PROXY_URL="$(printf '%s' "$SUBS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["subtitles"][0]["proxyUrl"])' 2>/dev/null || true)"
+    if [ -n "$PROXY_URL" ]; then
+      VTT="$(curl -fsS --max-time 30 "$BASE$PROXY_URL" || true)"
+      case "$VTT" in
+        WEBVTT*) echo "proxy de legenda ok (WebVTT)" ;;
+        *) fail "proxy de legenda não devolveu WebVTT" ;;
+      esac
+    fi
+  else
+    echo "AVISO: addon de legendas não devolveu faixas"
+  fi
+  curl -s --max-time 15 -X DELETE "$BASE/api/stremio/addons/$OPENSUBS_ID" > /dev/null || true
+else
+  echo "AVISO: addon de legendas indisponível (rede externa) — etapa ignorada"
+fi
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

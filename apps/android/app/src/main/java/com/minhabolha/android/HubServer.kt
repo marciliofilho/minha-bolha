@@ -98,6 +98,7 @@ class HubServer(
             )
             segments == listOf("stremio", "streams") && method == Method.GET -> stremioStreams(session)
             segments == listOf("stremio", "subtitles") && method == Method.GET -> stremioSubtitles(session)
+            segments == listOf("stremio", "subtitle") && method == Method.GET -> stremioSubtitle(session)
             segments == listOf("stremio", "torrent", "prepare") && method == Method.POST ->
                 prepareTorrent(session)
             segments == listOf("stremio", "torrent", "engine") && method == Method.GET ->
@@ -695,18 +696,34 @@ class HubServer(
     }
 
     private fun stremioSubtitles(session: IHTTPSession): Response {
-        val type = param(session, "type") ?: "movie"
-        val id = param(session, "id") ?: ""
-        val videoId = param(session, "videoId") ?: id
+        val type = param(session, "type")
+            ?: throw HubException(400, "validation", "Informe o tipo do título.")
+        val id = param(session, "id")
+            ?: throw HubException(400, "validation", "Informe o título.")
+
         return json(
-            JSONObject()
-                .put("type", type)
-                .put("id", id)
-                .put("videoId", videoId)
-                .put("subtitles", JSONArray())
-                .put("errors", JSONArray())
-                .put("elapsedMs", 0)
+            StremioSubtitles.fetch(
+                database = database,
+                type = type,
+                id = id,
+                season = param(session, "season")?.toIntOrNull(),
+                episode = param(session, "episode")?.toIntOrNull(),
+                videoId = param(session, "videoId")
+            )
         )
+    }
+
+    private fun stremioSubtitle(session: IHTTPSession): Response {
+        val url = param(session, "url")
+            ?: throw HubException(400, "validation", "Informe a URL da legenda.")
+        val vtt = StremioSubtitles.proxy(url)
+        val response = newFixedLengthResponse(
+            Response.Status.OK,
+            "text/vtt; charset=utf-8",
+            vtt
+        )
+        response.addHeader("Cache-Control", "private, max-age=3600")
+        return response
     }
 
     // ---------------------------------------------------------------------
