@@ -73,23 +73,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n com.minhabolha.android/.MainActivity
-            sleep 12
-            adb logcat -d > android-logcat.txt || true
-            adb exec-out screencap -p > android-spike.png || true
-            PID="$(adb shell pidof com.minhabolha.android | tr -d '\r')"
-            if [ -z "$PID" ]; then
-              echo "App process is not running"
-              adb logcat -d -s AndroidRuntime:E || true
-              exit 1
-            fi
-            if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
-              adb logcat -d -s AndroidRuntime:E || true
-              exit 1
-            fi
-            echo "Android spike process PID: $PID"
+          script: sh .github/scripts/android-smoke.sh
 
       - name: Upload Android smoke screenshot
         if: always()

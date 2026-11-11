@@ -11,6 +11,11 @@ import fi.iki.elonen.NanoHTTPD
 import java.net.ServerSocket
 
 class MainActivity : Activity() {
+    private companion object {
+        /** Porta fixa do servidor local, usada também pelo smoke test do CI. */
+        const val PREFERRED_PORT = 47821
+    }
+
     private lateinit var webView: WebView
     private var server: SpikeServer? = null
     private var database: SpikeDatabase? = null
@@ -21,15 +26,8 @@ class MainActivity : Activity() {
         val db = SpikeDatabase(this)
         database = db
 
-        val port = ServerSocket(0).use { it.localPort }
-        val localServer = try {
-            SpikeServer(this, port, db).also {
-                it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            }
-        } catch (error: Exception) {
-            null
-        }
-        server = localServer
+        val port = startServer(db)
+        val localServer = server
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -60,6 +58,34 @@ class MainActivity : Activity() {
                 null
             )
         }
+    }
+
+    /**
+     * Sobe o servidor local do spike.
+     *
+     * A porta preferida é fixa para permitir testes automatizados via
+     * `adb forward`; se estiver ocupada, cai para uma porta efêmera.
+     */
+    private fun startServer(database: SpikeDatabase): Int {
+        for (candidate in listOf(PREFERRED_PORT, 0)) {
+            val port = if (candidate == 0) {
+                ServerSocket(0).use { it.localPort }
+            } else {
+                candidate
+            }
+            val started = try {
+                SpikeServer(this, port, database).also {
+                    it.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+                }
+            } catch (error: Exception) {
+                null
+            }
+            if (started != null) {
+                server = started
+                return port
+            }
+        }
+        return 0
     }
 
     @Deprecated("Deprecated in Android")
