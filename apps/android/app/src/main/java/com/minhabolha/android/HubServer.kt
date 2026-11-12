@@ -1597,7 +1597,8 @@ class HubServer(
                 id = id,
                 season = season,
                 episode = episode,
-                videoId = param(session, "videoId")
+                videoId = param(session, "videoId"),
+                forceRefresh = param(session, "refresh") == "1"
             )
         )
     }

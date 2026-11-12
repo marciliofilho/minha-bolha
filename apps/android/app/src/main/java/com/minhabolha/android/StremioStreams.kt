@@ -37,14 +37,15 @@ object StremioStreams {
         id: String,
         season: Int?,
         episode: Int?,
-        videoId: String?
+        videoId: String?,
+        forceRefresh: Boolean = false
     ): JSONObject {
         val effectiveVideoId = videoId?.takeIf { it.isNotBlank() }
             ?: seriesVideoId(type, id, season, episode)
 
         val cacheKey = "$type|$effectiveVideoId"
         val cached = streamCache[cacheKey]
-        if (cached != null && cached.expiresAt > System.currentTimeMillis()) {
+        if (!forceRefresh && cached != null && cached.expiresAt > System.currentTimeMillis()) {
             return JSONObject(cached.payload.toString())
                 .put("cache", JSONObject().put("used", true).put("refreshing", false))
         }
