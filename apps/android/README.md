@@ -139,6 +139,36 @@ If `apps/web/dist` does not exist, Gradle packages the diagnostic page in
 `app/src/main/assets-fallback/web` instead, which is useful only to check that
 the server and WebView are alive.
 
+### Signed release
+
+The workflow `Build signed Android release` (`.github/workflows/release-android.yml`)
+is manual (`workflow_dispatch`) and produces `app-release.aab`, per-ABI APKs
+(`arm64-v8a`, `x86_64`) and a universal APK. It reads the signing key from the
+repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`; the keystore is removed from the
+runner before the artifacts are uploaded.
+
+For a local release build, create `apps/android/keystore.properties` (gitignored):
+
+```properties
+storeFile=release.p12
+storePassword=...
+keyAlias=minhabolha
+keyPassword=...
+```
+
+then:
+
+```bash
+npm run build
+gradle -p apps/android :app:assembleRelease -PabiSplits=true
+```
+
+Keep a backup of the keystore and its password: an installed release can only be
+updated by a build signed with the same key. Debug and release builds use
+different keys, so installing a release over a debug build requires uninstalling
+the app first (which erases its data).
+
 ## Architecture
 
 ```text

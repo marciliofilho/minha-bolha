@@ -2,6 +2,13 @@ name: Build signed Android release
 
 on:
   workflow_dispatch:
+  # Enquanto o workflow não está na branch padrão, o dispatch pela UI/API não
+  # aparece. Este gatilho permite gerar o release pela android-spike.
+  push:
+    branches:
+      - android-spike
+    paths:
+      - '.github/release-trigger'
 
 permissions:
   contents: read
