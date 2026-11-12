@@ -37,11 +37,15 @@ object HubRuntime {
             secrets = object : com.minhabolha.android.connectors.SecretAccess {
                 override fun value(key: String): String? = hubDatabase.secretValue(key)
             },
-            mediaLookup = { sourceId -> hubDatabase.mediaBySource(sourceId) }
+            mediaLookup = { sourceId -> hubDatabase.mediaBySource(sourceId) },
+            stremioAuthKey = { hubDatabase.stremioAuthKey() }
         )
 
         // O calendário global é criado no primeiro boot (AniList não exige chave).
         GlobalReleasesSource.ensure(hubDatabase)
+
+        // Reconecta a fonte da biblioteca se a conta do Stremio estiver salva.
+        StremioAccount.ensureSource(hubDatabase)
 
         val hubScheduler = HubScheduler(hubDatabase, hubEvents)
 

@@ -82,7 +82,16 @@ class HubServer(
             segments == listOf("media", "search") && method == Method.GET -> mediaSearch(session)
 
             segments == listOf("stremio", "status") && method == Method.GET ->
-                json(StremioCatalog.status(database))
+                json(StremioAccount.status(database))
+            segments == listOf("stremio", "login") && method == Method.POST -> stremioLogin(session)
+            segments == listOf("stremio", "auth-key") && method == Method.POST -> stremioAuthKey(session)
+            segments == listOf("stremio", "disconnect") && method == Method.POST ->
+                stremioDisconnect()
+            segments == listOf("stremio", "sync") && method == Method.POST -> stremioSync()
+            segments == listOf("stremio", "library") && method == Method.GET -> stremioLibrary(session)
+            segments.size == 4 && segments[0] == "stremio" && segments[1] == "library" &&
+                segments[3] == "state" && (method == Method.PATCH || method == Method.PUT) ->
+                stremioLibraryState(session, segments[2])
             segments == listOf("stremio", "addons") && method == Method.GET ->
                 json(JSONObject().put("addons", StremioCatalog.listAddons(database)))
             segments == listOf("stremio", "addons") && method == Method.POST -> addStremioAddon(session)
@@ -126,12 +135,6 @@ class HubServer(
             segments == listOf("playback", "progress") &&
                 (method == Method.PUT || method == Method.POST) -> savePlayback(session)
             segments == listOf("playback", "progress") && method == Method.DELETE -> removePlayback(session)
-            segments == listOf("stremio", "library") && method == Method.GET ->
-                json(
-                    JSONObject()
-                        .put("items", JSONArray())
-                        .put("status", StremioCatalog.status(database))
-                )
             segments == listOf("stremio", "card-info") && method == Method.POST ->
                 json(JSONObject().put("items", JSONArray()))
 
@@ -672,6 +675,80 @@ class HubServer(
             throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
         }
         return json(StremioCatalog.search(database, query, param(session, "type")))
+    }
+
+    // ---------------------------------------------------------------------
+    // Conta e biblioteca do Stremio
+    // ---------------------------------------------------------------------
+
+    private fun stremioLogin(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val status = StremioAccount.login(
+            database,
+            body.optString("email"),
+            body.optString("password")
+        )
+        events.broadcast("stremio:changed", JSONObject().put("connected", status.optBoolean("connected")))
+        StremioAccount.ensureSource(database)?.let { scheduler.enqueueSource(it.getString("id"), true) }
+        return json(JSONObject().put("status", status))
+    }
+
+    private fun stremioAuthKey(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val status = StremioAccount.saveAuthKey(
+            database,
+            body.optString("authKey"),
+            body.optString("email").takeIf { it.isNotBlank() }
+        )
+        events.broadcast("stremio:changed", JSONObject().put("connected", status.optBoolean("connected")))
+        return json(JSONObject().put("status", status))
+    }
+
+    private fun stremioDisconnect(): Response {
+        val status = StremioAccount.disconnect(database)
+        events.broadcast("stremio:changed", JSONObject().put("connected", false))
+        return json(status)
+    }
+
+    private fun stremioSync(): Response {
+        val source = StremioAccount.ensureSource(database)
+            ?: throw HubException(400, "validation", "Conecte a conta do Stremio antes de sincronizar.")
+        val queued = scheduler.enqueueSource(source.getString("id"), true)
+        if (!queued) {
+            // Sem scheduler livre: sincroniza na hora.
+            Thread {
+                try {
+                    StremioAccount.syncLibrary(database)
+                } catch (error: Exception) {
+                    android.util.Log.w("MinhaBolha", "falha ao sincronizar a biblioteca", error)
+                }
+            }.start()
+        }
+        return json(JSONObject().put("queued", queued), Response.Status.ACCEPTED)
+    }
+
+    private fun stremioLibrary(session: IHTTPSession): Response {
+        val search = param(session, "search")
+        return json(
+            JSONObject()
+                .put("items", database.stremioLibrary(search))
+                .put("status", StremioAccount.status(database))
+        )
+    }
+
+    private fun stremioLibraryState(session: IHTTPSession, metaId: String): Response {
+        val body = readJsonBody(session)
+        val result = database.setStremioLibraryState(
+            metaId = metaId,
+            favorite = if (body.has("isFavorite")) body.optBoolean("isFavorite") else null,
+            watchLater = if (body.has("isWatchLater")) body.optBoolean("isWatchLater") else null,
+            inLibrary = if (body.has("inLibrary")) body.optBoolean("inLibrary") else null,
+            type = body.optString("type").ifEmpty { null },
+            name = body.optString("name").ifEmpty { null },
+            poster = body.optString("poster").ifEmpty { null }
+        )
+        events.broadcast("stremio:changed", JSONObject().put("state", metaId))
+        return json(result)
     }
 
     private fun stremioStreams(session: IHTTPSession): Response {

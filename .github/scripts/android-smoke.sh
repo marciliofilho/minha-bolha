@@ -401,6 +401,29 @@ else
   echo "AVISO: addon de legendas indisponível (rede externa) — etapa ignorada"
 fi
 
+echo "== Biblioteca Stremio (estado local) =="
+STATUS="$(curl -fsS --max-time 20 "$BASE/api/stremio/status" || true)"
+case "$STATUS" in
+  *'"connected":false'*) echo "status ok (conta desconectada)" ;;
+  *) fail "status do Stremio inválido" ;;
+esac
+
+STATE="$(curl -fsS --max-time 20 -X PATCH -H 'content-type: application/json' \
+  -d '{"isFavorite":true,"inLibrary":true,"type":"movie","name":"Um Sonho de Liberdade"}' \
+  "$BASE/api/stremio/library/tt0111161/state" || true)"
+case "$STATE" in
+  *'"isFavorite":true'*) echo "favorito local ok" ;;
+  *) fail "estado local do Stremio não salvou o favorito" ;;
+esac
+
+LIB="$(curl -fsS --max-time 20 "$BASE/api/stremio/library?search=sonho" || true)"
+LIB_COUNT="$(printf '%s' "$LIB" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' 2>/dev/null || echo 0)"
+echo "biblioteca local: $LIB_COUNT item(ns)"
+[ "$LIB_COUNT" -ge 1 ] || fail "item local não apareceu na biblioteca"
+
+curl -s --max-time 15 -X PATCH -H 'content-type: application/json' -d '{"inLibrary":false}' \
+  "$BASE/api/stremio/library/tt0111161/state" > /dev/null || true
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

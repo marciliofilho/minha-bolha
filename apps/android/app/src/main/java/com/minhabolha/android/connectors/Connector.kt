@@ -57,6 +57,7 @@ data class ConnectorResult(
     val releaseEvents: List<RawReleaseEvent> = emptyList(),
     val globalReleases: List<RawGlobalRelease> = emptyList(),
     val globalReleaseProviders: List<String> = emptyList(),
+    val stremioLibrary: List<com.minhabolha.android.StremioLibraryItem> = emptyList(),
     val warnings: List<String> = emptyList()
 )
 

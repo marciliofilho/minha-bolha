@@ -33,7 +33,8 @@ class RefreshWorker(
                 secrets = object : com.minhabolha.android.connectors.SecretAccess {
                     override fun value(key: String): String? = database.secretValue(key)
                 },
-                mediaLookup = { sourceId -> database.mediaBySource(sourceId) }
+                mediaLookup = { sourceId -> database.mediaBySource(sourceId) },
+                stremioAuthKey = { database.stremioAuthKey() }
             )
             GlobalReleasesSource.ensure(database)
 

@@ -1551,6 +1551,265 @@ class HubDatabase(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------
+    // Conta e biblioteca do Stremio
+    // ---------------------------------------------------------------------
+
+    fun stremioAccountRow(): JSONObject? {
+        db.rawQuery("SELECT * FROM stremio_account WHERE id = 1", null).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return JSONObject()
+                .put("email", cursor.getString(cursor.getColumnIndexOrThrow("email")) ?: JSONObject.NULL)
+                .put("authKey", cursor.getString(cursor.getColumnIndexOrThrow("auth_key")) ?: JSONObject.NULL)
+                .put("expired", cursor.getInt(cursor.getColumnIndexOrThrow("expired")) == 1)
+                .put("lastSyncAt", cursor.getString(cursor.getColumnIndexOrThrow("last_sync_at")) ?: JSONObject.NULL)
+        }
+    }
+
+    fun stremioAuthKey(): String? {
+        val row = stremioAccountRow() ?: return null
+        val stored = row.optString("auth_key").takeIf { it.isNotEmpty() } ?: return null
+        return SecretCrypto.decrypt(stored)
+    }
+
+    fun saveStremioAccount(email: String?, authKey: String) {
+        val now = nowIso()
+        db.execSQL(
+            """
+            INSERT INTO stremio_account (id, email, auth_key, connected_at, last_sync_at, expired, updated_at)
+            VALUES (1, ?, ?, ?, NULL, 0, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              email = excluded.email,
+              auth_key = excluded.auth_key,
+              connected_at = excluded.connected_at,
+              expired = 0,
+              updated_at = excluded.updated_at
+            """.trimIndent(),
+            arrayOf(email, SecretCrypto.encrypt(authKey), now, now)
+        )
+    }
+
+    fun markStremioExpired() {
+        db.execSQL("UPDATE stremio_account SET expired = 1, updated_at = ? WHERE id = 1", arrayOf(nowIso()))
+    }
+
+    fun touchStremioSync() {
+        db.execSQL("UPDATE stremio_account SET last_sync_at = ?, updated_at = ? WHERE id = 1", arrayOf(nowIso(), nowIso()))
+    }
+
+    fun disconnectStremio() {
+        db.execSQL("DELETE FROM stremio_account")
+        db.execSQL("DELETE FROM stremio_library")
+        db.execSQL("DELETE FROM stremio_library_state")
+    }
+
+    fun countStremioLibrary(): Int {
+        db.rawQuery("SELECT COUNT(*) FROM stremio_library WHERE removed = 0", null).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    fun syncStremioLibrary(items: List<StremioLibraryItem>): Int {
+        if (items.isEmpty()) return 0
+        val now = nowIso()
+        db.beginTransaction()
+        try {
+            for (item in items) {
+                db.execSQL(
+                    """
+                    INSERT INTO stremio_library (
+                      meta_id, imdb_id, type, name, poster, video_id, season, episode,
+                      time_offset, duration, watched_video_id, last_watched_at, removed, temp, raw, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(meta_id) DO UPDATE SET
+                      imdb_id = excluded.imdb_id,
+                      type = excluded.type,
+                      name = excluded.name,
+                      poster = excluded.poster,
+                      video_id = excluded.video_id,
+                      season = excluded.season,
+                      episode = excluded.episode,
+                      time_offset = excluded.time_offset,
+                      duration = excluded.duration,
+                      watched_video_id = excluded.watched_video_id,
+                      last_watched_at = excluded.last_watched_at,
+                      removed = excluded.removed,
+                      temp = excluded.temp,
+                      raw = excluded.raw,
+                      updated_at = excluded.updated_at
+                    """.trimIndent(),
+                    arrayOf(
+                        item.metaId,
+                        item.imdbId,
+                        item.type,
+                        item.name,
+                        item.poster,
+                        item.videoId,
+                        item.season,
+                        item.episode,
+                        item.timeOffsetMs,
+                        item.durationMs,
+                        item.watchedVideoId,
+                        item.lastWatchedAt,
+                        if (item.removed) 1 else 0,
+                        if (item.temp) 1 else 0,
+                        item.raw,
+                        now
+                    )
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        touchStremioSync()
+        return items.size
+    }
+
+    fun stremioLibrary(search: String?, limit: Int = 500): JSONArray {
+        val query = search?.trim().orEmpty()
+        val args = if (query.isEmpty()) {
+            arrayOf(limit.coerceIn(1, 1000).toString())
+        } else {
+            arrayOf("%${query.lowercase()}%", limit.coerceIn(1, 1000).toString())
+        }
+        val where = if (query.isEmpty()) {
+            "l.removed = 0"
+        } else {
+            "l.removed = 0 AND lower(l.name) LIKE ?"
+        }
+
+        val result = JSONArray()
+        db.rawQuery(
+            """
+            SELECT l.*, COALESCE(s.is_favorite, 0) AS is_favorite, COALESCE(s.is_watch_later, 0) AS is_watch_later
+            FROM stremio_library l
+            LEFT JOIN stremio_library_state s ON s.meta_id = l.meta_id
+            WHERE $where
+            ORDER BY COALESCE(l.last_watched_at, l.updated_at) DESC, l.name ASC
+            LIMIT ?
+            """.trimIndent(),
+            args
+        ).use { cursor ->
+            while (cursor.moveToNext()) result.put(stremioItemFromCursor(cursor))
+        }
+        return result
+    }
+
+    fun stremioLibraryItem(metaId: String): JSONObject? {
+        db.rawQuery(
+            """
+            SELECT l.*, COALESCE(s.is_favorite, 0) AS is_favorite, COALESCE(s.is_watch_later, 0) AS is_watch_later
+            FROM stremio_library l
+            LEFT JOIN stremio_library_state s ON s.meta_id = l.meta_id
+            WHERE l.meta_id = ?
+            """.trimIndent(),
+            arrayOf(metaId)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return stremioItemFromCursor(cursor)
+        }
+    }
+
+    private fun stremioItemFromCursor(cursor: Cursor): JSONObject {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        fun intOrNull(column: String): Int? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
+        }
+
+        val offset = cursor.getLong(cursor.getColumnIndexOrThrow("time_offset")).takeIf { it > 0 }
+        val duration = intOrNull("duration")?.toLong()?.takeIf { it > 0 }
+        val progress = if (offset != null && duration != null) {
+            (offset.toDouble() / duration).coerceIn(0.0, 1.0)
+        } else {
+            0.0
+        }
+
+        return JSONObject()
+            .put("metaId", cursor.getString(cursor.getColumnIndexOrThrow("meta_id")))
+            .put("imdbId", text("imdb_id") ?: JSONObject.NULL)
+            .put("videoId", text("video_id") ?: JSONObject.NULL)
+            .put("type", cursor.getString(cursor.getColumnIndexOrThrow("type")))
+            .put("name", cursor.getString(cursor.getColumnIndexOrThrow("name")))
+            .put("poster", text("poster") ?: JSONObject.NULL)
+            .put("season", intOrNull("season") ?: JSONObject.NULL)
+            .put("episode", intOrNull("episode") ?: JSONObject.NULL)
+            .put("progress", progress)
+            .put("timeOffsetMs", offset ?: JSONObject.NULL)
+            .put("durationMs", duration ?: JSONObject.NULL)
+            .put("watchedVideoId", text("watched_video_id") ?: JSONObject.NULL)
+            .put("lastWatchedAt", text("last_watched_at") ?: JSONObject.NULL)
+            .put("isFavorite", cursor.getInt(cursor.getColumnIndexOrThrow("is_favorite")) == 1)
+            .put("isWatchLater", cursor.getInt(cursor.getColumnIndexOrThrow("is_watch_later")) == 1)
+            .put("inLibrary", true)
+    }
+
+    fun setStremioLibraryState(
+        metaId: String,
+        favorite: Boolean?,
+        watchLater: Boolean?,
+        inLibrary: Boolean?,
+        type: String?,
+        name: String?,
+        poster: String?
+    ): JSONObject {
+        val now = nowIso()
+
+        if (favorite != null || watchLater != null) {
+            val current = db.rawQuery(
+                "SELECT is_favorite, is_watch_later FROM stremio_library_state WHERE meta_id = ?",
+                arrayOf(metaId)
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getInt(0) == 1 to cursor.getInt(1) == 1 else false to false
+            }
+            val nextFavorite = favorite ?: current.first
+            val nextLater = watchLater ?: current.second
+            db.execSQL(
+                """
+                INSERT INTO stremio_library_state (meta_id, is_favorite, is_watch_later, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(meta_id) DO UPDATE SET
+                  is_favorite = excluded.is_favorite,
+                  is_watch_later = excluded.is_watch_later,
+                  updated_at = excluded.updated_at
+                """.trimIndent(),
+                arrayOf(metaId, if (nextFavorite) 1 else 0, if (nextLater) 1 else 0, now)
+            )
+        }
+
+        if (inLibrary == true && stremioLibraryItem(metaId) == null) {
+            db.execSQL(
+                """
+                INSERT INTO stremio_library (
+                  meta_id, imdb_id, type, name, poster, removed, temp, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 0, 1, ?)
+                """.trimIndent(),
+                arrayOf(
+                    metaId,
+                    if (metaId.startsWith("tt")) metaId.substringBefore(':') else null,
+                    if (type == "series") "series" else "movie",
+                    name ?: metaId,
+                    poster,
+                    now
+                )
+            )
+        } else if (inLibrary == false) {
+            db.execSQL("DELETE FROM stremio_library WHERE meta_id = ?", arrayOf(metaId))
+        }
+
+        val item = stremioLibraryItem(metaId)
+        return JSONObject()
+            .put("metaId", metaId)
+            .put("isFavorite", item?.optBoolean("isFavorite") ?: false)
+            .put("isWatchLater", item?.optBoolean("isWatchLater") ?: false)
+            .put("inLibrary", item != null)
+    }
+
+    // ---------------------------------------------------------------------
     // Saúde / estatísticas
     // ---------------------------------------------------------------------
 

@@ -224,6 +224,16 @@ class HubScheduler(
                 Log.i(TAG, "calendário global: $saved lançamento(s)")
             }
 
+            // Biblioteca do Stremio: somente leitura, mantida em tabela local.
+            if (result.stremioLibrary.isNotEmpty()) {
+                val saved = database.syncStremioLibrary(result.stremioLibrary)
+                events.broadcast(
+                    "stremio:changed",
+                    JSONObject().put("saved", saved).put("sourceId", row.id)
+                )
+                Log.i(TAG, "biblioteca Stremio: $saved item(ns)")
+            }
+
             if (result.warnings.isNotEmpty()) {
                 Log.w(TAG, "${row.name}: ${result.warnings.joinToString(" ")}")
             }

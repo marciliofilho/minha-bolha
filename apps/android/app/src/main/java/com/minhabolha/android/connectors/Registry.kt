@@ -15,7 +15,11 @@ object Registry {
      * Idempotente: chamadas repetidas não recriam instâncias.
      */
     @Synchronized
-    fun configure(secrets: SecretAccess, mediaLookup: (String) -> MediaRow?) {
+    fun configure(
+        secrets: SecretAccess,
+        mediaLookup: (String) -> MediaRow?,
+        stremioAuthKey: () -> String? = { null }
+    ) {
         val tmdb = TmdbConnector(secrets)
         val anilist = AnilistConnector(tmdb, secrets, mediaLookup)
 
@@ -25,6 +29,7 @@ object Registry {
         connectors["tmdb"] = tmdb
         connectors["anilist"] = anilist
         connectors["global-releases"] = GlobalReleasesConnector(tmdb, anilist)
+        connectors["stremio-library"] = StremioLibraryConnector(stremioAuthKey)
     }
 
     fun has(type: String): Boolean = connectors.containsKey(type)
