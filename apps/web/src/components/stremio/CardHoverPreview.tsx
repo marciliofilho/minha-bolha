@@ -10,6 +10,7 @@ import { Check, Clock, ExternalLink, Play, Plus, Star } from 'lucide-react';
 import type { StremioCardInfoDto } from '@hub/shared';
 import { useI18n } from '@/lib/i18n';
 import { supportsHover } from '@/lib/platform';
+import { useLongPress } from '@/lib/use-long-press';
 import { useSettings, useStremioCardInfo } from '@/lib/queries';
 
 const DEFAULT_HOVER_DELAY_MS = 3000;
@@ -161,8 +162,20 @@ export function CardHoverPreview({
     }, CLOSE_DELAY_MS);
   };
 
+  // Em telas de toque não existe hover: segurar o card abre a mesma prévia.
+  const longPress = useLongPress(() => {
+    setPrefetch(true);
+    open();
+  });
+
   return (
-    <div ref={anchorRef} className="relative shrink-0" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <div
+      ref={anchorRef}
+      {...longPress}
+      className="relative shrink-0"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       {children}
 
       {position

@@ -7,6 +7,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Addons do Stremio: manifest, catálogos e busca.
@@ -18,6 +20,8 @@ import java.util.UUID
 object StremioCatalog {
 
     private const val MAX_MANIFEST_BYTES = 512 * 1024
+    private const val SEARCH_TIMEOUT_MS = 8_000L
+    private val searchExecutor = Executors.newFixedThreadPool(8)
 
     // ---------------------------------------------------------------------
     // Addons
@@ -292,7 +296,9 @@ object StremioCatalog {
         catalogId: String,
         search: String?,
         skip: Int,
-        genre: String?
+        genre: String?,
+        timeoutMs: Long = 20_000,
+        retries: Int = 1
     ): JSONObject {
         val addon = database.stremioAddon(addonRowId)
             ?: throw HubException(404, "not_found", "Addon não encontrado.")
@@ -308,7 +314,12 @@ object StremioCatalog {
             if (query.isEmpty()) "" else "?" + query.joinToString("&")
 
         val response = try {
-            Http.fetchText(url, accept = "application/json", retries = 1)
+            Http.fetchText(
+                url,
+                accept = "application/json",
+                retries = retries,
+                timeoutMs = timeoutMs
+            )
         } catch (error: ConnectorError) {
             throw HubException(502, error.code, error.message ?: "Falha ao consultar o addon.")
         }
@@ -351,10 +362,17 @@ object StremioCatalog {
 
     /** Busca o termo em todos os catálogos que suportam `search`. */
     fun search(database: HubDatabase, query: String, type: String?): JSONObject {
-        val items = JSONArray()
-        val errors = JSONArray()
-        val seen = mutableSetOf<String>()
+        data class Task(
+            val addonId: String,
+            val addonName: String,
+            val type: String,
+            val catalogId: String
+        )
 
+        // Uma busca pode consultar vários addons/catálogos. Antes era tudo
+        // sequencial (cada addon podia gastar 20 s); agora roda em paralelo
+        // com um teto de tempo por consulta.
+        val tasks = mutableListOf<Task>()
         for (addon in database.stremioAddons()) {
             if (!addon.enabled) continue
             val manifests = addon.manifest.optJSONArray("catalogs") ?: continue
@@ -363,31 +381,58 @@ object StremioCatalog {
                 val catalogType = catalog.optString("type")
                 if (!type.isNullOrBlank() && catalogType != type) continue
                 if (!supportsSearch(catalog)) continue
-
-                try {
-                    val page = catalogPage(
-                        database,
+                tasks.add(
+                    Task(
                         addon.id,
+                        addon.name,
                         catalogType,
-                        catalog.optString("id"),
-                        search = query,
-                        skip = 0,
-                        genre = null
+                        catalog.optString("id")
                     )
-                    val pageItems = page.optJSONArray("items") ?: continue
-                    for (itemIndex in 0 until pageItems.length()) {
-                        val item = pageItems.optJSONObject(itemIndex) ?: continue
-                        val key = "${item.optString("type")}:${item.optString("id")}"
-                        if (!seen.add(key)) continue
-                        items.put(item)
-                    }
-                } catch (error: Exception) {
-                    errors.put(
-                        JSONObject()
-                            .put("addonName", addon.name)
-                            .put("message", error.message ?: "falha ao buscar")
-                    )
-                }
+                )
+            }
+        }
+
+        val results = tasks.map { task ->
+            val future = searchExecutor.submit<JSONObject> {
+                catalogPage(
+                    database,
+                    task.addonId,
+                    task.type,
+                    task.catalogId,
+                    search = query,
+                    skip = 0,
+                    genre = null,
+                    timeoutMs = SEARCH_TIMEOUT_MS,
+                    retries = 0
+                )
+            }
+            try {
+                future.get(SEARCH_TIMEOUT_MS + 1_500, TimeUnit.MILLISECONDS) to task
+            } catch (error: Exception) {
+                future.cancel(true)
+                error to task
+            }
+        }
+
+        val items = JSONArray()
+        val errors = JSONArray()
+        val seen = mutableSetOf<String>()
+        for ((result, task) in results) {
+            if (result is Throwable) {
+                errors.put(
+                    JSONObject()
+                        .put("addonName", task.addonName)
+                        .put("message", result.message ?: "falha ao buscar")
+                )
+                continue
+            }
+            val page = result as JSONObject
+            val pageItems = page.optJSONArray("items") ?: continue
+            for (index in 0 until pageItems.length()) {
+                val item = pageItems.optJSONObject(index) ?: continue
+                val key = "${item.optString("type")}:${item.optString("id")}"
+                if (!seen.add(key)) continue
+                items.put(item)
             }
         }
 

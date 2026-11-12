@@ -62,6 +62,7 @@ class PlayerActivity : Activity() {
     private var controller: MediaController? = null
     private var view: PlayerView? = null
     private val handler = Handler(Looper.getMainLooper())
+    private var originalOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
     private var baseUrl: String = ""
     private var playbackUrl: String = ""
@@ -92,6 +93,7 @@ class PlayerActivity : Activity() {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        originalOrientation = requestedOrientation
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         val payload = intent.getStringExtra("payload") ?: run {
@@ -295,18 +297,22 @@ class PlayerActivity : Activity() {
                 connection.disconnect()
 
                 val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
+                val seen = mutableSetOf<String>()
                 for (index in 0 until subtitles.length()) {
-                    // Alguns addons devolvem 100+ faixas; carregar todas de uma
-                    // vez pesa no Media3 e atrasa a reprodução.
+                    // Alguns addons devolvem 100+ faixas, muitas repetidas
+                    // (mesmo idioma/rótulo vindo de addons diferentes).
                     if (configurations.size >= 30) break
                     val item = subtitles.optJSONObject(index) ?: continue
                     val proxyUrl = item.optString("proxyUrl")
                     if (proxyUrl.isEmpty()) continue
+                    val language = item.optString("lang").ifEmpty { "und" }
+                    val label = item.optString("language").ifEmpty { "Legenda" }
+                    if (!seen.add("${language.lowercase()}|${label.lowercase()}")) continue
                     configurations.add(
                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
                             .setMimeType(MimeTypes.TEXT_VTT)
-                            .setLanguage(item.optString("lang").ifEmpty { "und" })
-                            .setLabel(item.optString("language").ifEmpty { "Legenda" })
+                            .setLanguage(language)
+                            .setLabel(label)
                             .build()
                     )
                 }
@@ -338,11 +344,14 @@ class PlayerActivity : Activity() {
 
         val labels = mutableListOf("Desligada")
         val groups = mutableListOf<TrackGroup?>(null)
+        val seen = mutableSetOf<String>()
         for (group in textGroups) {
             val format = group.mediaTrackGroup.getFormat(0)
             val label = format.label?.toString()?.takeIf { it.isNotBlank() }
                 ?: format.language?.takeIf { it.isNotBlank() }
                 ?: "Legenda ${labels.size}"
+            val language = format.language?.toString().orEmpty()
+            if (!seen.add("${language.lowercase()}|${label.lowercase()}")) continue
             labels.add(label)
             groups.add(group.mediaTrackGroup)
         }
@@ -363,6 +372,12 @@ class PlayerActivity : Activity() {
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    override fun finish() {
+        // Volta à orientação que o app usava antes do player em tela cheia.
+        requestedOrientation = originalOrientation
+        super.finish()
     }
 
     @Deprecated("Deprecated in Android")

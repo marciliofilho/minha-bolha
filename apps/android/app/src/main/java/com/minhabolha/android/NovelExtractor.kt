@@ -36,6 +36,7 @@ class NovelExtractor(context: Context) {
     private companion object {
         const val TAG = "MinhaBolha"
         const val RENDER_DELAY_MS = 5_000L
+        const val EXTRACT_DELAY_MS = 1_500L
         const val DEFAULT_TIMEOUT_MS = 45_000L
 
         const val EXTRACT_JS = """            (function() {
@@ -56,7 +57,9 @@ class NovelExtractor(context: Context) {
                   var wordsTitle = document.querySelector('.cha-tit, h1');
                   return JSON.stringify({
                     title: wordsTitle ? (wordsTitle.textContent || '').trim() : (document.title || '').trim(),
-                    text: (words.textContent || '').trim()
+                    // innerText preserva as quebras entre parágrafos; textContent
+                    // juntava tudo num bloco só, prejudicando leitura e tradução.
+                    text: (words.innerText || words.textContent || '').trim()
                   });
                 }
 
@@ -78,7 +81,10 @@ class NovelExtractor(context: Context) {
                 var title = heading ? (heading.textContent || '').trim() : '';
                 if (!title) title = (document.title || '').trim();
 
-                return JSON.stringify({ title: title, text: best ? (best.textContent || '') : '' });
+                return JSON.stringify({
+                  title: title,
+                  text: best ? (best.innerText || best.textContent || '') : ''
+                });
               } catch (error) {
                 return JSON.stringify({ title: '', text: '', error: String(error) });
               }
@@ -296,9 +302,10 @@ class NovelExtractor(context: Context) {
         url: String,
         script: String,
         minLinks: Int = 0,
+        renderDelayMs: Long = RENDER_DELAY_MS,
         callback: (String?) -> Unit
     ) {
-        loadInternal(url, script, minLinks) { raw, _ -> callback(raw) }
+        loadInternal(url, script, minLinks, renderDelayMs) { raw, _ -> callback(raw) }
     }
 
     fun extract(rawUrl: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Extracted? {
@@ -333,13 +340,16 @@ class NovelExtractor(context: Context) {
     }
 
     private fun load(url: String, callback: (Extracted?, String?) -> Unit) {
-        loadInternal(url, EXTRACT_JS) { raw, error -> callback(parse(raw), error) }
+        loadInternal(url, EXTRACT_JS, 0, EXTRACT_DELAY_MS) { raw, error ->
+            callback(parse(raw), error)
+        }
     }
 
     private fun loadInternal(
         url: String,
         script: String,
         minLinks: Int = 0,
+        renderDelayMs: Long = RENDER_DELAY_MS,
         callback: (String?, String?) -> Unit
     ) {
         val view = webView ?: createWebView().also { webView = it }
@@ -373,7 +383,7 @@ class NovelExtractor(context: Context) {
                         }
                     }
                 }
-                view.postDelayed({ evaluate() }, RENDER_DELAY_MS)
+                view.postDelayed({ evaluate() }, renderDelayMs)
             }
 
             override fun onReceivedError(

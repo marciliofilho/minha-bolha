@@ -933,11 +933,14 @@ class HubServer(
                 val response = com.minhabolha.android.connectors.Http.fetchText(
                     url,
                     accept = "application/json",
-                    retries = 1,
-                    timeoutMs = 20_000
+                    headers = mapOf("referer" to "https://translate.google.com/"),
+                    retries = 2,
+                    timeoutMs = 25_000
                 )
                 val payload = JSONArray(response.text)
                 val sentences = payload.optJSONArray(0) ?: JSONArray()
+                // Mantém a separação entre os blocos (parágrafos) traduzidos.
+                if (output.isNotEmpty()) output.append("\n\n")
                 for (index in 0 until sentences.length()) {
                     val pair = sentences.optJSONArray(index) ?: continue
                     output.append(pair.optString(0))
