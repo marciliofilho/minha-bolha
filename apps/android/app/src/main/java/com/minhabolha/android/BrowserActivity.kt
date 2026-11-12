@@ -113,7 +113,14 @@ class BrowserActivity : Activity() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val uri = request.url
                     val scheme = uri.scheme.orEmpty()
-                    if (scheme == "http" || scheme == "https") return false
+                    if (scheme == "http" || scheme == "https") {
+                        val rewritten = duckDuckGoHtml(uri.toString())
+                        if (rewritten != uri.toString()) {
+                            view.loadUrl(rewritten)
+                            return true
+                        }
+                        return false
+                    }
                     return openExternally(uri)
                 }
 
@@ -161,18 +168,34 @@ class BrowserActivity : Activity() {
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
-        loadUrl(initialUrl.ifEmpty { "https://duckduckgo.com/" })
+        loadUrl(initialUrl.ifEmpty { "https://html.duckduckgo.com/html/" })
+    }
+
+    /**
+     * O DuckDuckGo normal usa uma SPA que não renderiza em WebViews antigos.
+     * A versão HTML entrega os resultados prontos e funciona no Android.
+     */
+    private fun duckDuckGoHtml(value: String): String {
+        val uri = Uri.parse(value)
+        val host = uri.host.orEmpty()
+        if (host != "duckduckgo.com" && host != "www.duckduckgo.com") return value
+        if (uri.path != "/" && uri.path != "/search") return value
+        val query = uri.getQueryParameter("q").orEmpty()
+        if (query.isEmpty()) return value
+        return "https://html.duckduckgo.com/html/?q=" +
+            java.net.URLEncoder.encode(query, "UTF-8")
     }
 
     private fun loadUrl(value: String) {
         val trimmed = value.trim()
         if (trimmed.isEmpty()) return
         val url = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            trimmed
+            duckDuckGoHtml(trimmed)
         } else if (trimmed.contains('.') && !trimmed.contains(' ')) {
             "https://$trimmed"
         } else {
-            "https://duckduckgo.com/?q=" + java.net.URLEncoder.encode(trimmed, "UTF-8")
+            "https://html.duckduckgo.com/html/?q=" +
+                java.net.URLEncoder.encode(trimmed, "UTF-8")
         }
         urlField.setText(url)
         urlField.clearFocus()
