@@ -389,6 +389,17 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun isAvailable(): Boolean = true
 
+        /** Para o player nativo/MediaSession quando a UI fecha o vídeo. */
+        @JavascriptInterface
+        fun stopPlayback() {
+            runCatching {
+                startService(
+                    Intent(this@MainActivity, PlaybackService::class.java)
+                        .setAction(PlaybackService.ACTION_STOP)
+                )
+            }
+        }
+
         @JavascriptInterface
         fun openBrowser(url: String?) {
             runOnUiThread {

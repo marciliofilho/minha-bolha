@@ -166,6 +166,12 @@ export function StreamPlayer({
   onClose
 }: StreamPlayerProps) {
   const { t } = useI18n();
+  const closePlayer = (): void => {
+    // Fechar o vídeo também para o player nativo/MediaSession, senão o áudio
+    // continua tocando em segundo plano.
+    window.HubNative?.stopPlayback?.();
+    onClose();
+  };
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<HlsInstance | null>(null);
@@ -1218,7 +1224,7 @@ export function StreamPlayer({
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/85 p-6 text-center">
             <button
               type="button"
-              onClick={onClose}
+              onClick={closePlayer}
               aria-label={t('Fechar player')}
               className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/70"
             >
@@ -1288,7 +1294,7 @@ export function StreamPlayer({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closePlayer}
             aria-label={t('Fechar player')}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/70"
           >

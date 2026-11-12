@@ -44,6 +44,7 @@ class WebnovelConnector(
                 .put("url", url)
                 .put("title", page.title)
                 .put("chapterCount", page.links.size)
+                .put("coverUrl", page.cover ?: JSONObject.NULL)
                 .put("input", input),
             samples = page.links.takeLast(3).map {
                 ResolvedSample(it.title, it.url, null)
@@ -72,15 +73,18 @@ class WebnovelConnector(
             kind = "chapter",
             title = latest.title,
             url = latest.url,
-            thumbnailUrl = null,
+            thumbnailUrl = page.cover,
             description = "$bookTitle · ${page.links.size} capítulo(s)",
             author = null,
             publishedAt = Dates.nowIso(),
             meta = JSONObject()
                 .put("bookTitle", bookTitle)
+                .put("chapterId", latest.url)
                 .put("chapterName", latest.title)
                 .put("chapterUrl", latest.url)
+                .put("chapterIndex", page.links.size - 1)
                 .put("chapterCount", page.links.size)
+                .put("coverUrl", page.cover ?: JSONObject.NULL)
         )
 
         return ConnectorResult(

@@ -19,7 +19,23 @@ import androidx.media3.session.MediaSessionService
  */
 class PlaybackService : MediaSessionService() {
 
+    companion object {
+        const val ACTION_STOP = "com.minhabolha.android.STOP_PLAYBACK"
+    }
+
     private var mediaSession: MediaSession? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            mediaSession?.player?.let { player ->
+                runCatching { player.stop() }
+                runCatching { player.clearMediaItems() }
+            }
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
 
     override fun onCreate() {
         super.onCreate()

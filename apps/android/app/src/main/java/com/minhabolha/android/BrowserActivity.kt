@@ -6,7 +6,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Message
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import android.view.Gravity
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -65,6 +67,7 @@ class BrowserActivity : Activity() {
         urlField = EditText(this).apply {
             setSingleLine(true)
             inputType = InputType.TYPE_TEXT_VARIATION_URI
+            imeOptions = EditorInfo.IME_ACTION_GO
             hint = "https://"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
@@ -94,6 +97,14 @@ class BrowserActivity : Activity() {
             settings.useWideViewPort = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            settings.userAgentString =
+                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+            settings.setSupportMultipleWindows(true)
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportZoom(true)
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
@@ -111,6 +122,20 @@ class BrowserActivity : Activity() {
                 }
             }
             webChromeClient = object : WebChromeClient() {
+                override fun onCreateWindow(
+                    view: WebView,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: Message
+                ): Boolean {
+                    // target=_blank (resultados de busca/news) abre na mesma
+                    // WebView em vez de ficar sem ação.
+                    val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                    transport.webView = webView
+                    resultMsg.sendToTarget()
+                    return true
+                }
+
                 override fun onProgressChanged(view: WebView, newProgress: Int) {
                     this@BrowserActivity.progress.progress = newProgress
                     this@BrowserActivity.progress.visibility =

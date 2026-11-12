@@ -1,7 +1,9 @@
 package com.minhabolha.android
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.net.Uri
@@ -16,15 +18,20 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -153,6 +160,16 @@ class PlayerActivity : Activity() {
             addView(backButton)
         }
 
+        val subtitleButton = Button(this).apply {
+            text = "Legendas"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#D9080A0F"))
+            setPadding(32, 8, 32, 8)
+            visibility = View.GONE
+            setOnClickListener { showSubtitlePicker() }
+        }
+
         val root = FrameLayout(this)
         root.addView(
             view,
@@ -160,6 +177,17 @@ class PlayerActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+        )
+        root.addView(
+            subtitleButton,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = 32
+                rightMargin = 32
+            }
         )
         root.addView(
             errorBox,
@@ -206,6 +234,13 @@ class PlayerActivity : Activity() {
                                 requestedOrientation =
                                     ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                             }
+                        }
+
+                        override fun onTracksChanged(tracks: Tracks) {
+                            val hasText = tracks.groups.any {
+                                it.type == C.TRACK_TYPE_TEXT && it.isSupported
+                            }
+                            subtitleButton.visibility = if (hasText) View.VISIBLE else View.GONE
                         }
                     })
 
@@ -291,6 +326,45 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
+    private fun showSubtitlePicker() {
+        val mediaController = controller ?: return
+        val textGroups = mediaController.currentTracks.groups.filter {
+            it.type == C.TRACK_TYPE_TEXT && it.isSupported
+        }
+        if (textGroups.isEmpty()) {
+            Toast.makeText(this, "Este stream não tem legendas.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val labels = mutableListOf("Desligada")
+        val groups = mutableListOf<TrackGroup?>(null)
+        for (group in textGroups) {
+            val format = group.mediaTrackGroup.getFormat(0)
+            val label = format.label?.toString()?.takeIf { it.isNotBlank() }
+                ?: format.language?.takeIf { it.isNotBlank() }
+                ?: "Legenda ${labels.size}"
+            labels.add(label)
+            groups.add(group.mediaTrackGroup)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Legendas")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val builder = mediaController.trackSelectionParameters.buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                val group = groups[which]
+                if (group == null) {
+                    builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                } else {
+                    builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    builder.setOverrideForType(TrackSelectionOverride(group, 0))
+                }
+                mediaController.trackSelectionParameters = builder.build()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     @Deprecated("Deprecated in Android")
     override fun onBackPressed() {
         finish()
@@ -306,6 +380,20 @@ class PlayerActivity : Activity() {
      * notificação de mídia permite pausar/parar.
      */
     override fun onDestroy() {
+        // Fechar a tela do player (X/Voltar) encerra o áudio; apertar Home
+        // continua em segundo plano pela MediaSession.
+        if (isFinishing) {
+            controller?.let { media ->
+                runCatching { media.stop() }
+                runCatching { media.clearMediaItems() }
+            }
+            runCatching {
+                startService(
+                    Intent(this, PlaybackService::class.java)
+                        .setAction(PlaybackService.ACTION_STOP)
+                )
+            }
+        }
         handler.removeCallbacksAndMessages(null)
         view?.player = null
         view = null

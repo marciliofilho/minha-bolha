@@ -1134,7 +1134,10 @@ class HubServer(
             .put("bookId", sourceId)
             .put("title", title)
             .put("author", JSONObject.NULL)
-            .put("coverUrl", JSONObject.NULL)
+            .put(
+                "coverUrl",
+                page.cover ?: config.optText("coverUrl") ?: JSONObject.NULL
+            )
             .put("description", JSONObject.NULL)
             .put("category", "Novel")
             .put("tags", JSONArray())

@@ -27,11 +27,15 @@ class NovelExtractor(context: Context) {
 
     data class ChapterLink(val title: String, val url: String)
 
-    data class ChapterList(val title: String, val links: List<ChapterLink>)
+    data class ChapterList(
+        val title: String,
+        val links: List<ChapterLink>,
+        val cover: String? = null
+    )
 
     private companion object {
         const val TAG = "MinhaBolha"
-        const val RENDER_DELAY_MS = 1_500L
+        const val RENDER_DELAY_MS = 2_500L
         const val DEFAULT_TIMEOUT_MS = 30_000L
 
         const val EXTRACT_JS = """            (function() {
@@ -66,21 +70,45 @@ class NovelExtractor(context: Context) {
         const val CHAPTERS_JS = """
             (function() {
               try {
-                var title = (document.querySelector('h1') ? document.querySelector('h1').textContent : '') || document.title || '';
+                var titleNode = document.querySelector('h1, .book-title, .novel-title, .entry-title');
+                var ogTitle = document.querySelector('meta[property="og:title"], meta[name="og:title"]');
+                var title = (titleNode ? titleNode.textContent : '') ||
+                  (ogTitle ? ogTitle.getAttribute('content') : '') ||
+                  document.title || '';
+
+                var coverNode = document.querySelector(
+                  'meta[property="og:image"], meta[name="og:image"], link[rel="image_src"]'
+                );
+                var cover = coverNode
+                  ? (coverNode.getAttribute('content') || coverNode.getAttribute('href') || '')
+                  : '';
+                if (!cover) {
+                  var img = document.querySelector(
+                    '.book-cover img, .novel-cover img, .cover img, article img, main img, img'
+                  );
+                  if (img) cover = img.currentSrc || img.src || '';
+                }
+
                 var links = [];
+                var seen = {};
                 var anchors = document.querySelectorAll('a[href]');
-                for (var i = 0; i < anchors.length && links.length < 500; i++) {
+                for (var i = 0; i < anchors.length && links.length < 3000; i++) {
                   var a = anchors[i];
                   var text = (a.textContent || '').replace(/\s+/g, ' ').trim();
-                  if (text.length < 2 || text.length > 160) continue;
+                  if (text.length < 1 || text.length > 200) continue;
                   var href = a.href || '';
                   if (!/^https?:/i.test(href)) continue;
-                  if (!/(cap[ií]tulo|chapter|epis[oó]dio|volume)/i.test(text) && !/^\d{1,5}([.,]\d+)?$/.test(text)) continue;
+                  var looksChapter = /(cap[ií]tulo|chapter|epis[oó]dio|episode|volume|vol\.)/i.test(text) ||
+                    /^\s*\d{1,5}([.,]\d+)?(\s*[:.\-–—]\s*.*)?$/.test(text) ||
+                    /(cap[ií]tulo|chapter|epis[oó]dio|episode|\/ch\/|\/cap\/)/i.test(href);
+                  if (!looksChapter) continue;
+                  if (seen[href]) continue;
+                  seen[href] = true;
                   links.push({ title: text, url: href });
                 }
-                return JSON.stringify({ title: title.trim(), links: links });
+                return JSON.stringify({ title: title.trim(), cover: cover, links: links });
               } catch (error) {
-                return JSON.stringify({ title: '', links: [], error: String(error) });
+                return JSON.stringify({ title: '', cover: '', links: [], error: String(error) });
               }
             })();
         """
@@ -128,17 +156,19 @@ class NovelExtractor(context: Context) {
         }
 
         val title = json.optString("title").trim()
+        val cover = json.optText("cover")
         val array = json.optJSONArray("links") ?: return null
         val links = mutableListOf<ChapterLink>()
+        val seen = mutableSetOf<String>()
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val url = item.optString("url")
             val name = item.optString("title").trim()
-            if (url.isEmpty() || name.isEmpty()) continue
+            if (url.isEmpty() || name.isEmpty() || !seen.add(url)) continue
             links.add(ChapterLink(name, url))
         }
         if (links.isEmpty()) return null
-        return ChapterList(title.ifEmpty { "Novel" }, links)
+        return ChapterList(title.ifEmpty { "Novel" }, links, cover)
     }
 
     /** Executa um script arbitrário na página carregada. */
@@ -192,8 +222,13 @@ class NovelExtractor(context: Context) {
         }
 
         view.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                request.url.toString() != url
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                // Deixa o WebView seguir redirecionamentos (http→https,
+                // barra final, domínio canônico). Bloquear o redirect deixava
+                // a página em branco e a lista de capítulos vazia.
+                val scheme = request.url.scheme.orEmpty()
+                return scheme != "http" && scheme != "https"
+            }
 
             override fun onPageFinished(view: WebView, finishedUrl: String) {
                 view.postDelayed({

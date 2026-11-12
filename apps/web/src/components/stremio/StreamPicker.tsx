@@ -57,6 +57,10 @@ function kindLabel(kind: TitleStreamDto['kind']): string {
 
 export function StreamPicker({ target, onClose }: StreamPickerProps) {
   const { t } = useI18n();
+  const closePicker = (): void => {
+    window.HubNative?.stopPlayback?.();
+    onClose();
+  };
   const [season, setSeason] = useState(target.season ?? 1);
   const [episode, setEpisode] = useState(target.episode ?? 1);
   const [playing, setPlaying] = useState<TitleStreamDto | null>(null);
@@ -293,7 +297,7 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={closePicker}
             aria-label={t('Fechar lista de streams')}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition hover:bg-elevated hover:text-fg"
           >

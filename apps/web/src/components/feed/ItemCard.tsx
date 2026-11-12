@@ -1,12 +1,14 @@
 /** Card do feed. */
-import type { MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { CheckCheck, Clock, ExternalLink, Mail, MailOpen, Star } from 'lucide-react';
 import type { FeedItemDto } from '@hub/shared';
 import { useI18n } from '@/lib/i18n';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
+import { useLongPress } from '@/lib/use-long-press';
 import { Chip, IconButton, Thumb } from '@/components/ui';
 import { StremioBadge } from '@/components/stremio/StremioBadge';
 import { LibraryToggleButton } from '@/components/stremio/LibraryToggleButton';
+import { ItemPreviewModal } from '@/components/feed/ItemPreviewModal';
 
 interface ItemCardProps {
   item: FeedItemDto;
@@ -30,6 +32,8 @@ export function ItemCard({
   onSetNovelProgress
 }: ItemCardProps) {
   const { t } = useI18n();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const longPress = useLongPress(() => setPreviewOpen(true));
   const isChapter = item.kind === 'chapter';
   const libraryType: 'movie' | 'series' | null = item.mediaKind
     ? item.mediaKind === 'movie'
@@ -39,6 +43,7 @@ export function ItemCard({
 
   return (
     <article
+      {...longPress}
       className={cn(
         'group card relative flex gap-3 p-3 transition duration-200 hover:border-accent/30 hover:bg-elevated/40 sm:gap-4 sm:p-4',
         !item.isRead && 'border-line/90'
@@ -158,6 +163,24 @@ export function ItemCard({
           {item.inStremioLibrary ? <StremioBadge /> : null}
         </div>
       </div>
+      {previewOpen ? (
+        <ItemPreviewModal
+          item={item}
+          onClose={() => setPreviewOpen(false)}
+          onOpen={() => {
+            setPreviewOpen(false);
+            onOpen({ preventDefault: () => undefined } as unknown as MouseEvent<HTMLAnchorElement>);
+          }}
+          onExternal={() => {
+            setPreviewOpen(false);
+            onExternal?.();
+            if (window.HubNative?.openBrowser) window.HubNative.openBrowser(item.url);
+            else window.open(item.url, '_blank', 'noopener,noreferrer');
+          }}
+          onToggleFavorite={onToggleFavorite}
+          onToggleWatchLater={onToggleWatchLater}
+        />
+      ) : null}
     </article>
   );
 }

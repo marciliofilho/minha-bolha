@@ -1,12 +1,14 @@
 /** Card vertical usado nas visualizações em grade e "Netflix". */
-import type { MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { CheckCheck, Clock, Mail, MailOpen, Star } from 'lucide-react';
 import type { FeedItemDto } from '@hub/shared';
 import { useI18n } from '@/lib/i18n';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
+import { useLongPress } from '@/lib/use-long-press';
 import { Chip, IconButton, Thumb } from '@/components/ui';
 import { StremioBadge } from '@/components/stremio/StremioBadge';
 import { LibraryToggleButton } from '@/components/stremio/LibraryToggleButton';
+import { ItemPreviewModal } from '@/components/feed/ItemPreviewModal';
 
 interface ItemTileProps {
   item: FeedItemDto;
@@ -29,6 +31,8 @@ export function ItemTile({
   onSetNovelProgress
 }: ItemTileProps) {
   const { t } = useI18n();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const longPress = useLongPress(() => setPreviewOpen(true));
   const isChapter = item.kind === 'chapter';
   const libraryType: 'movie' | 'series' | null = item.mediaKind
     ? item.mediaKind === 'movie'
@@ -38,6 +42,7 @@ export function ItemTile({
 
   return (
     <article
+      {...longPress}
       className={cn(
         'group flex flex-col',
         variant === 'row' && (isChapter ? 'w-[10.5rem] shrink-0' : 'w-[15rem] shrink-0')
@@ -159,6 +164,23 @@ export function ItemTile({
           {item.inStremioLibrary ? <StremioBadge /> : null}
         </div>
       </div>
+      {previewOpen ? (
+        <ItemPreviewModal
+          item={item}
+          onClose={() => setPreviewOpen(false)}
+          onOpen={() => {
+            setPreviewOpen(false);
+            onOpen({ preventDefault: () => undefined } as unknown as MouseEvent<HTMLAnchorElement>);
+          }}
+          onExternal={() => {
+            setPreviewOpen(false);
+            if (window.HubNative?.openBrowser) window.HubNative.openBrowser(item.url);
+            else window.open(item.url, '_blank', 'noopener,noreferrer');
+          }}
+          onToggleFavorite={onToggleFavorite}
+          onToggleWatchLater={onToggleWatchLater}
+        />
+      ) : null}
     </article>
   );
 }
