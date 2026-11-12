@@ -207,13 +207,24 @@ export function NovelReader({
     Boolean(language) && !cachedTranslation && translation.isError;
 
   useEffect(() => {
-    if (currentUrl || !details.data) return;
+    if (!details.data) return;
     const list = details.data.chapters;
     if (list.length === 0) return;
 
+    // Já está numa URL canônica da lista: só sincroniza o id.
+    const byUrl = currentUrl
+      ? list.find(
+          (candidate) => candidate.url === currentUrl || candidate.id === currentUrl
+        )
+      : null;
+    if (byUrl) {
+      if (byUrl.id !== currentId) setCurrentId(byUrl.id);
+      return;
+    }
+
     const numericTail = (value: string | null | undefined): string | null =>
       value?.match(/(\d{6,})\/?$/)?.[1] ?? null;
-    const currentTail = numericTail(currentId) ?? numericTail(item.url);
+    const currentTail = numericTail(currentId) ?? numericTail(item.url) ?? numericTail(currentUrl);
     const fallbackIndex =
       typeof meta.chapterIndex === 'number' ? meta.chapterIndex : 0;
 
@@ -236,7 +247,7 @@ export function NovelReader({
       null;
 
     if (!chapter?.url) return;
-    setCurrentUrl(chapter.url);
+    if (chapter.url !== currentUrl) setCurrentUrl(chapter.url);
     if (chapter.id !== currentId) setCurrentId(chapter.id);
   }, [currentUrl, currentId, details.data, item.url, meta.chapterIndex]);
 
