@@ -29,6 +29,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   and is attached to both the web and the native player.
 - **Steam games**: add by appid, search the store, import the public wishlist
   (no API key), track prices/history, target price and "at lowest" flag.
+- **Backup**: export/preview/import in the desktop `hub-backup` v2 format
+  (settings, categories, sources, games, calendar, feed, playback, Stremio
+  library), so data can move between the PC and the phone.
 - **Stremio account**: login with e-mail/password or an auth key (the session
   key is encrypted with the Android Keystore), hourly library sync through a
   `stremio-library` source, local favourites/watch‑later and shared
@@ -78,9 +81,11 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 - gg.deals keyshop prices (Steam official prices are tracked; the keyshop
   columns stay empty until the gg.deals API is ported).
+- Backup sections not covered yet: addons, apiKeys, stremioAccount, novels and
+  localLibrary (credentials stay on the device; addons are re-added by URL).
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
-- Backup import/export, library mutations and novel connectors.
+- Novels: catalog, reader, chapter cache and offline downloads.
 
 Because those endpoints do not exist yet, the corresponding screens show their
 normal error state instead of data.
