@@ -513,6 +513,11 @@ if [ -n "$MERGED" ]; then
   else
     fail "PlaybackService/MediaSessionService ausente no manifest final"
   fi
+  if grep -q "BrowserActivity" "$MERGED"; then
+    echo "navegador embutido declarado no manifest final"
+  else
+    fail "BrowserActivity ausente no manifest final"
+  fi
   if grep -q "FOREGROUND_SERVICE_MEDIA_PLAYBACK" "$MERGED"; then
     echo "permissão de mídia em primeiro plano ok"
   else

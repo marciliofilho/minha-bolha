@@ -237,7 +237,14 @@ function FeedBrowserToggle({
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={() => {
+        // Android: o navegador é uma tela nativa (WebView), não o painel com CDP.
+        if (window.HubNative?.openBrowser) {
+          window.HubNative.openBrowser('');
+          return;
+        }
+        onOpen();
+      }}
       title={title}
       className="inline-flex h-9 shrink-0 items-center gap-1.5 self-start rounded-xl border border-line bg-elevated px-3 text-xs font-semibold text-fg shadow-sm transition hover:border-accent/40 hover:bg-elevated/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
     >

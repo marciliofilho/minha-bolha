@@ -8,6 +8,7 @@ declare const __APP_VERSION__: string;
  */
 interface HubNativeBridge {
   playTorrent(payload: string): void;
+  openBrowser(url?: string): void;
   isAvailable(): boolean;
 }
 

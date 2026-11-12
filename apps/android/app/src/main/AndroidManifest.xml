@@ -32,6 +32,11 @@
             android:exported="false"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
+        <activity
+            android:name=".BrowserActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false" />
+
         <service
             android:name=".HubForegroundService"
             android:exported="false"

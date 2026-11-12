@@ -95,14 +95,17 @@ class MainActivity : Activity() {
             ): Boolean {
                 val url = request.url
                 val host = url.host.orEmpty()
-                // Só o servidor local fica dentro do WebView; links externos
-                // abrem no navegador do aparelho, como no desktop.
+                // Só o servidor local fica dentro do WebView do app; links
+                // externos abrem no navegador embutido.
                 if (host == "127.0.0.1" || host == "localhost") return false
                 return try {
-                    startActivity(Intent(Intent.ACTION_VIEW, url))
+                    startActivity(
+                        Intent(this@MainActivity, BrowserActivity::class.java)
+                            .putExtra("url", url.toString())
+                    )
                     true
-                } catch (error: ActivityNotFoundException) {
-                    Log.w(TAG, "nenhum app para abrir $url")
+                } catch (error: Exception) {
+                    Log.w(TAG, "falha ao abrir o navegador embutido", error)
                     true
                 }
             }
@@ -181,6 +184,20 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun isAvailable(): Boolean = true
+
+        @JavascriptInterface
+        fun openBrowser(url: String?) {
+            runOnUiThread {
+                try {
+                    startActivity(
+                        Intent(this@MainActivity, BrowserActivity::class.java)
+                            .putExtra("url", url.orEmpty())
+                    )
+                } catch (error: Exception) {
+                    Log.e(TAG, "falha ao abrir o navegador", error)
+                }
+            }
+        }
     }
 
     @Deprecated("Deprecated in Android")
