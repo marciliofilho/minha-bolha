@@ -43,6 +43,23 @@ class NovelExtractor(context: Context) {
                 var junk = document.querySelectorAll('script, style, noscript, iframe, nav, header, footer, aside, form');
                 for (var i = 0; i < junk.length; i++) { junk[i].parentNode && junk[i].parentNode.removeChild(junk[i]); }
 
+                // Webnovel: o corpo real fica em .cha-words; o container
+                // mobile inclui cabeçalho/menus e seria escolhido por tamanho.
+                var words = document.querySelector('.cha-words');
+                if (words) {
+                  var innerJunk = words.querySelectorAll(
+                    '.para-comment, .chapter-comment, .comment-item, script, style'
+                  );
+                  for (var w = 0; w < innerJunk.length; w++) {
+                    innerJunk[w].parentNode && innerJunk[w].parentNode.removeChild(innerJunk[w]);
+                  }
+                  var wordsTitle = document.querySelector('.cha-tit, h1');
+                  return JSON.stringify({
+                    title: wordsTitle ? (wordsTitle.textContent || '').trim() : (document.title || '').trim(),
+                    text: (words.textContent || '').trim()
+                  });
+                }
+
                 var selectors = [
                   '#chapter-content', '.cha-words', '.chapter-content', '.chapter-body',
                   '.reading-content', '.entry-content', '.post-content', '.content',
@@ -209,7 +226,11 @@ class NovelExtractor(context: Context) {
             val latch = CountDownLatch(1)
             var result: ChapterList? = null
 
-            main.post { loadScript(url, CHAPTERS_JS) { raw ->
+            // O catálogo do Webnovel hidrata em etapas; espera a lista
+            // crescer antes de aceitar uma extração parcial.
+            val minLinks =
+                if (Regex("webnovel\\.com", RegexOption.IGNORE_CASE).containsMatchIn(url)) 5 else 0
+            main.post { loadScript(url, CHAPTERS_JS, minLinks) { raw ->
                 result = parseChapters(raw)
                 latch.countDown()
             } }
@@ -259,8 +280,13 @@ class NovelExtractor(context: Context) {
     }
 
     /** Executa um script arbitrário na página carregada. */
-    private fun loadScript(url: String, script: String, callback: (String?) -> Unit) {
-        loadInternal(url, script) { raw, _ -> callback(raw) }
+    private fun loadScript(
+        url: String,
+        script: String,
+        minLinks: Int = 0,
+        callback: (String?) -> Unit
+    ) {
+        loadInternal(url, script, minLinks) { raw, _ -> callback(raw) }
     }
 
     fun extract(rawUrl: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Extracted? {
@@ -298,7 +324,12 @@ class NovelExtractor(context: Context) {
         loadInternal(url, EXTRACT_JS) { raw, error -> callback(parse(raw), error) }
     }
 
-    private fun loadInternal(url: String, script: String, callback: (String?, String?) -> Unit) {
+    private fun loadInternal(
+        url: String,
+        script: String,
+        minLinks: Int = 0,
+        callback: (String?, String?) -> Unit
+    ) {
         val view = webView ?: createWebView().also { webView = it }
 
         var completed = false
@@ -318,11 +349,19 @@ class NovelExtractor(context: Context) {
             }
 
             override fun onPageFinished(view: WebView, finishedUrl: String) {
-                view.postDelayed({
+                var attempt = 0
+                fun evaluate() {
                     view.evaluateJavascript(script) { value ->
-                        finish(value, null)
+                        if (completed) return@evaluateJavascript
+                        if (minLinks > 0 && linkCount(value) < minLinks && attempt < 6) {
+                            attempt++
+                            view.postDelayed({ evaluate() }, 2_000L)
+                        } else {
+                            finish(value, null)
+                        }
                     }
-                }, RENDER_DELAY_MS)
+                }
+                view.postDelayed({ evaluate() }, RENDER_DELAY_MS)
             }
 
             override fun onReceivedError(
@@ -340,6 +379,16 @@ class NovelExtractor(context: Context) {
             view.loadUrl(url)
         } catch (error: Exception) {
             finish(null, error.message)
+        }
+    }
+
+    private fun linkCount(raw: String?): Int {
+        if (raw.isNullOrBlank() || raw == "null") return 0
+        return try {
+            val json = JSONObject(org.json.JSONTokener(raw).nextValue().toString())
+            json.optJSONArray("links")?.length() ?: 0
+        } catch (error: Exception) {
+            0
         }
     }
 

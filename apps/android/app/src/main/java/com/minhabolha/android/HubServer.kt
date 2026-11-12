@@ -1782,7 +1782,15 @@ class HubServer(
     // ---------------------------------------------------------------------
 
     private fun json(payload: JSONObject, status: Response.Status = Response.Status.OK): Response {
-        return newFixedLengthResponse(status, "application/json; charset=utf-8", payload.toString())
+        return newFixedLengthResponse(
+            status,
+            "application/json; charset=utf-8",
+            payload.toString()
+        ).apply {
+            // Dados locais mudam a cada refresh; cache do WebView não pode
+            // continuar entregando a lista antiga de capítulos.
+            addHeader("Cache-Control", "no-store")
+        }
     }
 
     private fun jsonError(status: Int, message: String, code: String): Response {
@@ -1794,7 +1802,9 @@ class HubServer(
             Response.Status.lookup(status) ?: Response.Status.INTERNAL_ERROR,
             "application/json; charset=utf-8",
             payload.toString()
-        )
+        ).apply {
+            addHeader("Cache-Control", "no-store")
+        }
     }
 
     private fun errorCodeToStatus(code: String): Int = when (code) {
