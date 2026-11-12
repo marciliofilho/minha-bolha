@@ -289,7 +289,8 @@ export function StreamPlayer({
     window.HubNative?.playTorrent(
       JSON.stringify({ url: playbackUrl, title, tracking: tracking ?? null })
     );
-  }, [forceNative4k, playbackUrl, title, tracking]);
+    onBack();
+  }, [forceNative4k, playbackUrl, title, tracking, onBack]);
 
   const canLoadSubtitles = Boolean(subtitleTarget) && !isYouTube && !isExternal;
   const subtitlesQuery = useStremioSubtitles(subtitleTarget ?? null, canLoadSubtitles);
@@ -447,6 +448,7 @@ export function StreamPlayer({
             })
           );
           setTorrentPreparing(false);
+          onBack();
           return;
         }
 
@@ -1181,6 +1183,7 @@ export function StreamPlayer({
                     tracking: tracking ?? null
                   })
                 );
+                onBack();
                 return;
               }
               if (!transcodedUrl && retryWithTranscode()) return;
