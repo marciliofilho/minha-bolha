@@ -2082,6 +2082,108 @@ class HubDatabase(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------
+    // Backup: linhas cruas e importação
+    // ---------------------------------------------------------------------
+
+    private val BACKUP_TABLES = setOf(
+        "games", "price_history", "media", "release_events", "global_releases",
+        "items", "stremio_playback", "stremio_library"
+    )
+
+    private val SAFE_COLUMN = Regex("^[a-z_][a-z0-9_]*$")
+
+    fun rawRows(table: String): List<JSONObject> {
+        if (table !in BACKUP_TABLES) return emptyList()
+        val rows = mutableListOf<JSONObject>()
+        db.rawQuery("SELECT * FROM $table", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val row = JSONObject()
+                for (index in 0 until cursor.columnCount) {
+                    val name = cursor.getColumnName(index)
+                    when (cursor.getType(index)) {
+                        Cursor.FIELD_TYPE_NULL -> row.put(name, JSONObject.NULL)
+                        Cursor.FIELD_TYPE_INTEGER -> row.put(name, cursor.getLong(index))
+                        Cursor.FIELD_TYPE_FLOAT -> row.put(name, cursor.getDouble(index))
+                        else -> row.put(name, cursor.getString(index))
+                    }
+                }
+                rows.add(row)
+            }
+        }
+        return rows
+    }
+
+    fun importRow(table: String, row: JSONObject) {
+        if (table !in BACKUP_TABLES) return
+        val columns = row.keys().asSequence()
+            .filter { SAFE_COLUMN.matches(it) }
+            .toList()
+        if (columns.isEmpty()) return
+
+        val values = columns.map { key ->
+            when (val value = row.opt(key)) {
+                null, JSONObject.NULL -> null
+                is Boolean -> if (value) 1 else 0
+                is Number -> value
+                else -> value.toString()
+            }
+        }.toTypedArray()
+
+        val placeholders = columns.joinToString(", ") { "?" }
+        val names = columns.joinToString(", ")
+        db.execSQL("INSERT OR REPLACE INTO $table ($names) VALUES ($placeholders)", values)
+    }
+
+    fun upsertCategoryFromBackup(id: String, label: String, icon: String, color: String) {
+        db.execSQL(
+            """
+            INSERT INTO categories (id, label, icon, color, sort_order, is_system)
+            VALUES (?, ?, ?, ?, 100, 0)
+            ON CONFLICT(id) DO UPDATE SET
+              label = excluded.label,
+              icon = excluded.icon,
+              color = excluded.color
+            """.trimIndent(),
+            arrayOf(id, label, icon, color)
+        )
+    }
+
+    fun importSource(
+        id: String,
+        type: String,
+        name: String,
+        categoryId: String,
+        config: JSONObject,
+        enabled: Boolean,
+        intervalMinutes: Int
+    ) {
+        if (!categoryExists(categoryId)) {
+            upsertCategoryFromBackup(categoryId, categoryId, "rss", "#8b96a8")
+        }
+        val now = nowIso()
+        db.execSQL(
+            """
+            INSERT INTO sources (
+              id, type, name, category_id, config, state, enabled, interval_minutes,
+              next_run_at, is_demo, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, 0, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              type = excluded.type,
+              name = excluded.name,
+              category_id = excluded.category_id,
+              config = excluded.config,
+              enabled = excluded.enabled,
+              interval_minutes = excluded.interval_minutes,
+              updated_at = excluded.updated_at
+            """.trimIndent(),
+            arrayOf(
+                id, type, name, categoryId, config.toString(),
+                if (enabled) 1 else 0, intervalMinutes, now, now
+            )
+        )
+    }
+
+    // ---------------------------------------------------------------------
     // Saúde / estatísticas
     // ---------------------------------------------------------------------
 

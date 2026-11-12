@@ -454,6 +454,25 @@ else
   echo "AVISO: Steam indisponível (rede externa) — etapa de jogos ignorada"
 fi
 
+echo "== Backup =="
+EXPORT="$(curl -fsS --max-time 30 "$BASE/api/backup/export" || true)"
+FORMAT="$(printf '%s' "$EXPORT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("format"),d.get("version"))' 2>/dev/null || true)"
+echo "export: $FORMAT"
+case "$FORMAT" in
+  "hub-backup 2") : ;;
+  *) fail "exportação de backup inválida" ;;
+esac
+
+PREVIEW="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' -d "$EXPORT" \
+  "$BASE/api/backup/preview" || true)"
+printf '%s' "$PREVIEW" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert "exportedAt" in d and "sources" in d;print("preview ok:", d["settingsFields"], "campos")' \
+  || fail "prévia do backup inválida"
+
+IMPORTED="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' -d "$EXPORT" \
+  "$BASE/api/backup/import" || true)"
+printf '%s' "$IMPORTED" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d.get("settingsUpdated") is True;print("import ok:", d.get("categoriesImported"), "categoria(s)")' \
+  || fail "importação do backup falhou"
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

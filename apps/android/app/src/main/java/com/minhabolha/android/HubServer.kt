@@ -81,6 +81,13 @@ class HubServer(
 
             segments == listOf("media", "search") && method == Method.GET -> mediaSearch(session)
 
+            segments == listOf("backup", "export") && method == Method.GET ->
+                json(BackupService.export(database, param(session, "include")))
+            segments == listOf("backup", "preview") && method == Method.POST ->
+                json(BackupService.preview(database, readJsonBody(session)))
+            segments == listOf("backup", "import") && method == Method.POST ->
+                backupImport(session)
+
             segments == listOf("games") && method == Method.GET -> gamesList(session)
             segments == listOf("games", "search") && method == Method.GET -> gamesSearch(session)
             segments == listOf("games", "import") && method == Method.POST -> gamesImport(session)
@@ -697,6 +704,20 @@ class HubServer(
     // Jogos
     // ---------------------------------------------------------------------
 
+    private fun backupImport(session: IHTTPSession): Response {
+        val document = readJsonBody(session)
+        if (document.optString("format") != BackupService.FORMAT) {
+            throw HubException(
+                400,
+                "validation",
+                "Arquivo de backup inválido: formato esperado \"${BackupService.FORMAT}\"."
+            )
+        }
+
+        val result = BackupService.import(database, document)
+        events.broadcast("backup:imported", JSONObject())
+        return json(result)
+    }
     private fun gamesList(session: IHTTPSession): Response {
         val filter = param(session, "filter") ?: "all"
         val sort = param(session, "sort") ?: "discount"
@@ -1214,7 +1235,7 @@ class HubServer(
     private companion object {
         val COLOR_PATTERN = Regex("^#[0-9a-fA-F]{6}$")
         val DATE_PATTERN = Regex("^\\d{4}-\\d{2}-\\d{2}$")
-        const val MAX_BODY_BYTES = 16L * 1024 * 1024
+        const val MAX_BODY_BYTES = 32L * 1024 * 1024
 
         val MIME_TYPES = mapOf(
             "html" to "text/html; charset=utf-8",
