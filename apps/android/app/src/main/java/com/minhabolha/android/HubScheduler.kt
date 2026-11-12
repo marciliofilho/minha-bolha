@@ -224,6 +224,17 @@ class HubScheduler(
                 Log.i(TAG, "calendário global: $saved lançamento(s)")
             }
 
+            // Wishlist da Steam: metadados e preços viram a biblioteca de jogos.
+            if (result.steamWishlist.isNotEmpty()) {
+                var saved = 0
+                for (app in result.steamWishlist) {
+                    database.upsertSteamGame(app, inWishlist = true)
+                    saved++
+                }
+                events.broadcast("games:changed", JSONObject().put("saved", saved).put("sourceId", row.id))
+                Log.i(TAG, "wishlist Steam: $saved jogo(s)")
+            }
+
             // Biblioteca do Stremio: somente leitura, mantida em tabela local.
             if (result.stremioLibrary.isNotEmpty()) {
                 val saved = database.syncStremioLibrary(result.stremioLibrary)

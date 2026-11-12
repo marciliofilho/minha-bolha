@@ -1814,6 +1814,274 @@ class HubDatabase(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------
+    // Jogos (Steam)
+    // ---------------------------------------------------------------------
+
+    fun upsertSteamGame(app: SteamApp, inWishlist: Boolean): String {
+        val now = nowIso()
+        val today = Dates.todayInZone(null)
+        var existingId: String? = null
+        var previousLow: Int? = null
+
+        db.rawQuery("SELECT id, official_low_cents FROM games WHERE appid = ?", arrayOf(app.appid.toString())).use { cursor ->
+            if (cursor.moveToFirst()) {
+                existingId = cursor.getString(0)
+                previousLow = if (cursor.isNull(1)) null else cursor.getInt(1)
+            }
+        }
+
+        val id: String
+        if (existingId != null) {
+            id = existingId!!
+            val low = listOfNotNull(previousLow, app.finalCents).minOrNull()
+            val atLow = app.finalCents != null && low != null && app.finalCents <= low
+
+            db.execSQL(
+                """
+                UPDATE games SET
+                  name = ?, cover_url = ?, header_url = ?, currency = ?,
+                  steam_base_cents = ?, steam_final_cents = ?, steam_discount = ?,
+                  current_official_cents = ?, official_low_cents = ?, is_at_low = ?,
+                  in_wishlist = CASE WHEN ? = 1 THEN 1 ELSE in_wishlist END,
+                  last_price_check_at = ?, updated_at = ?
+                WHERE id = ?
+                """.trimIndent(),
+                arrayOf(
+                    app.name,
+                    app.coverUrl,
+                    app.headerUrl,
+                    app.currency,
+                    app.baseCents,
+                    app.finalCents,
+                    app.discount,
+                    app.finalCents,
+                    low,
+                    if (atLow) 1 else 0,
+                    if (inWishlist) 1 else 0,
+                    now,
+                    now,
+                    id
+                )
+            )
+        } else {
+            id = java.util.UUID.randomUUID().toString()
+            db.execSQL(
+                """
+                INSERT INTO games (
+                  id, appid, name, cover_url, header_url, currency,
+                  target_price_cents, steam_base_cents, steam_final_cents, steam_discount,
+                  current_official_cents, official_low_cents, is_at_low, in_wishlist,
+                  origin, is_demo, added_at, metadata_fetched_at, last_price_check_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf(
+                    id,
+                    app.appid,
+                    app.name,
+                    app.coverUrl,
+                    app.headerUrl,
+                    app.currency,
+                    app.baseCents,
+                    app.finalCents,
+                    app.discount,
+                    app.finalCents,
+                    app.finalCents,
+                    if (app.finalCents != null) 1 else 0,
+                    if (inWishlist) 1 else 0,
+                    if (inWishlist) "wishlist" else "manual",
+                    now,
+                    now,
+                    now,
+                    now,
+                    now
+                )
+            )
+        }
+
+        if (app.finalCents != null) {
+            db.execSQL("DELETE FROM price_history WHERE game_id = ? AND day = ?", arrayOf(id, today))
+            db.execSQL(
+                "INSERT INTO price_history (game_id, day, official_cents, keyshop_cents, currency) VALUES (?, ?, ?, NULL, ?)",
+                arrayOf<Any?>(id, today, app.finalCents, app.currency)
+            )
+        }
+
+        return id
+    }
+
+    fun listGames(filter: String, sort: String, query: String): JSONObject {
+        val where = mutableListOf("removed_at IS NULL")
+        val args = mutableListOf<String>()
+
+        when (filter) {
+            "wishlist" -> where.add("in_wishlist = 1")
+            "deals" -> where.add("steam_discount > 0")
+            "at_low" -> where.add("is_at_low = 1")
+        }
+        if (query.isNotBlank()) {
+            where.add("lower(name) LIKE ?")
+            args.add("%${query.trim().lowercase()}%")
+        }
+
+        val order = when (sort) {
+            "price" -> "current_official_cents IS NULL, current_official_cents ASC, name ASC"
+            "name" -> "name ASC"
+            "added" -> "added_at DESC"
+            else -> "steam_discount DESC, name ASC"
+        }
+
+        val games = JSONArray()
+        db.rawQuery(
+            "SELECT * FROM games WHERE ${where.joinToString(" AND ")} ORDER BY $order LIMIT 500",
+            args.toTypedArray()
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                games.put(gameFromCursor(cursor, includeHistory = false))
+            }
+        }
+
+        var wishlist = 0
+        var deals = 0
+        var atLow = 0
+        db.rawQuery(
+            "SELECT COALESCE(SUM(in_wishlist),0), COALESCE(SUM(CASE WHEN steam_discount > 0 THEN 1 ELSE 0 END),0), COALESCE(SUM(is_at_low),0), COUNT(*) FROM games WHERE removed_at IS NULL",
+            null
+        ).use { cursor ->
+            if (cursor.moveToFirst()) {
+                wishlist = cursor.getInt(0)
+                deals = cursor.getInt(1)
+                atLow = cursor.getInt(2)
+            }
+        }
+
+        return JSONObject()
+            .put("games", games)
+            .put(
+                "stats",
+                JSONObject()
+                    .put("total", games.length())
+                    .put("wishlist", wishlist)
+                    .put("deals", deals)
+                    .put("atLow", atLow)
+            )
+    }
+
+    fun gameDetail(id: String): JSONObject? {
+        db.rawQuery("SELECT * FROM games WHERE id = ?", arrayOf(id)).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return gameFromCursor(cursor, includeHistory = true)
+        }
+    }
+
+    private fun gameFromCursor(cursor: Cursor, includeHistory: Boolean): JSONObject {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        fun intOrNull(column: String): Int? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
+        }
+
+        val id = cursor.getString(cursor.getColumnIndexOrThrow("id"))
+        val base = intOrNull("steam_base_cents")
+        val official = intOrNull("current_official_cents")
+        val keyshop = intOrNull("current_keyshop_cents")
+
+        fun discount(current: Int?): Int {
+            if (base == null || base <= 0 || current == null || current >= base) return 0
+            return Math.round((1.0 - current.toDouble() / base) * 100).toInt()
+        }
+
+        val sparkline = priceHistory(id, limit = 30)
+
+        return JSONObject()
+            .put("id", id)
+            .put("appid", cursor.getInt(cursor.getColumnIndexOrThrow("appid")))
+            .put("name", cursor.getString(cursor.getColumnIndexOrThrow("name")))
+            .put("coverUrl", text("cover_url") ?: JSONObject.NULL)
+            .put("headerUrl", text("header_url") ?: JSONObject.NULL)
+            .put("currency", text("currency") ?: "BRL")
+            .put("targetPriceCents", intOrNull("target_price_cents") ?: JSONObject.NULL)
+            .put("steamBaseCents", base ?: JSONObject.NULL)
+            .put("steamFinalCents", intOrNull("steam_final_cents") ?: JSONObject.NULL)
+            .put("steamDiscount", intOrNull("steam_discount") ?: 0)
+            .put("currentOfficialCents", official ?: JSONObject.NULL)
+            .put("currentKeyshopCents", keyshop ?: JSONObject.NULL)
+            .put("officialDiscount", discount(official))
+            .put("keyshopDiscount", discount(keyshop))
+            .put("officialLowCents", intOrNull("official_low_cents") ?: JSONObject.NULL)
+            .put("keyshopLowCents", intOrNull("keyshop_low_cents") ?: JSONObject.NULL)
+            .put("isAtLow", intOrNull("is_at_low") == 1)
+            .put("inWishlist", intOrNull("in_wishlist") == 1)
+            .put("origin", text("origin") ?: "manual")
+            .put("priority", intOrNull("priority") ?: JSONObject.NULL)
+            .put("isDemo", intOrNull("is_demo") == 1)
+            .put("ggUrl", text("gg_url") ?: JSONObject.NULL)
+            .put("lastPriceCheckAt", text("last_price_check_at") ?: JSONObject.NULL)
+            .put("addedAt", text("added_at") ?: "")
+            .put("removedAt", text("removed_at") ?: JSONObject.NULL)
+            .put("sparkline", sparkline)
+            .put("history", if (includeHistory) priceHistory(id, limit = 365) else JSONArray())
+    }
+
+    private fun priceHistory(gameId: String, limit: Int): JSONArray {
+        val result = JSONArray()
+        db.rawQuery(
+            """
+            SELECT day, official_cents, keyshop_cents FROM price_history
+            WHERE game_id = ?
+            ORDER BY day DESC
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(gameId, limit.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.put(
+                    JSONObject()
+                        .put("day", cursor.getString(0))
+                        .put(
+                            "officialCents",
+                            if (cursor.isNull(1)) JSONObject.NULL else cursor.getInt(1)
+                        )
+                        .put(
+                            "keyshopCents",
+                            if (cursor.isNull(2)) JSONObject.NULL else cursor.getInt(2)
+                        )
+                )
+            }
+        }
+
+        // Do mais antigo para o mais recente, como o gráfico espera.
+        val ordered = JSONArray()
+        for (index in result.length() - 1 downTo 0) ordered.put(result.get(index))
+        return ordered
+    }
+
+    fun updateGameTarget(id: String, targetPriceCents: Int?): JSONObject? {
+        db.execSQL(
+            "UPDATE games SET target_price_cents = ?, updated_at = ? WHERE id = ?",
+            arrayOf(targetPriceCents, nowIso(), id)
+        )
+        return gameDetail(id)
+    }
+
+    fun deleteGame(id: String): Boolean {
+        db.rawQuery("SELECT 1 FROM games WHERE id = ?", arrayOf(id)).use { cursor ->
+            if (!cursor.moveToFirst()) return false
+        }
+        db.execSQL("DELETE FROM games WHERE id = ?", arrayOf(id))
+        return true
+    }
+
+    fun countGames(): Int {
+        db.rawQuery("SELECT COUNT(*) FROM games WHERE removed_at IS NULL", null).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Saúde / estatísticas
     // ---------------------------------------------------------------------
 

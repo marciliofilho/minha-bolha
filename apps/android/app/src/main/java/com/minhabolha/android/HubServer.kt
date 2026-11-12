@@ -81,6 +81,22 @@ class HubServer(
 
             segments == listOf("media", "search") && method == Method.GET -> mediaSearch(session)
 
+            segments == listOf("games") && method == Method.GET -> gamesList(session)
+            segments == listOf("games", "search") && method == Method.GET -> gamesSearch(session)
+            segments == listOf("games", "import") && method == Method.POST -> gamesImport(session)
+            segments == listOf("games") && method == Method.POST -> gamesAdd(session)
+            segments.size == 3 && segments[0] == "games" && segments[2] == "refresh-price" &&
+                method == Method.POST -> gamesRefreshPrice(segments[1])
+            segments.size == 2 && segments[0] == "games" && method == Method.GET ->
+                json(
+                    database.gameDetail(segments[1])
+                        ?: throw HubException(404, "not_found", "Jogo não encontrado.")
+                )
+            segments.size == 2 && segments[0] == "games" && (method == Method.PATCH || method == Method.PUT) ->
+                gamesUpdate(session, segments[1])
+            segments.size == 2 && segments[0] == "games" && method == Method.DELETE ->
+                gamesDelete(segments[1])
+
             segments == listOf("stremio", "status") && method == Method.GET ->
                 json(StremioAccount.status(database))
             segments == listOf("stremio", "login") && method == Method.POST -> stremioLogin(session)
@@ -138,8 +154,7 @@ class HubServer(
             segments == listOf("stremio", "card-info") && method == Method.POST ->
                 json(JSONObject().put("items", JSONArray()))
 
-            segments == listOf("calendar") && method == Method.GET -> calendar(session)
-            segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
+            segments == listOf("calendar") && method == Method.GET -> calendar(session)            segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
             segments == listOf("calendar", "refresh") && method == Method.POST -> calendarRefresh()
 
             segments.firstOrNull() == "sources" -> serveSources(session, method, segments)
@@ -675,6 +690,123 @@ class HubServer(
             throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
         }
         return json(StremioCatalog.search(database, query, param(session, "type")))
+    }
+
+    // ---------------------------------------------------------------------
+    // Jogos
+    // ---------------------------------------------------------------------
+
+    private fun gamesList(session: IHTTPSession): Response {
+        val filter = param(session, "filter") ?: "all"
+        val sort = param(session, "sort") ?: "discount"
+        val query = param(session, "q").orEmpty()
+        return json(database.listGames(filter, sort, query))
+    }
+
+    private fun gamesSearch(session: IHTTPSession): Response {
+        val query = param(session, "q")?.trim().orEmpty()
+        if (query.length < 2) {
+            throw HubException(400, "validation", "Digite pelo menos 2 caracteres para buscar.")
+        }
+        val region = database.settings().optString("region", "BR")
+        return json(JSONObject().put("results", SteamGames.search(query, region)))
+    }
+
+    private fun gamesAdd(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val appid = body.optInt("appid")
+        if (appid <= 0) throw HubException(400, "validation", "Informe o appid da Steam.")
+
+        val region = database.settings().optString("region", "BR")
+        val app = SteamGames.appDetails(appid, region)
+            ?: throw HubException(404, "not_found", "Jogo não encontrado na Steam.")
+
+        val id = database.upsertSteamGame(app, inWishlist = false)
+        if (body.has("targetPriceCents")) {
+            val target = if (body.isNull("targetPriceCents")) null else body.optInt("targetPriceCents")
+            database.updateGameTarget(id, target?.takeIf { it > 0 })
+        }
+
+        events.broadcast("games:changed", JSONObject().put("appid", appid))
+        val game = database.gameDetail(id) ?: throw HubException(500, "database", "Jogo não foi salvo.")
+        return json(game, Response.Status.CREATED)
+    }
+
+    private fun gamesUpdate(session: IHTTPSession, id: String): Response {
+        val body = readJsonBody(session)
+        val target = if (body.has("targetPriceCents")) {
+            if (body.isNull("targetPriceCents")) null else body.optInt("targetPriceCents").takeIf { it > 0 }
+        } else {
+            throw HubException(400, "validation", "Nada para atualizar.")
+        }
+
+        val game = database.updateGameTarget(id, target)
+            ?: throw HubException(404, "not_found", "Jogo não encontrado.")
+        events.broadcast("games:changed", JSONObject().put("id", id))
+        return json(game)
+    }
+
+    private fun gamesDelete(id: String): Response {
+        if (!database.deleteGame(id)) {
+            throw HubException(404, "not_found", "Jogo não encontrado.")
+        }
+        events.broadcast("games:changed", JSONObject().put("deleted", id))
+        return newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
+    }
+
+    private fun gamesRefreshPrice(id: String): Response {
+        val game = database.gameDetail(id)
+            ?: throw HubException(404, "not_found", "Jogo não encontrado.")
+        val appid = game.optInt("appid")
+        val region = database.settings().optString("region", "BR")
+        val warnings = JSONArray()
+
+        val app = SteamGames.appDetails(appid, region)
+        if (app == null) {
+            warnings.put("A Steam não devolveu o preço agora.")
+        } else {
+            database.upsertSteamGame(app, inWishlist = game.optBoolean("inWishlist"))
+        }
+
+        val updated = database.gameDetail(id)
+            ?: throw HubException(500, "database", "Jogo não encontrado após a atualização.")
+        events.broadcast("games:changed", JSONObject().put("id", id))
+        return json(JSONObject().put("game", updated).put("warnings", warnings))
+    }
+
+    private fun gamesImport(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val input = body.optString("input").trim()
+        if (input.isEmpty()) throw HubException(400, "validation", "Informe o perfil da Steam.")
+
+        val steamId = try {
+            SteamGames.resolveSteamId(input)
+        } catch (error: Exception) {
+            throw HubException(400, "validation", error.message ?: "Perfil da Steam inválido.")
+        } ?: throw HubException(400, "validation", "Perfil da Steam inválido.")
+
+        val existing = database.sourceByType("steam-wishlist")
+        val source = if (existing != null) {
+            database.updateSource(existing.getString("id"), enabled = true, config = JSONObject().put("steamId", steamId))
+                ?: existing
+        } else {
+            database.createSource(
+                type = "steam-wishlist",
+                name = "Wishlist da Steam",
+                categoryId = "game",
+                config = JSONObject().put("steamId", steamId),
+                intervalMinutes = 360
+            )
+        }
+
+        val queued = scheduler.enqueueSource(source.getString("id"), true)
+        return json(
+            JSONObject()
+                .put("queued", queued)
+                .put("sourceId", source.getString("id"))
+                .put("name", source.optString("name")),
+            Response.Status.ACCEPTED
+        )
     }
 
     // ---------------------------------------------------------------------

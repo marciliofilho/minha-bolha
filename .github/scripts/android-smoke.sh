@@ -424,6 +424,36 @@ echo "biblioteca local: $LIB_COUNT item(ns)"
 curl -s --max-time 15 -X PATCH -H 'content-type: application/json' -d '{"inLibrary":false}' \
   "$BASE/api/stremio/library/tt0111161/state" > /dev/null || true
 
+echo "== Jogos (Steam) =="
+GAME="$(curl -fsS --max-time 40 -X POST -H 'content-type: application/json' \
+  -d '{"appid":620}' "$BASE/api/games" || true)"
+GAME_ID="$(printf '%s' "$GAME" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+if [ -n "$GAME_ID" ]; then
+  GAME_NAME="$(printf '%s' "$GAME" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("name",""))' 2>/dev/null || true)"
+  echo "jogo adicionado: $GAME_NAME"
+
+  LIST="$(curl -fsS --max-time 20 "$BASE/api/games" || true)"
+  TOTAL="$(printf '%s' "$LIST" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("stats",{}).get("total",0))' 2>/dev/null || echo 0)"
+  [ "$TOTAL" -ge 1 ] || fail "jogo não apareceu na lista"
+
+  PATCHED="$(curl -fsS --max-time 20 -X PATCH -H 'content-type: application/json' \
+    -d '{"targetPriceCents":1999}' "$BASE/api/games/$GAME_ID" || true)"
+  case "$PATCHED" in
+    *'"targetPriceCents":1999'*) echo "preço-alvo ok" ;;
+    *) fail "preço-alvo não foi salvo" ;;
+  esac
+
+  REFRESH="$(curl -fsS --max-time 40 -X POST "$BASE/api/games/$GAME_ID/refresh-price" || true)"
+  case "$REFRESH" in
+    *'"game"'*) echo "atualização de preço ok" ;;
+    *) echo "AVISO: refresh de preço não respondeu como esperado" ;;
+  esac
+
+  curl -s --max-time 15 -X DELETE "$BASE/api/games/$GAME_ID" > /dev/null || true
+else
+  echo "AVISO: Steam indisponível (rede externa) — etapa de jogos ignorada"
+fi
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

@@ -30,6 +30,7 @@ object Registry {
         connectors["anilist"] = anilist
         connectors["global-releases"] = GlobalReleasesConnector(tmdb, anilist)
         connectors["stremio-library"] = StremioLibraryConnector(stremioAuthKey)
+        connectors["steam-wishlist"] = SteamWishlistConnector()
     }
 
     fun has(type: String): Boolean = connectors.containsKey(type)
