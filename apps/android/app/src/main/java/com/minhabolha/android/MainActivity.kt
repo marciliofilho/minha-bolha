@@ -24,6 +24,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val TAG = "MinhaBolha"
+        const val FAILURE_VIEW_ID = 0x00fa1101
     }
 
     private lateinit var webView: WebView
@@ -161,7 +162,53 @@ class MainActivity : Activity() {
                 " ' native=' + (window.HubNative ? 1 : 0);})()"
         webView.evaluateJavascript(script) { value ->
             Log.i(TAG, "webviewReady: $value")
+            if (value != null && value.contains("rootChildren=0")) {
+                showWebViewFailure()
+            }
         }
+    }
+
+    /**
+     * Diagnóstico visível quando o React não monta (WebView antigo, por
+     * exemplo). Sem isso a tela fica preta e não há como saber o motivo.
+     */
+    private fun showWebViewFailure() {
+        val container = (webView.parent as? android.view.ViewGroup) ?: return
+        if (container.findViewById<android.widget.TextView>(FAILURE_VIEW_ID) != null) return
+
+        val userAgent = try {
+            WebSettings.getDefaultUserAgent(this)
+        } catch (error: Exception) {
+            "desconhecido"
+        }
+        val chrome = Regex("Chrome/([0-9.]+)").find(userAgent)?.value ?: "desconhecido"
+
+        val message = android.widget.TextView(this).apply {
+            id = FAILURE_VIEW_ID
+            setBackgroundColor(Color.parseColor("#080a0f"))
+            setTextColor(Color.parseColor("#f8fafc"))
+            textSize = 14f
+            setPadding(48, 96, 48, 48)
+            text = """
+                Não foi possível carregar a interface.
+
+                O WebView deste Android pode ser antigo demais.
+                Versão detectada: $chrome
+
+                Atualize o "Android System WebView" / Chrome, ou use um
+                dispositivo/emulador com Android 11+ e WebView atualizado.
+
+                Detalhes técnicos no logcat: adb logcat -s MinhaBolha
+            """.trimIndent()
+        }
+
+        container.addView(
+            message,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
     }
 
     /**

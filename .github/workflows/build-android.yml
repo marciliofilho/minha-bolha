@@ -59,6 +59,8 @@ jobs:
         run: node scripts/check-android-parity.mjs
 
       - name: Build web UI
+        env:
+          HUB_BUILD_TARGET: es2019
         run: npm run build
 
       - name: Build debug APK

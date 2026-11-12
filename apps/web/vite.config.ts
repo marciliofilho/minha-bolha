@@ -30,6 +30,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    // O shell Android define HUB_BUILD_TARGET=es2019 para WebViews antigos
+    // (BlueStacks/emuladores). No desktop o padrão do Vite continua valendo.
+    target: process.env.HUB_BUILD_TARGET || 'modules'
   }
 });
