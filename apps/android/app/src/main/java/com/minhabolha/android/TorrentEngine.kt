@@ -331,7 +331,10 @@ object TorrentEngine {
         }
 
         RandomAccessFile(session.filePath, "r").use { file ->
-            file.seek(absoluteStart)
+            // `absoluteStart` serve só para achar as peças no torrent. O
+            // arquivo aberto é o arquivo individual (começa no byte 0), então
+            // o seek usa o deslocamento relativo ao próprio arquivo.
+            file.seek(offset)
             val buffer = ByteArray((end - offset).toInt())
             file.readFully(buffer)
             return buffer
