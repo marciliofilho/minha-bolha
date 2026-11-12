@@ -1764,7 +1764,11 @@ class HubDatabase(private val context: Context) {
                 "SELECT is_favorite, is_watch_later FROM stremio_library_state WHERE meta_id = ?",
                 arrayOf(metaId)
             ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getInt(0) == 1 to cursor.getInt(1) == 1 else false to false
+                if (cursor.moveToFirst()) {
+                    (cursor.getInt(0) == 1) to (cursor.getInt(1) == 1)
+                } else {
+                    false to false
+                }
             }
             val nextFavorite = favorite ?: current.first
             val nextLater = watchLater ?: current.second
