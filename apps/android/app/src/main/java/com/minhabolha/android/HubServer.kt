@@ -148,6 +148,8 @@ class HubServer(
             segments == listOf("stremio", "addons") && method == Method.POST -> addStremioAddon(session)
             segments.size == 3 && segments[0] == "stremio" && segments[1] == "addons" &&
                 method == Method.DELETE -> removeStremioAddon(segments[2])
+            segments.size == 4 && segments[0] == "stremio" && segments[1] == "addons" &&
+                segments[3] == "test" && method == Method.POST -> testStremioAddon(segments[2])
             segments == listOf("stremio", "catalogs") && method == Method.GET ->
                 json(JSONObject().put("catalogs", StremioCatalog.catalogGroups(database)))
             segments == listOf("stremio", "catalog") && method == Method.GET -> stremioCatalog(session)
@@ -699,6 +701,12 @@ class HubServer(
         }
         events.broadcast("stremio:changed", JSONObject().put("addons", true))
         return newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
+    }
+
+    private fun testStremioAddon(id: String): Response {
+        val summary = StremioAddonTest.run(database, id)
+        events.broadcast("stremio:changed", JSONObject().put("addons", true))
+        return json(JSONObject().put("summary", summary))
     }
 
     private fun stremioCatalog(session: IHTTPSession): Response {

@@ -46,10 +46,10 @@ object StremioCatalog {
             .put("catalogs", catalogsOf(manifest))
             .put("enabled", addon.enabled)
             .put("priority", addon.priority)
-            .put("lastTestAt", JSONObject.NULL)
-            .put("lastTestOk", JSONObject.NULL)
-            .put("lastTestError", JSONObject.NULL)
-            .put("lastTestSummary", JSONObject.NULL)
+            .put("lastTestAt", addon.lastTestAt ?: JSONObject.NULL)
+            .put("lastTestOk", addon.lastTestOk ?: JSONObject.NULL)
+            .put("lastTestError", addon.lastTestError ?: JSONObject.NULL)
+            .put("lastTestSummary", addon.lastTestSummary ?: JSONObject.NULL)
             .put("createdAt", addon.createdAt)
     }
 
@@ -183,7 +183,7 @@ object StremioCatalog {
         return if (text.endsWith("/manifest.json")) text else text.trimEnd('/') + "/manifest.json"
     }
 
-    private fun fetchManifest(transportUrl: String): JSONObject {
+    fun fetchManifest(transportUrl: String): JSONObject {
         val response = Http.fetchText(
             transportUrl,
             accept = "application/json",

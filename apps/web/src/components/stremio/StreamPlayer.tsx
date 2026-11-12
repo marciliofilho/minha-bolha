@@ -28,6 +28,7 @@ import {
 } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { isAndroidShell } from '@/lib/platform';
 
 interface SubtitleTarget {
   type: string;
@@ -272,6 +273,24 @@ export function StreamPlayer({
   const sourceUrl = transcodedUrl ?? basePlaybackUrl;
   const sourceIsHls = Boolean(transcodedUrl) || baseIsHls;
   const size = formatBytes(stream.sizeBytes);
+
+  // Android: streams diretos 4K costumam ser HEVC, que o WebView não decodifica.
+  // Entrega direto ao player nativo (Media3) em vez de arriscar uma tela preta.
+  const forceNative4k =
+    isAndroidShell() &&
+    Boolean(window.HubNative) &&
+    !isTorrent &&
+    !isYouTube &&
+    !isExternal &&
+    /4k|2160|uhd/i.test(`${stream.quality ?? ''} ${stream.name ?? ''}`);
+
+  useEffect(() => {
+    if (!forceNative4k || !playbackUrl) return;
+    window.HubNative?.playTorrent(
+      JSON.stringify({ url: playbackUrl, title, tracking: tracking ?? null })
+    );
+    onClose();
+  }, [forceNative4k, playbackUrl, title, tracking, onClose]);
 
   const canLoadSubtitles = Boolean(subtitleTarget) && !isYouTube && !isExternal;
   const subtitlesQuery = useStremioSubtitles(subtitleTarget ?? null, canLoadSubtitles);
@@ -1146,6 +1165,26 @@ export function StreamPlayer({
               setError(null);
             }}
             onError={() => {
+              // Android: o WebView pode não decodificar HEVC/4K. O player
+              // nativo (Media3) tenta o mesmo endereço antes de desistir.
+              if (
+                isAndroidShell() &&
+                window.HubNative &&
+                !isTorrent &&
+                !isYouTube &&
+                !isExternal &&
+                playbackUrl
+              ) {
+                window.HubNative.playTorrent(
+                  JSON.stringify({
+                    url: playbackUrl,
+                    title,
+                    tracking: tracking ?? null
+                  })
+                );
+                onClose();
+                return;
+              }
               if (!transcodedUrl && retryWithTranscode()) return;
               setError(t('Não foi possível reproduzir este stream.'));
             }}

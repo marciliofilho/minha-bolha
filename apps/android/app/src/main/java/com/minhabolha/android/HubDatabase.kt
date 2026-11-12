@@ -1378,6 +1378,12 @@ class HubDatabase(private val context: Context) {
             JSONObject()
         }
 
+        val okIndex = cursor.getColumnIndex("last_test_ok")
+        val summaryText = text("last_test_summary")
+        val summary = summaryText?.let {
+            runCatching { JSONObject(it) }.getOrNull()
+        }
+
         return StremioAddonRow(
             id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
             addonId = text("addon_id"),
@@ -1388,7 +1394,23 @@ class HubDatabase(private val context: Context) {
             transportUrl = transportUrl,
             enabled = cursor.getInt(cursor.getColumnIndexOrThrow("enabled")) == 1,
             priority = cursor.getInt(cursor.getColumnIndexOrThrow("priority")),
+            lastTestAt = text("last_test_at"),
+            lastTestOk = if (okIndex < 0 || cursor.isNull(okIndex)) null else cursor.getInt(okIndex) == 1,
+            lastTestError = text("last_test_error"),
+            lastTestSummary = summary,
             createdAt = cursor.getString(cursor.getColumnIndexOrThrow("created_at"))
+        )
+    }
+
+    fun updateStremioAddonTest(id: String, ok: Boolean, error: String?, summary: JSONObject) {
+        db.execSQL(
+            """
+            UPDATE stremio_addons
+            SET last_test_at = ?, last_test_ok = ?, last_test_error = ?,
+                last_test_summary = ?, updated_at = ?
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(nowIso(), if (ok) 1 else 0, error, summary.toString(), nowIso(), id)
         )
     }
 
