@@ -1,22 +1,28 @@
 package com.minhabolha.android
 
 import android.app.Activity
-import android.app.AlertDialog
+import android.app.Dialog
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -65,6 +71,22 @@ class PlayerActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var originalOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
+    private data class AddonSubtitleOption(
+        val id: String,
+        val label: String,
+        val language: String,
+        val source: String,
+        val detail: String,
+        val media3Label: String
+    )
+
+    private data class SubtitleChoice(
+        val label: String,
+        val detail: String,
+        val group: TrackGroup?,
+        val id: String?
+    )
+
     private var baseUrl: String = ""
     private var playbackUrl: String = ""
     private var title: String = ""
@@ -74,6 +96,10 @@ class PlayerActivity : Activity() {
     private var season: Int? = null
     private var episode: Int? = null
     private var poster: String? = null
+    private var preferredSubtitleLanguage: String = "por"
+    private var userSelectedSubtitle: Boolean = false
+    private var autoSubtitleApplied: Boolean = false
+    private val addonSubtitleOptions = mutableListOf<AddonSubtitleOption>()
 
     private val saveProgress = object : Runnable {
         override fun run() {
@@ -126,6 +152,12 @@ class PlayerActivity : Activity() {
         season = tracking?.optInt("season")?.takeIf { tracking.has("season") && !tracking.isNull("season") }
         episode = tracking?.optInt("episode")?.takeIf { tracking.has("episode") && !tracking.isNull("episode") }
         poster = tracking?.optString("poster")?.takeIf { it.isNotEmpty() }
+        preferredSubtitleLanguage = json.optString("subtitleLanguage")
+            .trim()
+            .lowercase()
+            .ifEmpty {
+                if (Locale.getDefault().language == "pt") "por" else "off"
+            }
 
         view = PlayerView(this).apply {
             setShowNextButton(false)
@@ -244,6 +276,7 @@ class PlayerActivity : Activity() {
                                 it.type == C.TRACK_TYPE_TEXT && it.isSupported
                             }
                             subtitleButton.visibility = if (hasText) View.VISIBLE else View.GONE
+                            maybeAutoSelectSubtitle(tracks)
                         }
                     })
 
@@ -282,6 +315,7 @@ class PlayerActivity : Activity() {
 
         Thread {
             val configurations = mutableListOf<MediaItem.SubtitleConfiguration>()
+            var subtitleOptions: List<AddonSubtitleOption> = emptyList()
             try {
                 val query = buildString {
                     append(baseUrl).append("/api/stremio/subtitles")
@@ -298,25 +332,47 @@ class PlayerActivity : Activity() {
                 connection.disconnect()
 
                 val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
-                val seen = mutableSetOf<String>()
+                val options = mutableListOf<AddonSubtitleOption>()
                 for (index in 0 until subtitles.length()) {
-                    // Alguns addons devolvem 100+ faixas, muitas repetidas
-                    // (mesmo idioma/rótulo vindo de addons diferentes).
-                    if (configurations.size >= 30) break
+                    // Mantém todas as faixas, inclusive as repetidas: duas
+                    // legendas em PT-BR podem ter sincronias diferentes.
+                    if (configurations.size >= 150) break
                     val item = subtitles.optJSONObject(index) ?: continue
                     val proxyUrl = item.optString("proxyUrl")
                     if (proxyUrl.isEmpty()) continue
                     val language = item.optString("lang").ifEmpty { "und" }
                     val label = subtitleLabel(language, item.optString("language"))
-                    if (!seen.add("${language.lowercase()}|${label.lowercase()}")) continue
+                    val source = item.optString("addonName").ifEmpty { "Addon" }
+                    val fileName = item.optString("url")
+                        .substringAfterLast('/')
+                        .substringBefore('?')
+                        .take(72)
+                    val detail = listOf(source, fileName)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                    val configId = "sub-$index"
+                    // Media3 não expõe um id no SubtitleConfiguration; o
+                    // label único serve para reencontrar a faixa no TrackGroup.
+                    val media3Label = "$label · $source · ${index + 1}"
                     configurations.add(
                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
                             .setMimeType(MimeTypes.TEXT_VTT)
                             .setLanguage(language)
-                            .setLabel(label)
+                            .setLabel(media3Label)
                             .build()
                     )
+                    options.add(
+                        AddonSubtitleOption(
+                            id = configId,
+                            label = label,
+                            language = language,
+                            source = source,
+                            detail = detail,
+                            media3Label = media3Label
+                        )
+                    )
                 }
+                subtitleOptions = options
             } catch (error: Exception) {
                 Log.w(TAG, "falha ao carregar legendas", error)
             }
@@ -326,8 +382,13 @@ class PlayerActivity : Activity() {
             runOnUiThread {
                 val mediaController = controller ?: return@runOnUiThread
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                addonSubtitleOptions.clear()
+                addonSubtitleOptions.addAll(subtitleOptions)
                 mediaController.setMediaItem(buildItem(configurations), false)
                 mediaController.prepare()
+                // As novas faixas chegam em onTracksChanged; permite escolher
+                // automaticamente a PT-BR mais bem colocada.
+                autoSubtitleApplied = false
                 Log.i(TAG, "player nativo: ${configurations.size} faixa(s) de legenda")
             }
         }.start()
@@ -344,6 +405,87 @@ class PlayerActivity : Activity() {
         return display.ifEmpty { code }
     }
 
+    private fun preferredAliases(): Set<String> {
+        return when (preferredSubtitleLanguage) {
+            "por", "pob", "pt", "pt-br", "pt-pt" ->
+                setOf("por", "pob", "pt", "pt-br", "pt-pt")
+            "eng", "en" -> setOf("eng", "en")
+            "spa", "es" -> setOf("spa", "es")
+            "fra", "fre", "fr" -> setOf("fra", "fre", "fr")
+            "deu", "ger", "de" -> setOf("deu", "ger", "de")
+            "ita", "it" -> setOf("ita", "it")
+            "jpn", "ja" -> setOf("jpn", "ja")
+            "kor", "ko" -> setOf("kor", "ko")
+            "zho", "chi", "zh" -> setOf("zho", "chi", "zh", "zh-cn", "zh-tw")
+            else -> setOf(preferredSubtitleLanguage)
+        }
+    }
+
+    private fun isPreferredSubtitle(language: String?, label: String?): Boolean {
+        if (preferredSubtitleLanguage == "off") return false
+        val code = language?.trim()?.lowercase().orEmpty()
+        if (code.isNotEmpty() && code in preferredAliases()) return true
+        return preferredAliases().any { it.startsWith("por") } &&
+            label?.contains("portugu", ignoreCase = true) == true
+    }
+
+    private fun isAddonTrack(group: TrackGroup): Boolean {
+        val label = group.getFormat(0).label?.toString()
+        return addonSubtitleOptions.any { it.media3Label == label }
+    }
+
+    private fun selectTextGroup(group: TrackGroup) {
+        val mediaController = controller ?: return
+        val builder = mediaController.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setOverrideForType(TrackSelectionOverride(group, 0))
+        mediaController.trackSelectionParameters = builder.build()
+    }
+
+    private fun disableText() {
+        val mediaController = controller ?: return
+        val builder = mediaController.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        mediaController.trackSelectionParameters = builder.build()
+    }
+
+    private fun maybeAutoSelectSubtitle(tracks: Tracks) {
+        if (userSelectedSubtitle || preferredSubtitleLanguage == "off") return
+        val textGroups = tracks.groups.filter {
+            it.type == C.TRACK_TYPE_TEXT && it.isSupported
+        }
+        if (textGroups.isEmpty()) return
+
+        val preferred = textGroups.firstOrNull {
+            val format = it.mediaTrackGroup.getFormat(0)
+            isPreferredSubtitle(
+                format.language?.toString(),
+                format.label?.toString()
+            )
+        } ?: return
+        val selected = textGroups.firstOrNull { it.isSelected }
+
+        if (selected == null) {
+            selectTextGroup(preferred.mediaTrackGroup)
+            autoSubtitleApplied = true
+            return
+        }
+        // Se a faixa embutida já foi escolhida, troca uma única vez para uma
+        // legenda PT-BR dos addons (normalmente melhor sincronizada).
+        if (!autoSubtitleApplied &&
+            !isAddonTrack(selected.mediaTrackGroup) &&
+            isAddonTrack(preferred.mediaTrackGroup)
+        ) {
+            selectTextGroup(preferred.mediaTrackGroup)
+            autoSubtitleApplied = true
+        }
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
     private fun showSubtitlePicker() {
         val mediaController = controller ?: return
         val textGroups = mediaController.currentTracks.groups.filter {
@@ -354,34 +496,209 @@ class PlayerActivity : Activity() {
             return
         }
 
-        val labels = mutableListOf("Desligada")
-        val groups = mutableListOf<TrackGroup?>(null)
-        val seen = mutableSetOf<String>()
-        for (group in textGroups) {
-            val format = group.mediaTrackGroup.getFormat(0)
-            val language = format.language?.toString().orEmpty()
-            val label = subtitleLabel(language, format.label?.toString())
-            if (!seen.add("${language.lowercase()}|${label.lowercase()}")) continue
-            labels.add(label)
-            groups.add(group.mediaTrackGroup)
+        val choices = mutableListOf(
+            SubtitleChoice("Desligada", "Nenhuma legenda", null, null)
+        )
+        val groupsByLabel = textGroups.mapNotNull { group ->
+            val label = group.mediaTrackGroup.getFormat(0).label?.toString()
+                ?: return@mapNotNull null
+            label to group.mediaTrackGroup
+        }.toMap()
+        val usedLabels = mutableSetOf<String>()
+
+        for (option in addonSubtitleOptions) {
+            val group = groupsByLabel[option.media3Label] ?: continue
+            choices.add(
+                SubtitleChoice(
+                    label = option.label,
+                    detail = option.detail.ifEmpty { option.source },
+                    group = group,
+                    id = option.id
+                )
+            )
+            usedLabels.add(option.media3Label)
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Legendas")
-            .setItems(labels.toTypedArray()) { _, which ->
-                val builder = mediaController.trackSelectionParameters.buildUpon()
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                val group = groups[which]
-                if (group == null) {
-                    builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                } else {
-                    builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    builder.setOverrideForType(TrackSelectionOverride(group, 0))
-                }
-                mediaController.trackSelectionParameters = builder.build()
+        var embeddedIndex = 0
+        for (group in textGroups) {
+            val format = group.mediaTrackGroup.getFormat(0)
+            val label = format.label?.toString()
+            if (label != null && label in usedLabels) continue
+            val language = format.language?.toString().orEmpty()
+            embeddedIndex++
+            choices.add(
+                SubtitleChoice(
+                    label = subtitleLabel(language, label),
+                    detail = "Embutida no vídeo · faixa $embeddedIndex",
+                    group = group.mediaTrackGroup,
+                    id = format.id
+                )
+            )
+        }
+
+        // PT-BR primeiro, mas mantendo todas as alternativas.
+        val ordered = listOf(choices.first()) + choices.drop(1).sortedWith(
+            compareByDescending<SubtitleChoice> {
+                isPreferredSubtitle(
+                    it.group?.getFormat(0)?.language?.toString(),
+                    it.group?.getFormat(0)?.label?.toString()
+                )
+            }.thenBy { it.label.lowercase() }
+        )
+
+        val activeGroup = textGroups.firstOrNull { it.isSelected }?.mediaTrackGroup
+        val selectedIndex = ordered.indexOfFirst { choice ->
+            if (choice.group == null) activeGroup == null
+            else choice.group == activeGroup
+        }.let { if (it >= 0) it else 0 }
+
+        val dialog = Dialog(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.parseColor("#121722"))
+                setStroke(dp(1), Color.parseColor("#2A3346"))
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
+
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(
+            TextView(this).apply {
+                text = "Legendas"
+                setTextColor(Color.parseColor("#F8FAFC"))
+                textSize = 18f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        titleRow.addView(
+            TextView(this).apply {
+                text = "${ordered.size - 1} faixas"
+                setTextColor(Color.parseColor("#8B93A7"))
+                textSize = 11f
+            }
+        )
+        root.addView(titleRow)
+
+        root.addView(
+            TextView(this).apply {
+                text = "Escolha outra faixa se a legenda estiver fora de sincronia."
+                setTextColor(Color.parseColor("#8B93A7"))
+                textSize = 11f
+                setPadding(0, dp(4), 0, dp(8))
+            }
+        )
+
+        val list = ListView(this).apply {
+            divider = ColorDrawable(Color.TRANSPARENT)
+            dividerHeight = dp(2)
+            adapter = SubtitleAdapter(ordered, selectedIndex)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                minOf((resources.displayMetrics.heightPixels * 0.62).toInt(), dp(520))
+            )
+            setOnItemClickListener { _, _, position, _ ->
+                val choice = ordered[position]
+                userSelectedSubtitle = true
+                if (choice.group == null) disableText() else selectTextGroup(choice.group)
+                dialog.dismiss()
+            }
+        }
+        root.addView(list)
+
+        root.addView(
+            TextView(this).apply {
+                text = "Fechar"
+                gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#7C9CFF"))
+                textSize = 13f
+                setPadding(0, dp(10), 0, dp(6))
+                setOnClickListener { dialog.dismiss() }
+            }
+        )
+
+        dialog.setContentView(root)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                setLayout(
+                    minOf((resources.displayMetrics.widthPixels * 0.92).toInt(), dp(640)),
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setDimAmount(0.65f)
+                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            }
+        }
+        dialog.show()
+    }
+
+    private inner class SubtitleAdapter(
+        private val choices: List<SubtitleChoice>,
+        private val selectedIndex: Int
+    ) : BaseAdapter() {
+        override fun getCount(): Int = choices.size
+        override fun getItem(position: Int): SubtitleChoice = choices[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val choice = choices[position]
+            val selected = position == selectedIndex
+            val row = LinearLayout(this@PlayerActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(10), dp(10))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(
+                        if (selected) Color.parseColor("#1B2433") else Color.TRANSPARENT
+                    )
+                }
+            }
+
+            val textColumn = LinearLayout(this@PlayerActivity).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            textColumn.addView(
+                TextView(this@PlayerActivity).apply {
+                    text = choice.label
+                    setTextColor(
+                        if (selected) Color.parseColor("#7C9CFF")
+                        else Color.parseColor("#F8FAFC")
+                    )
+                    textSize = 14f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                }
+            )
+            textColumn.addView(
+                TextView(this@PlayerActivity).apply {
+                    text = choice.detail
+                    setTextColor(Color.parseColor("#8B93A7"))
+                    textSize = 11f
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                }
+            )
+            row.addView(
+                textColumn,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            row.addView(
+                TextView(this@PlayerActivity).apply {
+                    text = if (selected) "✓" else ""
+                    setTextColor(Color.parseColor("#7C9CFF"))
+                    textSize = 16f
+                    gravity = Gravity.CENTER
+                    width = dp(28)
+                }
+            )
+            return row
+        }
     }
 
     override fun finish() {

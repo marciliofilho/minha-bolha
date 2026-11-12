@@ -87,6 +87,23 @@ object HubRuntime {
                 port = candidatePort
                 hubScheduler.start()
 
+                // Primeiro boot: instala Cinemeta e OpenSubtitles v3. Roda em
+                // segundo plano para não atrasar a abertura do app.
+                Thread {
+                    val prefs = appContext.getSharedPreferences(
+                        "hub_defaults",
+                        Context.MODE_PRIVATE
+                    )
+                    if (prefs.getBoolean("stremio_defaults_v1", false)) return@Thread
+                    val ok = runCatching {
+                        StremioCatalog.ensureDefaults(hubDatabase)
+                    }.getOrDefault(false)
+                    if (ok) {
+                        prefs.edit().putBoolean("stremio_defaults_v1", true).apply()
+                        hubEvents.broadcast("stremio:changed")
+                    }
+                }.start()
+
                 // O calendário global é atualizado assim que o app abre.
                 GlobalReleasesSource.find(hubDatabase)?.let {
                     hubScheduler.enqueueSource(it.getString("id"), false)

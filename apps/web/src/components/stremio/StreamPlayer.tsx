@@ -460,6 +460,7 @@ export function StreamPlayer({
               url: prep.directUrl,
               title,
               fileName: prep.fileName,
+              subtitleLanguage: settings.subtitleLanguage,
               tracking: tracking ?? null
             })
           );

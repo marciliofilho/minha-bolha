@@ -1,5 +1,6 @@
 package com.minhabolha.android
 
+import android.util.Log
 import com.minhabolha.android.connectors.ConnectorError
 import com.minhabolha.android.connectors.Http
 import com.minhabolha.android.connectors.TextUtil
@@ -172,6 +173,32 @@ object StremioCatalog {
     }
 
     fun removeAddon(database: HubDatabase, id: String): Boolean = database.deleteStremioAddon(id)
+
+    /**
+     * Addons oficiais/metadata que não distribuem mídia protegida:
+     * Cinemeta (catálogos/metadados) e OpenSubtitles v3 (legendas).
+     *
+     * O TMDB não entra por padrão: não existe um manifest oficial estável do
+     * Stremio para ele; a integração TMDB do Hub continua pelas chaves da API.
+     */
+    fun ensureDefaults(database: HubDatabase): Boolean {
+        val defaults = listOf(
+            "https://v3-cinemeta.strem.io/manifest.json",
+            "https://opensubtitles-v3.strem.io/manifest.json"
+        )
+        var allPresent = true
+        for (url in defaults) {
+            val transport = normalizeManifestUrl(url)
+            if (database.findStremioAddonByHash(sha256(transport)) != null) continue
+            try {
+                addAddon(database, url)
+            } catch (error: Exception) {
+                allPresent = false
+                Log.w("MinhaBolha", "falha ao adicionar addon padrão $url", error)
+            }
+        }
+        return allPresent
+    }
 
     /** Atualiza nome, estado, prioridade e, opcionalmente, a URL do manifest. */
     fun updateAddon(
