@@ -24,6 +24,7 @@ class HubServer(
     private val port: Int,
     private val database: HubDatabase,
     private val scheduler: HubScheduler,
+    private val extractor: NovelExtractor,
     private val events: EventHub,
     private val version: String
 ) : NanoHTTPD("127.0.0.1", port) {
@@ -87,6 +88,9 @@ class HubServer(
                 json(BackupService.preview(database, readJsonBody(session)))
             segments == listOf("backup", "import") && method == Method.POST ->
                 backupImport(session)
+
+            segments == listOf("novels", "chapter") && method == Method.GET -> novelChapter(session)
+            segments == listOf("articles", "content") && method == Method.GET -> articleContent(session)
 
             segments == listOf("games") && method == Method.GET -> gamesList(session)
             segments == listOf("games", "search") && method == Method.GET -> gamesSearch(session)
@@ -704,8 +708,61 @@ class HubServer(
     // Jogos
     // ---------------------------------------------------------------------
 
-    private fun backupImport(session: IHTTPSession): Response {
-        val document = readJsonBody(session)
+    // ---------------------------------------------------------------------
+    // Leitura de novels e artigos (extração via WebView)
+    // ---------------------------------------------------------------------
+
+    private fun novelChapter(session: IHTTPSession): Response {
+        val url = param(session, "url")
+            ?: throw HubException(400, "validation", "Informe a URL do capítulo.")
+
+        val extracted = extractor.extract(url)
+            ?: throw HubException(
+                502,
+                "novel",
+                "Não foi possível extrair o capítulo (site bloqueado, lento ou sem texto)."
+            )
+
+        return json(
+            JSONObject()
+                .put("url", url)
+                .put("title", extracted.title)
+                .put("text", extracted.text)
+                .put("textWithComments", JSONObject.NULL)
+                .put("translatedText", JSONObject.NULL)
+                .put("translatedLanguage", JSONObject.NULL)
+                .put("fetchedAt", Dates.nowIso())
+        )
+    }
+
+    private fun articleContent(session: IHTTPSession): Response {
+        val url = param(session, "url")
+            ?: throw HubException(400, "validation", "Informe a URL do artigo.")
+
+        val extracted = extractor.extract(url)
+            ?: throw HubException(
+                502,
+                "article",
+                "Não foi possível extrair o artigo (site bloqueado, lento ou sem texto)."
+            )
+
+        val siteName = try {
+            java.net.URL(url).host.removePrefix("www.")
+        } catch (error: Exception) {
+            JSONObject.NULL
+        }
+
+        return json(
+            JSONObject()
+                .put("url", url)
+                .put("title", extracted.title)
+                .put("siteName", siteName)
+                .put("text", extracted.text)
+                .put("fetchedAt", Dates.nowIso())
+        )
+    }
+
+    private fun backupImport(session: IHTTPSession): Response {        val document = readJsonBody(session)
         if (document.optString("format") != BackupService.FORMAT) {
             throw HubException(
                 400,

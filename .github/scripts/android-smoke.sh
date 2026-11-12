@@ -473,6 +473,17 @@ IMPORTED="$(curl -fsS --max-time 30 -X POST -H 'content-type: application/json' 
 printf '%s' "$IMPORTED" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d.get("settingsUpdated") is True;print("import ok:", d.get("categoriesImported"), "categoria(s)")' \
   || fail "importação do backup falhou"
 
+echo "== Extração de novels/artigos (WebView) =="
+ARTICLE="$(curl -fsS --max-time 60 "$BASE/api/articles/content?url=https%3A%2F%2Fexample.com%2F" || true)"
+ARTICLE_TITLE="$(printf '%s' "$ARTICLE" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("title",""))' 2>/dev/null || true)"
+ARTICLE_LEN="$(printf '%s' "$ARTICLE" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("text","")))' 2>/dev/null || echo 0)"
+echo "extração: \"$ARTICLE_TITLE\" ($ARTICLE_LEN caracteres)"
+if [ "$ARTICLE_LEN" -gt 20 ]; then
+  echo "WebView extraiu texto"
+else
+  echo "AVISO: extração não devolveu texto (rede externa ou página dinâmica)"
+fi
+
 echo "== UI React montada no WebView =="
 READY=0
 ATTEMPT=0

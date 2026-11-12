@@ -21,6 +21,7 @@ object HubRuntime {
     private var scheduler: HubScheduler? = null
     private var events: EventHub? = null
     private var server: HubServer? = null
+    private var extractor: NovelExtractor? = null
     private var port: Int = 0
 
     /** Sobe o backend se ainda não estiver ativo e devolve a porta local. */
@@ -48,6 +49,8 @@ object HubRuntime {
         StremioAccount.ensureSource(hubDatabase)
 
         val hubScheduler = HubScheduler(hubDatabase, hubEvents)
+        val novelExtractor = NovelExtractor(appContext)
+
 
         for (candidate in listOf(PREFERRED_PORT, 0)) {
             val candidatePort = if (candidate == 0) {
@@ -61,6 +64,7 @@ object HubRuntime {
                     port = candidatePort,
                     database = hubDatabase,
                     scheduler = hubScheduler,
+                    extractor = novelExtractor,
                     events = hubEvents,
                     version = BuildConfig.VERSION_NAME
                 ).also {
@@ -76,6 +80,7 @@ object HubRuntime {
                 database = hubDatabase
                 events = hubEvents
                 scheduler = hubScheduler
+                extractor = novelExtractor
                 port = candidatePort
                 hubScheduler.start()
 
@@ -104,6 +109,8 @@ object HubRuntime {
         events?.closeAll()
         events = null
         TorrentEngine.stop()
+        extractor?.dispose()
+        extractor = null
         database = null
         port = 0
         Log.i(TAG, "backend local encerrado")
