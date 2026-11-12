@@ -31,7 +31,9 @@ class HubServer(
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
-        android.util.Log.i("MinhaBolha", "req ${session.method.name} $uri")
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i("MinhaBolha", "req ${session.method.name} $uri")
+        }
         return try {
             if (uri == "/api" || uri.startsWith("/api/")) {
                 serveApi(session)
@@ -1112,10 +1114,6 @@ class HubServer(
 
         val page = extractor.chapters(url)
             ?: throw HubException(502, "novel", "Não foi possível listar os capítulos agora.")
-        android.util.Log.i(
-            "MinhaBolha",
-            "novelDetails $sourceId: ${page.links.size} capítulo(s) de $url"
-        )
         val title = page.title.ifEmpty { config.optString("title", row.name) }
 
         val chapters = JSONArray()

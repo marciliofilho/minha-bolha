@@ -134,21 +134,6 @@ export function NovelReader({
 
   const details = useNovelDetails(item.sourceId);
   const chapters = details.data?.chapters ?? [];
-
-  useEffect(() => {
-    console.log(
-      'novel-reader-debug',
-      JSON.stringify({
-        sourceId: item.sourceId,
-        loading: details.isLoading,
-        fetching: details.isFetching,
-        error: details.error instanceof Error ? details.error.message : null,
-        count: details.data?.chapters?.length ?? null,
-        first: details.data?.chapters?.[0]?.name ?? null,
-        firstUrl: details.data?.chapters?.[0]?.url ?? null
-      })
-    );
-  }, [item.sourceId, details.isLoading, details.isFetching, details.error, details.data]);
   const currentIndex = chapters.findIndex(
     (chapter) =>
       (currentId !== null && chapter.id === currentId) ||

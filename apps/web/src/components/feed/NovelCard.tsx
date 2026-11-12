@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n';
 import { useNovelDetails, useSettings } from '@/lib/queries';
 import { readerLanguage } from '@/lib/reader-html';
 import { translateText } from '@/lib/translate';
+import { useLongPress } from '@/lib/use-long-press';
 import { cn } from '@/lib/utils';
 
 export interface NovelGroup {
@@ -222,6 +223,11 @@ export function NovelCard({
     setPosition({ left, top });
   };
 
+  const longPress = useLongPress(() => {
+    setDetailsWanted(true);
+    openPreview();
+  });
+
   const onMouseEnter = (): void => {
     if (!canHover()) return;
     setDetailsWanted(true);
@@ -335,6 +341,7 @@ export function NovelCard({
   return (
     <div
       ref={anchorRef}
+      {...longPress}
       className={cn('relative', layout === 'row' && 'w-[10.5rem] shrink-0')}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
