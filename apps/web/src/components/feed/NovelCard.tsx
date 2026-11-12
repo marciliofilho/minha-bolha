@@ -76,9 +76,20 @@ function latestTarget(group: NovelGroup): NovelChapterTarget {
 
 function readTarget(group: NovelGroup): NovelChapterTarget | null {
   if (!group.lastRead) return null;
-  const item = group.items.find(
-    (candidate) => candidate.meta?.chapterId === group.lastRead?.chapterId
-  );
+  const item =
+    group.items.find(
+      (candidate) =>
+        candidate.meta?.chapterId === group.lastRead?.chapterId ||
+        candidate.meta?.chapterUrl === group.lastRead?.chapterId ||
+        candidate.url === group.lastRead?.chapterId
+    ) ??
+    (typeof group.lastRead.chapterIndex === 'number'
+      ? group.items.find(
+          (candidate) =>
+            typeof candidate.meta?.chapterIndex === 'number' &&
+            candidate.meta.chapterIndex === group.lastRead?.chapterIndex
+        )
+      : undefined);
   return {
     id: group.lastRead.chapterId,
     name: group.lastRead.chapterName,

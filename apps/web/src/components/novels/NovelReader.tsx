@@ -207,12 +207,38 @@ export function NovelReader({
     Boolean(language) && !cachedTranslation && translation.isError;
 
   useEffect(() => {
-    if (currentUrl || !currentId) return;
-    const chapter = details.data?.chapters.find(
-      (candidate) => candidate.id === currentId
-    );
-    if (chapter?.url) setCurrentUrl(chapter.url);
-  }, [currentUrl, currentId, details.data]);
+    if (currentUrl || !details.data) return;
+    const list = details.data.chapters;
+    if (list.length === 0) return;
+
+    const numericTail = (value: string | null | undefined): string | null =>
+      value?.match(/(\d{6,})\/?$/)?.[1] ?? null;
+    const currentTail = numericTail(currentId) ?? numericTail(item.url);
+    const fallbackIndex =
+      typeof meta.chapterIndex === 'number' ? meta.chapterIndex : 0;
+
+    // O id salvo no progresso pode ser a URL antiga (sem slug). Compara
+    // também pelo id numérico final e, por último, pelo índice do capítulo.
+    const chapter =
+      (currentId
+        ? list.find(
+            (candidate) => candidate.id === currentId || candidate.url === currentId
+          )
+        : null) ??
+      (currentTail
+        ? list.find(
+            (candidate) =>
+              numericTail(candidate.id) === currentTail ||
+              numericTail(candidate.url) === currentTail
+          )
+        : null) ??
+      list[Math.min(Math.max(fallbackIndex, 0), list.length - 1)] ??
+      null;
+
+    if (!chapter?.url) return;
+    setCurrentUrl(chapter.url);
+    if (chapter.id !== currentId) setCurrentId(chapter.id);
+  }, [currentUrl, currentId, details.data, item.url, meta.chapterIndex]);
 
   const chapterUrl = useCallback(
     (chapter: NovelChapterDto): string | null => {
