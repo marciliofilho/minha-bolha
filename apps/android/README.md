@@ -42,6 +42,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   loads the page, runs the site's JavaScript and extracts the reader text for
   `/api/articles/content` and `/api/novels/chapter` — the Android replacement
   for the desktop's Puppeteer pipeline.
+- **Webnovel sources**: add a novel by its index URL; the feed shows the latest
+  chapter and the reader pulls the text through the same extractor.
 - **Stremio account**: login with e-mail/password or an auth key (the session
   key is encrypted with the Android Keystore), hourly library sync through a
   `stremio-library` source, local favourites/watch‑later and shared
@@ -96,7 +98,7 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
 - Browser features that depend on CDP: page extraction, Cloudflare handling and
   the live screenshot view used by the desktop's novel/paywall flows.
-- Novels: catalog, reader, chapter cache and offline downloads.
+- Novels: chapter list/progress UI, offline downloads and sites that require login.
 
 Because those endpoints do not exist yet, the corresponding screens show their
 normal error state instead of data.
