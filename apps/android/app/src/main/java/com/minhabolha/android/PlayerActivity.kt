@@ -144,6 +144,7 @@ class PlayerActivity : Activity() {
         }
         playbackUrl = if (relativeUrl.startsWith("http")) relativeUrl else baseUrl + relativeUrl
         title = json.optString("title").ifEmpty { "Reprodução" }
+        Log.i(TAG, "player abrindo: $title -> ${playbackUrl.substringBefore('?')}")
 
         val tracking = json.optJSONObject("tracking")
         metaId = tracking?.optString("metaId").orEmpty()
@@ -709,6 +710,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun finish() {
+        Log.i(TAG, "player finalizando: isFinishing=$isFinishing isDestroyed=$isDestroyed")
         // Volta à orientação que o app usava antes do player em tela cheia.
         requestedOrientation = originalOrientation
         super.finish()
