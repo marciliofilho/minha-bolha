@@ -392,8 +392,10 @@ object StremioCatalog {
             }
         }
 
-        val results = tasks.map { task ->
-            val future = searchExecutor.submit<JSONObject> {
+        // Primeiro dispara todas as consultas; só depois espera. Fazer
+        // submit+get no mesmo laço serializava a busca.
+        val futures = tasks.map { task ->
+            task to searchExecutor.submit<JSONObject> {
                 catalogPage(
                     database,
                     task.addonId,
@@ -406,6 +408,8 @@ object StremioCatalog {
                     retries = 0
                 )
             }
+        }
+        val results = futures.map { (task, future) ->
             try {
                 future.get(SEARCH_TIMEOUT_MS + 1_500, TimeUnit.MILLISECONDS) to task
             } catch (error: Exception) {

@@ -43,6 +43,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Locale
 
 /**
  * Tela de reprodução nativa.
@@ -306,7 +307,7 @@ class PlayerActivity : Activity() {
                     val proxyUrl = item.optString("proxyUrl")
                     if (proxyUrl.isEmpty()) continue
                     val language = item.optString("lang").ifEmpty { "und" }
-                    val label = item.optString("language").ifEmpty { "Legenda" }
+                    val label = subtitleLabel(language, item.optString("language"))
                     if (!seen.add("${language.lowercase()}|${label.lowercase()}")) continue
                     configurations.add(
                         MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
@@ -332,6 +333,17 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
+    private fun subtitleLabel(language: String, rawLabel: String?): String {
+        val code = language.trim().lowercase()
+        val label = rawLabel?.trim().orEmpty()
+        if (label.isNotEmpty() && !label.equals(code, ignoreCase = true)) return label
+        if (code.isEmpty() || code == "und" || code == "unknown") return "Legenda"
+        val display = Locale.forLanguageTag(code)
+            .getDisplayLanguage(Locale("pt", "BR"))
+            .replaceFirstChar { it.uppercase() }
+        return display.ifEmpty { code }
+    }
+
     private fun showSubtitlePicker() {
         val mediaController = controller ?: return
         val textGroups = mediaController.currentTracks.groups.filter {
@@ -347,10 +359,8 @@ class PlayerActivity : Activity() {
         val seen = mutableSetOf<String>()
         for (group in textGroups) {
             val format = group.mediaTrackGroup.getFormat(0)
-            val label = format.label?.toString()?.takeIf { it.isNotBlank() }
-                ?: format.language?.takeIf { it.isNotBlank() }
-                ?: "Legenda ${labels.size}"
             val language = format.language?.toString().orEmpty()
+            val label = subtitleLabel(language, format.label?.toString())
             if (!seen.add("${language.lowercase()}|${label.lowercase()}")) continue
             labels.add(label)
             groups.add(group.mediaTrackGroup)
