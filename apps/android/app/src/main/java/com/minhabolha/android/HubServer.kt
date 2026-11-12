@@ -417,6 +417,7 @@ class HubServer(
             .put("version", version)
             .put("phase", 6)
             .put("platform", "android")
+            .put("sqlite", database.diagnostics())
             .put("keys", keyFlags())
             .put("demo", counts.optBoolean("demo"))
             .put(

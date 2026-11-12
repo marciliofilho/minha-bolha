@@ -63,8 +63,8 @@ android {
         // pelas migrations compartilhadas com o desktop.
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.5.0-alpha1"
+        versionCode = 2
+        versionName = "0.5.0-alpha2"
 
         // libtorrent4j traz bibliotecas nativas: só as ABIs suportadas.
         ndk {
@@ -112,6 +112,11 @@ dependencies {
     implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
     implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
     implementation("org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39")
+
+    // SQLite empacotado: o SQLite do sistema (inclusive no Android 11) pode vir
+    // sem JSON1, que as migrations compartilhadas com o desktop usam. Esta
+    // biblioteca garante a mesma versão (3.49) em qualquer aparelho.
+    implementation("com.github.requery:sqlite-android:3.49.0")
 
     // Player nativo para MKV/HEVC (o WebView não abre esses containers).
     implementation("androidx.media3:media3-exoplayer:1.5.1")

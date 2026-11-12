@@ -32,12 +32,52 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashLogger()
 
-        val port = HubRuntime.start(this)
+        val container = android.widget.FrameLayout(this)
+        setContentView(container)
+
+        val loading = android.widget.TextView(this).apply {
+            setBackgroundColor(Color.parseColor("#080a0f"))
+            setTextColor(Color.parseColor("#f8fafc"))
+            textSize = 15f
+            gravity = android.view.Gravity.CENTER
+            text = "Iniciando Minha Bolha…"
+        }
+        container.addView(
+            loading,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        // Banco e migrations podem levar alguns segundos em emuladores; rodar
+        // fora da thread principal evita ANR e mantém a tela de carregamento.
+        Thread {
+            val result = runCatching { HubRuntime.start(this) }
+            runOnUiThread {
+                result.fold(
+                    onSuccess = { port -> startUi(container, loading, port) },
+                    onFailure = { error -> showStartupFailure(container, loading, error) }
+                )
+            }
+        }.start()
+    }
+
+    private fun startUi(
+        container: android.widget.FrameLayout,
+        loading: android.widget.TextView,
+        port: Int
+    ) {
         backendPort = port
-
         ForegroundGuard.bind(this)
         requestNotificationPermission()
+
+        if (port <= 0) {
+            showServerFailure(container, loading, port)
+            return
+        }
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#080a0f"))
@@ -63,12 +103,6 @@ class MainActivity : Activity() {
 
         // Ponte para o player nativo: o WebView não abre MKV/HEVC.
         webView.addJavascriptInterface(HubBridge(), "HubNative")
-
-        // O extrator de novels precisa de uma janela real para carregar páginas.
-        val container = android.widget.FrameLayout(this)
-        container.addView(webView)
-        setContentView(container)
-        HubRuntime.attachExtractor(container)
 
         // Diagnóstico usado pelo smoke test do CI: confirma que o React montou
         // a interface dentro do WebView, não só que o HTML foi servido.
@@ -116,36 +150,93 @@ class MainActivity : Activity() {
             }
         }
 
-        if (port > 0) {
-            webView.loadUrl("http://127.0.0.1:$port/")
-        } else {
-            showServerFailure(port)
-        }
+        container.removeView(loading)
+        container.addView(
+            webView,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        // O extrator de novels precisa de uma janela real para carregar páginas.
+        HubRuntime.attachExtractor(container)
+
+        webView.loadUrl("http://127.0.0.1:$port/")
     }
 
-    private fun showServerFailure(port: Int) {
-        webView.loadDataWithBaseURL(
-            null,
-            """
-            <!doctype html><html><body style="background:#080a0f;color:#f8fafc;font-family:sans-serif;padding:24px">
-            <h1>Minha Bolha Android</h1>
-            <p>Não foi possível iniciar o servidor local na porta $port.</p>
-            <p style="color:#94a3b8;font-size:13px">Feche o app e abra novamente. Se o problema continuar,
-            outro processo pode estar usando a porta.</p>
-            </body></html>
-            """.trimIndent(),
-            "text/html",
-            "utf-8",
-            null
-        )
+    private fun showServerFailure(
+        container: android.widget.FrameLayout,
+        loading: android.widget.TextView,
+        port: Int
+    ) {
+        loading.text = """
+            Não foi possível iniciar o servidor local (porta $port).
+
+            Feche o app e abra novamente. Se continuar, outro processo pode
+            estar usando a porta.
+        """.trimIndent()
     }
 
     /**
-     * Registra no logcat quantos elementos o React montou dentro de `#root`.
-     *
-     * O smoke test do CI usa essa linha para diferenciar "HTML servido" de
-     * "interface realmente renderizada".
+     * Mostra o erro de inicialização na tela (em vez de fechar sem aviso) e
+     * grava o stack trace em `filesDir/startup-crash.txt`.
      */
+    private fun showStartupFailure(
+        container: android.widget.FrameLayout,
+        loading: android.widget.TextView,
+        error: Throwable
+    ) {
+        Log.e(TAG, "falha ao iniciar o app", error)
+        runCatching { HubRuntime.stop() }
+        runCatching {
+            java.io.File(filesDir, "startup-crash.txt").writeText(error.stackTraceToString())
+        }
+
+        val details = buildString {
+            appendLine("Não foi possível iniciar o Minha Bolha.")
+            appendLine()
+            appendLine(error.toString())
+            appendLine()
+            error.stackTrace.take(12).forEach { appendLine("  at $it") }
+            appendLine()
+            appendLine("Detalhes completos: logcat (MinhaBolha) ou")
+            appendLine("files/startup-crash.txt no armazenamento do app.")
+        }
+
+        val message = android.widget.TextView(this).apply {
+            setBackgroundColor(Color.parseColor("#080a0f"))
+            setTextColor(Color.parseColor("#f8fafc"))
+            textSize = 12f
+            setPadding(48, 96, 48, 48)
+            typeface = android.graphics.Typeface.MONOSPACE
+            text = details
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(message) }
+
+        container.removeView(loading)
+        container.addView(
+            scroll,
+            android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
+
+    /** Guarda o último crash para diagnóstico sem precisar de adb. */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                java.io.File(filesDir, "last-crash.txt").writeText(
+                    "thread=${thread.name}\n\n" + error.stackTraceToString()
+                )
+            }
+            previous?.uncaughtException(thread, error)
+        }
+    }
+
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {

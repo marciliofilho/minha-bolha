@@ -13,6 +13,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // sqlite-android (SQLite atual com JSON1) é distribuído pelo JitPack.
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

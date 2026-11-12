@@ -3,7 +3,7 @@ package com.minhabolha.android
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
-import android.database.sqlite.SQLiteDatabase
+import io.requery.android.database.sqlite.SQLiteDatabase
 import android.util.Base64
 import com.minhabolha.android.connectors.MediaRow
 import com.minhabolha.android.connectors.RawGlobalRelease
@@ -50,8 +50,44 @@ class HubDatabase(private val context: Context) {
 
         migrate(database)
         ensureSystemCategories(database)
+
+        val capabilities = capabilities(database)
+        android.util.Log.i(
+            "MinhaBolha",
+            "sqlite ${capabilities.optString("version")} json1=${capabilities.optBoolean("json1")} " +
+                "window=${capabilities.optBoolean("windowFunctions")}"
+        )
         return database
     }
+
+    /**
+     * Versão e recursos do SQLite em uso.
+     *
+     * As migrations são compartilhadas com o desktop e usam JSON1; o SQLite de
+     * algumas imagens Android (BlueStacks, por exemplo) vem sem essa extensão.
+     * O app empacota sua própria versão, e isto confirma em execução.
+     */
+    private fun capabilities(database: SQLiteDatabase): JSONObject {
+        fun scalar(sql: String): String? = database.rawQuery(sql, null).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
+
+        val version = runCatching { scalar("SELECT sqlite_version()") }.getOrNull() ?: "desconhecida"
+        val json1 = runCatching {
+            scalar("""SELECT json_extract('{"a":1}', '$.a')""")
+        }.getOrNull() == "1"
+        val window = runCatching {
+            scalar("SELECT ROW_NUMBER() OVER (ORDER BY 1)")
+        }.isSuccess
+
+        return JSONObject()
+            .put("version", version)
+            .put("json1", json1)
+            .put("windowFunctions", window)
+    }
+
+    /** Diagnóstico exposto em `/api/health` (usado pelo smoke test). */
+    fun diagnostics(): JSONObject = capabilities(db).put("engine", "bundled")
 
     private fun pragma(database: SQLiteDatabase, sql: String) {
         database.rawQuery(sql, null).use { cursor -> cursor.moveToFirst() }

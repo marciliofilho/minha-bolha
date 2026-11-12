@@ -67,6 +67,14 @@ case "$health" in
   *'"platform":"android"'*) ;;
   *) fail "/api/health sem platform=android" ;;
 esac
+case "$health" in
+  *'"json1":true'*) ;;
+  *) fail "/api/health sem SQLite com JSON1 (migrations não rodam)" ;;
+esac
+case "$health" in
+  *'"windowFunctions":true'*) ;;
+  *) fail "/api/health sem window functions no SQLite" ;;
+esac
 
 categories="$(curl -fsS --max-time 15 "$BASE/api/categories" || true)"
 echo "categories: $(printf '%s' "$categories" | cut -c1-160)"
