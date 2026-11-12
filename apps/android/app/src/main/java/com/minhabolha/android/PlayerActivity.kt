@@ -144,7 +144,6 @@ class PlayerActivity : Activity() {
         }
         playbackUrl = if (relativeUrl.startsWith("http")) relativeUrl else baseUrl + relativeUrl
         title = json.optString("title").ifEmpty { "Reprodução" }
-        Log.i(TAG, "player abrindo: $title -> ${playbackUrl.substringBefore('?')}")
 
         val tracking = json.optJSONObject("tracking")
         metaId = tracking?.optString("metaId").orEmpty()
@@ -466,13 +465,19 @@ class PlayerActivity : Activity() {
         }
         if (textGroups.isEmpty()) return
 
-        val preferred = textGroups.firstOrNull {
+        val preferredGroups = textGroups.filter {
             val format = it.mediaTrackGroup.getFormat(0)
             isPreferredSubtitle(
                 format.language?.toString(),
                 format.label?.toString()
             )
-        } ?: return
+        }
+        if (preferredGroups.isEmpty()) return
+        // Prefere uma legenda externa PT-BR (OpenSubtitles) em vez da faixa
+        // embutida, que muitas vezes é só crédito do encoder.
+        val preferred = preferredGroups.firstOrNull {
+            isAddonTrack(it.mediaTrackGroup)
+        } ?: preferredGroups.first()
         val selected = textGroups.firstOrNull { it.isSelected }
 
         if (selected == null) {
@@ -710,7 +715,6 @@ class PlayerActivity : Activity() {
     }
 
     override fun finish() {
-        Log.i(TAG, "player finalizando: isFinishing=$isFinishing isDestroyed=$isDestroyed")
         // Volta à orientação que o app usava antes do player em tela cheia.
         requestedOrientation = originalOrientation
         super.finish()
