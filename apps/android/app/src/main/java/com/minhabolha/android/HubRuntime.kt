@@ -52,7 +52,7 @@ object HubRuntime {
         StremioAccount.ensureSource(hubDatabase)
         GgDealsSource.ensure(hubDatabase)
 
-        val hubScheduler = HubScheduler(hubDatabase, hubEvents)
+        val hubScheduler = HubScheduler(appContext, hubDatabase, hubEvents)
 
 
         for (candidate in listOf(PREFERRED_PORT, 0)) {

@@ -2152,6 +2152,24 @@ class HubDatabase(private val context: Context) {
         return created
     }
 
+    /** Títulos dos alertas de preço mais recentes (para a notificação). */
+    fun priceDropTitles(limit: Int): List<String> {
+        val titles = mutableListOf<String>()
+        db.rawQuery(
+            "SELECT title FROM items WHERE kind = 'price_drop' AND is_hidden = 0 ORDER BY discovered_at DESC LIMIT ?",
+            arrayOf(limit.coerceIn(1, 10).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) titles.add(cursor.getString(0))
+        }
+        return titles
+    }
+
+    /** Remove capítulos offline antigos; devolve quantos saíram do cache. */
+    fun pruneNovelOffline(days: Int): Int {
+        val cutoff = Dates.iso(System.currentTimeMillis() - days.coerceIn(1, 365) * 86_400_000L)
+        return db.delete("novel_cache", "kind = 'chapter' AND fetched_at < ?", arrayOf(cutoff))
+    }
+
     /** Aplica os preços do gg.deals e devolve quantos jogos foram atualizados. */
     fun applyGgPrices(prices: List<GgPrice>): Int {
         if (prices.isEmpty()) return 0

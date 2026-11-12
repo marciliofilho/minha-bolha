@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit
  * - intervalo mínimo por tipo de conector.
  */
 class HubScheduler(
+    private val context: android.content.Context,
     private val database: HubDatabase,
     private val events: EventHub
 ) {
@@ -235,6 +236,7 @@ class HubScheduler(
                         JSONObject().put("sourceId", row.id).put("count", alerts)
                     )
                 }
+                if (alerts > 0) HubNotifications.priceDrops(context, database.priceDropTitles(3))
                 Log.i(TAG, "gg.deals: $updated preço(s), $alerts alerta(s)")
             }
 

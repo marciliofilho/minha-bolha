@@ -40,8 +40,13 @@ class RefreshWorker(
             )
             GlobalReleasesSource.ensure(database)
 
-            val scheduler = HubScheduler(database, EventHub())
+            val scheduler = HubScheduler(context, database, EventHub())
             val refreshed = scheduler.runDueNow(limit = 8)
+
+            // Limpeza automática dos capítulos offline antigos.
+            val retention = database.settings().optInt("novelOfflineRetentionDays", 7)
+            val pruned = database.pruneNovelOffline(retention)
+            if (pruned > 0) android.util.Log.i("MinhaBolha", "novels offline limpos: $pruned capítulo(s)")
             Result.success(workDataOf("refreshed" to refreshed))
         } catch (error: Exception) {
             android.util.Log.e("MinhaBolha", "falha na sincronização em segundo plano", error)
