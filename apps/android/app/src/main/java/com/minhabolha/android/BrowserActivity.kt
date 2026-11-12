@@ -112,8 +112,9 @@ class BrowserActivity : Activity() {
             }
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView, newProgress: Int) {
-                    progress.progress = newProgress
-                    progress.visibility = if (newProgress in 1..99) ProgressBar.VISIBLE else ProgressBar.GONE
+                    this@BrowserActivity.progress.progress = newProgress
+                    this@BrowserActivity.progress.visibility =
+                        if (newProgress in 1..99) ProgressBar.VISIBLE else ProgressBar.GONE
                 }
 
                 override fun onReceivedTitle(view: WebView, title: String?) {
