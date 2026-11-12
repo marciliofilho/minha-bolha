@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -8,6 +11,24 @@ val webDist = rootProject.file("../web/dist")
 
 /** Migrations compartilhadas com a API do desktop. */
 val migrationsDir = rootProject.file("../api/src/db/migrations")
+
+/**
+ * Assinatura de release.
+ *
+ * O keystore e a senha ficam fora do repositório (`apps/android/keystore.properties`,
+ * ignorado pelo git). No CI eles são gravados a partir dos segredos
+ * `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
+ * e `ANDROID_KEY_PASSWORD`.
+ */
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+val hasReleaseSigning = keystoreProperties.getProperty("storeFile")?.isNotBlank() == true
+
+/** `-PabiSplits=true` gera APKs por ABI; o AAB já é dividido pela loja. */
+val abiSplits = providers.gradleProperty("abiSplits").orNull == "true"
 
 /**
  * Assets gerados: a UI compilada e as migrations.
@@ -63,8 +84,8 @@ android {
         // pelas migrations compartilhadas com o desktop.
         minSdk = 30
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.5.0-alpha2"
+        versionCode = 3
+        versionName = "0.5.0-alpha3"
 
         // libtorrent4j traz bibliotecas nativas: só as ABIs suportadas.
         ndk {
@@ -82,9 +103,33 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = abiSplits
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
         }
     }
 

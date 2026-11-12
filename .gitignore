@@ -44,6 +44,9 @@ apps/android/build/
 apps/android/app/build/
 apps/android/local.properties
 apps/android/.idea/
+apps/android/keystore.properties
+apps/android/*.jks
+apps/android/*.keystore
 *.iml
 *.apk
 *.aab

@@ -1,0 +1,119 @@
+name: Build signed Android release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK" ]; then
+            echo "Android SDK not found"
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK" -path '*/cmdline-tools/*/bin/sdkmanager' -type f | head -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found"
+            exit 1
+          fi
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Check Android/desktop parity
+        run: node scripts/check-android-parity.mjs
+
+      - name: Build web UI
+        env:
+          HUB_BUILD_TARGET: es2019
+        run: npm run build
+
+      - name: Prepare release keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Segredo ANDROID_KEYSTORE_BASE64 não configurado."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/android/release.p12
+          cat > apps/android/keystore.properties <<EOF
+          storeFile=release.p12
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build signed AAB and APKs
+        run: |
+          gradle -p apps/android :app:bundleRelease :app:assembleRelease \
+            -PabiSplits=true --no-daemon
+
+      - name: Verify signatures
+        shell: bash
+        run: |
+          APKSIGNER="$(find "${ANDROID_HOME}" -path '*/build-tools/*/apksigner' -type f | sort | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner não encontrado"
+            exit 1
+          fi
+          for apk in apps/android/app/build/outputs/apk/release/*.apk; do
+            echo "== $apk =="
+            "$APKSIGNER" verify --print-certs "$apk"
+          done
+
+      - name: Show artifacts
+        shell: bash
+        run: |
+          find apps/android/app/build/outputs/apk/release -maxdepth 1 -type f -printf '%f %s bytes\n'
+          ls -l apps/android/app/build/outputs/bundle/release
+
+      - name: Remove keystore from the workspace
+        if: always()
+        shell: bash
+        run: rm -f apps/android/release.p12 apps/android/keystore.properties
+
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: minha-bolha-android-release
+          if-no-files-found: error
+          path: |
+            apps/android/app/build/outputs/bundle/release/app-release.aab
+            apps/android/app/build/outputs/apk/release/*.apk
