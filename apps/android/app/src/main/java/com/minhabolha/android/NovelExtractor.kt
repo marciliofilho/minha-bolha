@@ -35,8 +35,8 @@ class NovelExtractor(context: Context) {
 
     private companion object {
         const val TAG = "MinhaBolha"
-        const val RENDER_DELAY_MS = 4_000L
-        const val DEFAULT_TIMEOUT_MS = 30_000L
+        const val RENDER_DELAY_MS = 5_000L
+        const val DEFAULT_TIMEOUT_MS = 45_000L
 
         const val EXTRACT_JS = """            (function() {
               try {
@@ -223,21 +223,33 @@ class NovelExtractor(context: Context) {
         }
 
         synchronized(lock) {
-            val latch = CountDownLatch(1)
-            var result: ChapterList? = null
-
             // O catálogo do Webnovel hidrata em etapas; espera a lista
             // crescer antes de aceitar uma extração parcial.
             val minLinks =
                 if (Regex("webnovel\\.com", RegexOption.IGNORE_CASE).containsMatchIn(url)) 5 else 0
-            main.post { loadScript(url, CHAPTERS_JS, minLinks) { raw ->
-                result = parseChapters(raw)
-                latch.countDown()
-            } }
 
-            if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
+            var result = loadChapters(url, minLinks, timeoutMs)
+            if (result == null) {
+                // Às vezes o primeiro carregamento cai no desafio do
+                // Cloudflare. Recarregar com os cookies já obtidos resolve.
+                Log.w(TAG, "nova tentativa de catálogo: $url")
+                result = loadChapters(url, minLinks, timeoutMs)
+            }
             return result
         }
+    }
+
+    private fun loadChapters(url: String, minLinks: Int, timeoutMs: Long): ChapterList? {
+        val latch = CountDownLatch(1)
+        var result: ChapterList? = null
+        main.post {
+            loadScript(url, CHAPTERS_JS, minLinks) { raw ->
+                result = parseChapters(raw)
+                latch.countDown()
+            }
+        }
+        if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
+        return result
     }
 
     private fun parseChapters(raw: String?): ChapterList? {
@@ -353,7 +365,7 @@ class NovelExtractor(context: Context) {
                 fun evaluate() {
                     view.evaluateJavascript(script) { value ->
                         if (completed) return@evaluateJavascript
-                        if (minLinks > 0 && linkCount(value) < minLinks && attempt < 6) {
+                        if (minLinks > 0 && linkCount(value) < minLinks && attempt < 10) {
                             attempt++
                             view.postDelayed({ evaluate() }, 2_000L)
                         } else {
