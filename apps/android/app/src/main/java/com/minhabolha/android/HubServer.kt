@@ -1603,9 +1603,14 @@ class HubServer(
         }
 
         val sources = mutableListOf<String>()
+        var titleKey = ""
         body.optJSONArray("sources")?.let { array ->
             for (index in 0 until array.length()) {
                 val value = array.optString(index)
+                if (value.startsWith("meta:")) {
+                    titleKey = value.removePrefix("meta:").trim()
+                    continue
+                }
                 if (value.isNotEmpty()) sources.add(value)
             }
         }
@@ -1614,7 +1619,8 @@ class HubServer(
             context = context,
             infoHash = infoHash,
             fileIdx = fileIdx,
-            sources = sources
+            sources = sources,
+            titleKey = titleKey
         )
         return json(prepared)
     }

@@ -433,11 +433,17 @@ export function StreamPlayer({
     setActiveAudio(0);
     setError(null);
 
+    // Identifica o título para o cache de torrent. O Android apaga o cache
+    // do título anterior quando este valor muda.
+    const torrentTitleKey = tracking?.metaId?.trim() || title.trim();
+    const torrentSources = [...(stream.sources ?? [])];
+    if (torrentTitleKey) torrentSources.push(`meta:${torrentTitleKey}`);
+
     void api
       .prepareTorrent({
         infoHash: stream.infoHash,
         fileIdx: stream.fileIdx,
-        sources: stream.sources
+        sources: torrentSources
       })
       .then((prep) => {
         if (cancelled) return;

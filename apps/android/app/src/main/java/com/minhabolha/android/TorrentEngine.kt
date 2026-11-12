@@ -12,6 +12,7 @@ import org.libtorrent4j.TorrentInfo
 import org.libtorrent4j.swig.torrent_flags_t
 import java.io.File
 import java.io.RandomAccessFile
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -42,7 +43,8 @@ object TorrentEngine {
         val fileName: String,
         val fileLength: Long,
         val fileOffset: Long,
-        val filePath: File
+        val filePath: File,
+        val titleKey: String
     )
 
     private var manager: SessionManager? = null
@@ -56,6 +58,7 @@ object TorrentEngine {
         private set
 
     private val sessions = ConcurrentHashMap<String, Session>()
+    private var currentTitleKey: String? = null
 
     // ---------------------------------------------------------------------
     // Ciclo de vida
@@ -103,7 +106,8 @@ object TorrentEngine {
         context: Context,
         infoHash: String,
         fileIdx: Int?,
-        sources: List<String>
+        sources: List<String>,
+        titleKey: String = ""
     ): JSONObject {
         val hash = infoHash.trim().lowercase()
         if (!HASH_PATTERN.matches(hash)) {
@@ -112,13 +116,19 @@ object TorrentEngine {
         val sessionManager = manager(context)
             ?: throw HubException(503, "not_supported", "Motor de torrents indisponível neste aparelho.")
 
-        val existing = sessions.values.firstOrNull { it.infoHash == hash }
+        val key = titleKey.ifBlank { "default" }
+        val dirName = sha256(key).take(20)
+        switchTitleCache(context, key, dirName)
+
+        val existing = sessions.values.firstOrNull {
+            it.infoHash == hash && it.titleKey == key
+        }
         if (existing != null) {
             return dto(existing)
         }
 
         val magnet = buildMagnet(hash, sources)
-        val saveDir = File(context.filesDir, "torrents").apply { mkdirs() }
+        val saveDir = File(File(context.filesDir, "torrents"), dirName).apply { mkdirs() }
 
         try {
             sessionManager.download(magnet, saveDir, torrent_flags_t())
@@ -206,13 +216,49 @@ object TorrentEngine {
             fileName = fileName,
             fileLength = fileLength,
             fileOffset = fileOffset,
-            filePath = filePath
+            filePath = filePath,
+            titleKey = key
         )
 
         sessions[session.id] = session
         ForegroundGuard.torrentStarted()
         Log.i(TAG, "torrent pronto: $fileName (${fileLength / 1024 / 1024} MB)")
         return dto(session)
+    }
+
+    /**
+     * Mantém apenas o cache do título atual. Ao abrir outro filme/série,
+     * remove as sessões e apaga a pasta de torrents do título anterior.
+     */
+    @Synchronized
+    private fun switchTitleCache(context: Context, key: String, dirName: String) {
+        if (currentTitleKey == key) return
+
+        val oldSessions = sessions.values.toList()
+        sessions.clear()
+        for (session in oldSessions) {
+            runCatching { manager?.remove(session.handle) }
+            ForegroundGuard.torrentStopped()
+        }
+
+        val root = File(context.filesDir, "torrents")
+        root.listFiles()?.forEach { child ->
+            if (child.name != dirName) {
+                runCatching { child.deleteRecursively() }
+            }
+        }
+        currentTitleKey = key
+        Log.i(TAG, "cache de torrent trocado para $key")
+    }
+
+    private fun sha256(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+        val builder = StringBuilder(digest.size * 2)
+        for (byte in digest) {
+            builder.append(java.lang.String.format("%02x", byte.toInt() and 0xff))
+        }
+        return builder.toString()
     }
 
     private fun waitForHandle(sessionManager: SessionManager, sha1: Sha1Hash): TorrentHandle? {
@@ -371,6 +417,9 @@ object TorrentEngine {
         }
         try {
             session.filePath.delete()
+            if (sessions.values.none { it.saveDir == session.saveDir }) {
+                session.saveDir.deleteRecursively()
+            }
         } catch (error: Throwable) {
             Log.w(TAG, "falha ao apagar arquivo do torrent", error)
         }
