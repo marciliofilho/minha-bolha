@@ -722,6 +722,25 @@ class HubServer(
         val filter = param(session, "filter") ?: "all"
         val sort = param(session, "sort") ?: "discount"
         val query = param(session, "q").orEmpty()
+
+        // Com chave do gg.deals, atualiza em segundo plano os preços mais antigos.
+        val key = Secrets.value(database, "ggdeals")
+        if (key != null && ggRefreshing.compareAndSet(false, true)) {
+            Thread {
+                try {
+                    val appids = database.gamesForPriceCheck(20)
+                    if (appids.isNotEmpty()) {
+                        val region = database.settings().optString("region", "BR")
+                        database.applyGgPrices(GgDeals.fetch(appids, key, region))
+                    }
+                } catch (error: Exception) {
+                    android.util.Log.w("MinhaBolha", "gg.deals em segundo plano falhou", error)
+                } finally {
+                    ggRefreshing.set(false)
+                }
+            }.start()
+        }
+
         return json(database.listGames(filter, sort, query))
     }
 
@@ -788,6 +807,15 @@ class HubServer(
             warnings.put("A Steam não devolveu o preço agora.")
         } else {
             database.upsertSteamGame(app, inWishlist = game.optBoolean("inWishlist"))
+        }
+
+        val key = Secrets.value(database, "ggdeals")
+        if (key != null) {
+            try {
+                database.applyGgPrices(GgDeals.fetch(listOf(appid), key, region))
+            } catch (error: Exception) {
+                warnings.put("gg.deals: ${error.message}")
+            }
         }
 
         val updated = database.gameDetail(id)
@@ -1236,6 +1264,7 @@ class HubServer(
         val COLOR_PATTERN = Regex("^#[0-9a-fA-F]{6}$")
         val DATE_PATTERN = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         const val MAX_BODY_BYTES = 32L * 1024 * 1024
+        val ggRefreshing = java.util.concurrent.atomic.AtomicBoolean(false)
 
         val MIME_TYPES = mapOf(
             "html" to "text/html; charset=utf-8",

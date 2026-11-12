@@ -2059,8 +2059,102 @@ class HubDatabase(private val context: Context) {
         return ordered
     }
 
-    fun updateGameTarget(id: String, targetPriceCents: Int?): JSONObject? {
-        db.execSQL(
+    /** Aplica os preços do gg.deals e devolve quantos jogos foram atualizados. */
+    fun applyGgPrices(prices: List<GgPrice>): Int {
+        if (prices.isEmpty()) return 0
+        val now = nowIso()
+        val today = Dates.todayInZone(null)
+        var updated = 0
+
+        db.beginTransaction()
+        try {
+            for (price in prices) {
+                if (!price.found) continue
+                val row = db.rawQuery(
+                    "SELECT id, official_low_cents, keyshop_low_cents FROM games WHERE appid = ?",
+                    arrayOf(price.appid.toString())
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) {
+                        null
+                    } else {
+                        Triple(
+                            cursor.getString(0),
+                            if (cursor.isNull(1)) null else cursor.getInt(1),
+                            if (cursor.isNull(2)) null else cursor.getInt(2)
+                        )
+                    }
+                } ?: continue
+
+                val (id, previousOfficialLow, previousKeyshopLow) = row
+                val officialLow = listOfNotNull(previousOfficialLow, price.officialLowCents, price.officialCents)
+                    .minOrNull()
+                val keyshopLow = listOfNotNull(previousKeyshopLow, price.keyshopLowCents, price.keyshopCents)
+                    .minOrNull()
+                val officialAtLow = price.officialCents != null && officialLow != null &&
+                    price.officialCents <= officialLow
+                val keyshopAtLow = price.keyshopCents != null && keyshopLow != null &&
+                    price.keyshopCents <= keyshopLow
+
+                db.execSQL(
+                    """
+                    UPDATE games SET
+                      currency = ?,
+                      current_official_cents = COALESCE(?, current_official_cents),
+                      current_keyshop_cents = COALESCE(?, current_keyshop_cents),
+                      official_low_cents = ?,
+                      keyshop_low_cents = ?,
+                      is_at_low = ?,
+                      gg_url = COALESCE(?, gg_url),
+                      last_price_check_at = ?,
+                      updated_at = ?
+                    WHERE id = ?
+                    """.trimIndent(),
+                    arrayOf(
+                        price.currency,
+                        price.officialCents,
+                        price.keyshopCents,
+                        officialLow,
+                        keyshopLow,
+                        if (officialAtLow || keyshopAtLow) 1 else 0,
+                        price.ggUrl,
+                        now,
+                        now,
+                        id
+                    )
+                )
+
+                db.execSQL("DELETE FROM price_history WHERE game_id = ? AND day = ?", arrayOf(id, today))
+                db.execSQL(
+                    "INSERT INTO price_history (game_id, day, official_cents, keyshop_cents, currency) VALUES (?, ?, ?, ?, ?)",
+                    arrayOf<Any?>(id, today, price.officialCents, price.keyshopCents, price.currency)
+                )
+                updated++
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return updated
+    }
+
+    /** Appids com preço mais antigo, para atualização em segundo plano. */
+    fun gamesForPriceCheck(limit: Int): List<Int> {
+        val result = mutableListOf<Int>()
+        db.rawQuery(
+            """
+            SELECT appid FROM games
+            WHERE removed_at IS NULL
+            ORDER BY last_price_check_at IS NOT NULL, last_price_check_at ASC
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(limit.coerceIn(1, 100).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) result.add(cursor.getInt(0))
+        }
+        return result
+    }
+
+    fun updateGameTarget(id: String, targetPriceCents: Int?): JSONObject? {        db.execSQL(
             "UPDATE games SET target_price_cents = ?, updated_at = ? WHERE id = ?",
             arrayOf(targetPriceCents, nowIso(), id)
         )
