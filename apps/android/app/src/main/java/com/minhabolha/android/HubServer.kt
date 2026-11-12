@@ -92,6 +92,13 @@ class HubServer(
             segments == listOf("novels", "chapter") && method == Method.GET -> novelChapter(session)
             segments == listOf("articles", "content") && method == Method.GET -> articleContent(session)
 
+            segments.size == 3 && segments[0] == "sources" && segments[2] == "novel" &&
+                method == Method.GET -> novelDetails(segments[1])
+            segments.size == 3 && segments[0] == "sources" && segments[2] == "novel-progress" &&
+                method == Method.PUT -> setNovelProgress(session, segments[1])
+            segments.size == 3 && segments[0] == "sources" && segments[2] == "novel-progress" &&
+                method == Method.DELETE -> clearNovelProgress(segments[1])
+
             segments == listOf("games") && method == Method.GET -> gamesList(session)
             segments == listOf("games", "search") && method == Method.GET -> gamesSearch(session)
             segments == listOf("games", "import") && method == Method.POST -> gamesImport(session)
@@ -735,8 +742,130 @@ class HubServer(
         )
     }
 
-    private fun articleContent(session: IHTTPSession): Response {
-        val url = param(session, "url")
+    // ---------------------------------------------------------------------
+    // Novels: detalhes e progresso de leitura
+    // ---------------------------------------------------------------------
+
+    private fun novelDetails(sourceId: String): Response {
+        val row = database.sourceRow(sourceId)
+            ?: throw HubException(404, "not_found", "Fonte não encontrada.")
+        if (row.type != "webnovel") {
+            throw HubException(400, "not_supported", "Esta fonte não é uma novel.")
+        }
+
+        val config = parseConfig(row.config)
+        val url = config.optString("url")
+        if (url.isEmpty()) throw HubException(400, "validation", "A fonte não tem URL da novel.")
+
+        val page = extractor.chapters(url)
+            ?: throw HubException(502, "novel", "Não foi possível listar os capítulos agora.")
+        val title = page.title.ifEmpty { config.optString("title", row.name) }
+
+        val chapters = JSONArray()
+        page.links.forEachIndexed { index, link ->
+            chapters.put(
+                JSONObject()
+                    .put("id", link.url)
+                    .put("index", index)
+                    .put("name", link.title)
+                    .put("publishedAt", JSONObject.NULL)
+                    .put("isVip", false)
+                    .put("url", link.url)
+            )
+        }
+
+        val latest = page.links.lastOrNull()
+        val book = JSONObject()
+            .put("bookId", sourceId)
+            .put("title", title)
+            .put("author", JSONObject.NULL)
+            .put("coverUrl", JSONObject.NULL)
+            .put("description", JSONObject.NULL)
+            .put("category", "Novel")
+            .put("tags", JSONArray())
+            .put("chapterCount", page.links.size)
+            .put(
+                "latestChapter",
+                if (latest == null) JSONObject.NULL else JSONObject()
+                    .put("id", latest.url)
+                    .put("index", page.links.size - 1)
+                    .put("name", latest.title)
+                    .put("publishedAt", JSONObject.NULL)
+                    .put("isVip", false)
+                    .put("url", latest.url)
+            )
+            .put("url", url)
+
+        return json(
+            JSONObject()
+                .put("book", book)
+                .put("chapters", chapters)
+                .put("progress", readNovelProgress(config) ?: JSONObject.NULL)
+        )
+    }
+
+    private fun setNovelProgress(session: IHTTPSession, sourceId: String): Response {
+        val row = database.sourceRow(sourceId)
+            ?: throw HubException(404, "not_found", "Fonte não encontrada.")
+        if (row.type != "webnovel") {
+            throw HubException(400, "not_supported", "Esta fonte não é uma novel.")
+        }
+
+        val body = readJsonBody(session)
+        val chapterId = body.optString("chapterId").trim()
+        val chapterName = body.optString("chapterName").trim()
+        if (chapterId.isEmpty() || chapterName.isEmpty()) {
+            throw HubException(400, "validation", "Informe o capítulo.")
+        }
+
+        val config = parseConfig(row.config)
+        config.put(
+            "lastReadChapter",
+            JSONObject()
+                .put("chapterId", chapterId)
+                .put("chapterIndex", body.optInt("chapterIndex").takeIf { body.has("chapterIndex") } ?: JSONObject.NULL)
+                .put("chapterName", chapterName)
+                .put("updatedAt", Dates.nowIso())
+        )
+        database.updateSource(sourceId, config = config)
+        return json(
+            database.source(sourceId)
+                ?: throw HubException(500, "database", "Fonte não encontrada após salvar.")
+        )
+    }
+
+    private fun clearNovelProgress(sourceId: String): Response {
+        val row = database.sourceRow(sourceId)
+            ?: throw HubException(404, "not_found", "Fonte não encontrada.")
+
+        val config = parseConfig(row.config)
+        config.remove("lastReadChapter")
+        database.updateSource(sourceId, config = config)
+        return json(
+            database.source(sourceId)
+                ?: throw HubException(500, "database", "Fonte não encontrada após limpar.")
+        )
+    }
+
+    private fun readNovelProgress(config: JSONObject): JSONObject? {
+        val value = config.optJSONObject("lastReadChapter") ?: return null
+        val chapterId = value.optString("chapterId")
+        val chapterName = value.optString("chapterName")
+        if (chapterId.isEmpty() || chapterName.isEmpty()) return null
+        return JSONObject()
+            .put("chapterId", chapterId)
+            .put("chapterIndex", if (value.has("chapterIndex")) value.opt("chapterIndex") else JSONObject.NULL)
+            .put("chapterName", chapterName)
+            .put("updatedAt", value.optString("updatedAt"))
+    }
+
+    private fun parseConfig(value: String?): JSONObject = try {
+        if (value.isNullOrBlank()) JSONObject() else JSONObject(value)
+    } catch (error: Exception) {
+        JSONObject()
+    }
+
+    private fun articleContent(session: IHTTPSession): Response {        val url = param(session, "url")
             ?: throw HubException(400, "validation", "Informe a URL do artigo.")
 
         val extracted = extractor.extract(url)
