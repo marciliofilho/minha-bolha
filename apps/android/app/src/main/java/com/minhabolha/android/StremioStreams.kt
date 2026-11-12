@@ -27,7 +27,7 @@ object StremioStreams {
             ?: seriesVideoId(type, id, season, episode)
 
         val started = System.currentTimeMillis()
-        val streams = JSONArray()
+        val collected = mutableListOf<JSONObject>()
         val errors = JSONArray()
 
         for (addon in database.stremioAddons()) {
@@ -46,7 +46,7 @@ object StremioStreams {
 
                 for (index in 0 until items.length()) {
                     val stream = items.optJSONObject(index) ?: continue
-                    streams.put(normalize(addon, stream, index))
+                    collected.add(normalize(addon, stream, index))
                 }
             } catch (error: Exception) {
                 val message = when (error) {
@@ -63,6 +63,17 @@ object StremioStreams {
             }
         }
 
+        // Diretos primeiro; depois os torrents com mais seeds. Sem isso o
+        // Torrentio devolve primeiro streams de 4K com 3 peers e o player
+        // demora/ falha antes de chegar nos 1080p bem semeados.
+        val ordered = collected.sortedWith(
+            compareByDescending<JSONObject> { if (it.optString("kind") == "direct") 1 else 0 }
+                .thenByDescending { it.optInt("seeds", 0) }
+                .thenByDescending { qualityRank(it.optText("quality")) }
+        )
+        val streams = JSONArray()
+        for (stream in ordered) streams.put(stream)
+
         return JSONObject()
             .put("type", type)
             .put("id", id)
@@ -71,6 +82,15 @@ object StremioStreams {
             .put("errors", errors)
             .put("cache", JSONObject().put("used", false).put("refreshing", false))
             .put("elapsedMs", System.currentTimeMillis() - started)
+    }
+
+    private fun qualityRank(quality: String?): Int = when {
+        quality == null -> 0
+        quality.contains("4k", true) || quality.contains("2160") -> 4
+        quality.contains("1080") -> 3
+        quality.contains("720") -> 2
+        quality.contains("480") -> 1
+        else -> 0
     }
 
     private fun seriesVideoId(type: String, id: String, season: Int?, episode: Int?): String {
