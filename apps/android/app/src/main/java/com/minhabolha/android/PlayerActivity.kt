@@ -3,12 +3,19 @@ package com.minhabolha.android
 import android.app.Activity
 import android.content.ComponentName
 import android.content.pm.ActivityInfo
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -16,6 +23,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.session.MediaController
@@ -115,7 +123,42 @@ class PlayerActivity : Activity() {
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
-        setContentView(view)
+
+        val errorText = TextView(this).apply {
+            setTextColor(Color.parseColor("#F8FAFC"))
+            textSize = 15f
+            gravity = Gravity.CENTER
+        }
+        val backButton = Button(this).apply {
+            text = "Voltar"
+            setOnClickListener { finish() }
+        }
+        val errorBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F2080A0F"))
+            setPadding(64, 64, 64, 64)
+            visibility = View.GONE
+            addView(errorText)
+            addView(backButton)
+        }
+
+        val root = FrameLayout(this)
+        root.addView(
+            view,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        root.addView(
+            errorBox,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        setContentView(root)
 
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
@@ -129,7 +172,20 @@ class PlayerActivity : Activity() {
 
                     mediaController.addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_READY) errorBox.visibility = View.GONE
                             if (state == Player.STATE_ENDED) persistProgress(completed = true)
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            Log.e(TAG, "player nativo: erro", error)
+                            errorText.text = buildString {
+                                appendLine("Não foi possível reproduzir este stream.")
+                                appendLine()
+                                appendLine(error.message ?: error.errorCodeName)
+                                appendLine()
+                                append("Volte e escolha outro stream.")
+                            }
+                            errorBox.visibility = View.VISIBLE
                         }
 
                         override fun onVideoSizeChanged(videoSize: VideoSize) {

@@ -289,8 +289,7 @@ export function StreamPlayer({
     window.HubNative?.playTorrent(
       JSON.stringify({ url: playbackUrl, title, tracking: tracking ?? null })
     );
-    onClose();
-  }, [forceNative4k, playbackUrl, title, tracking, onClose]);
+  }, [forceNative4k, playbackUrl, title, tracking]);
 
   const canLoadSubtitles = Boolean(subtitleTarget) && !isYouTube && !isExternal;
   const subtitlesQuery = useStremioSubtitles(subtitleTarget ?? null, canLoadSubtitles);
@@ -1182,7 +1181,6 @@ export function StreamPlayer({
                     tracking: tracking ?? null
                   })
                 );
-                onClose();
                 return;
               }
               if (!transcodedUrl && retryWithTranscode()) return;
