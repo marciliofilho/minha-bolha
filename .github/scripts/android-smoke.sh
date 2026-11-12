@@ -482,6 +482,7 @@ if [ "$ARTICLE_LEN" -gt 20 ]; then
   echo "WebView extraiu texto"
 else
   echo "AVISO: extração não devolveu texto (rede externa ou página dinâmica)"
+  adb logcat -d -s MinhaBolha:I | tail -n 20
 fi
 
 echo "== UI React montada no WebView =="

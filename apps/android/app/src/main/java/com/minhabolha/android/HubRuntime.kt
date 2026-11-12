@@ -100,6 +100,12 @@ object HubRuntime {
         return 0
     }
 
+    /** Dá ao extrator uma janela real (chamado pela Activity). */
+    @Synchronized
+    fun attachExtractor(root: android.view.ViewGroup) {
+        extractor?.attach(root)
+    }
+
     @Synchronized
     fun stop() {
         scheduler?.stop()

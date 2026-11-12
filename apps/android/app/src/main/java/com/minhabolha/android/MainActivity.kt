@@ -63,7 +63,11 @@ class MainActivity : Activity() {
         // Ponte para o player nativo: o WebView não abre MKV/HEVC.
         webView.addJavascriptInterface(HubBridge(), "HubNative")
 
-        setContentView(webView)
+        // O extrator de novels precisa de uma janela real para carregar páginas.
+        val container = android.widget.FrameLayout(this)
+        container.addView(webView)
+        setContentView(container)
+        HubRuntime.attachExtractor(container)
 
         // Diagnóstico usado pelo smoke test do CI: confirma que o React montou
         // a interface dentro do WebView, não só que o HTML foi servido.

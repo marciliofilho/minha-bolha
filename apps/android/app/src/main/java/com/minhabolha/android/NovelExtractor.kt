@@ -65,6 +65,12 @@ class NovelExtractor(context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val lock = Any()
     private var webView: WebView? = null
+    private var host: android.view.ViewGroup? = null
+
+    /** Precisa de uma janela real: WebViews soltos não carregam de forma confiável. */
+    fun attach(root: android.view.ViewGroup) {
+        host = root
+    }
 
     fun extract(rawUrl: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Extracted? {
         val url = try {
@@ -76,6 +82,7 @@ class NovelExtractor(context: Context) {
         synchronized(lock) {
             val latch = CountDownLatch(1)
             var result: Extracted? = null
+            Log.i(TAG, "extraindo: $url")
             var failure: String? = null
 
             main.post { load(url) { extracted, error ->
@@ -172,6 +179,16 @@ class NovelExtractor(context: Context) {
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             settings.blockNetworkImage = true
+
+            val parent = host
+            if (parent != null) {
+                alpha = 0f
+                isFocusable = false
+                isClickable = false
+                parent.addView(this, android.widget.FrameLayout.LayoutParams(1, 1))
+            } else {
+                Log.w(TAG, "extractor sem janela anexada; usando WebView solto")
+            }
         }
     }
 
