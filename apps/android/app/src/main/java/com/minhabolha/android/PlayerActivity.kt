@@ -2,6 +2,7 @@ package com.minhabolha.android
 
 import android.app.Activity
 import android.content.ComponentName
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -9,12 +10,17 @@ import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.ListenableFuture
 import org.json.JSONArray
@@ -63,6 +69,16 @@ class PlayerActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // Tela cheia imersiva: esconde status e barra de navegação. Um vídeo
+        // horizontal também gira para paisagem para ocupar a tela toda.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+
         val payload = intent.getStringExtra("payload") ?: run {
             finish()
             return
@@ -97,6 +113,7 @@ class PlayerActivity : Activity() {
             setShowNextButton(false)
             setShowPreviousButton(false)
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
         setContentView(view)
 
@@ -113,6 +130,13 @@ class PlayerActivity : Activity() {
                     mediaController.addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(state: Int) {
                             if (state == Player.STATE_ENDED) persistProgress(completed = true)
+                        }
+
+                        override fun onVideoSizeChanged(videoSize: VideoSize) {
+                            if (videoSize.width > videoSize.height) {
+                                requestedOrientation =
+                                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            }
                         }
                     })
 

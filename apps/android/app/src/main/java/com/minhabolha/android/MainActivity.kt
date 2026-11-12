@@ -4,12 +4,15 @@ import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -29,6 +32,10 @@ class MainActivity : Activity() {
 
     private lateinit var webView: WebView
     private var backendPort: Int = 0
+
+    private var fullscreenOverlay: FrameLayout? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
+    private var previousOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +103,61 @@ class MainActivity : Activity() {
                 override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                     Log.i(TAG, "console: ${message.message()} (${message.sourceId()}:${message.lineNumber()})")
                     return true
+                }
+
+                /**
+                 * Tela cheia do player web.
+                 *
+                 * O React chama `requestFullscreen()` no vídeo; sem este callback
+                 * o WebView ignora e o botão de maximizar não faz nada.
+                 */
+                override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                    if (fullscreenOverlay != null) {
+                        callback.onCustomViewHidden()
+                        return
+                    }
+                    val root = webView.parent as? ViewGroup
+                    if (root == null) {
+                        callback.onCustomViewHidden()
+                        return
+                    }
+
+                    val overlay = FrameLayout(this@MainActivity).apply {
+                        setBackgroundColor(Color.BLACK)
+                        addView(
+                            view,
+                            FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                    }
+                    root.addView(
+                        overlay,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                    webView.visibility = View.INVISIBLE
+                    fullscreenOverlay = overlay
+                    fullscreenCallback = callback
+                    previousOrientation = requestedOrientation
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    hideSystemBars()
+                    Log.i(TAG, "player web em tela cheia")
+                }
+
+                override fun onHideCustomView() {
+                    val overlay = fullscreenOverlay ?: return
+                    (overlay.parent as? ViewGroup)?.removeView(overlay)
+                    fullscreenOverlay = null
+                    webView.visibility = View.VISIBLE
+                    requestedOrientation = previousOrientation
+                    showSystemBars()
+                    fullscreenCallback?.onCustomViewHidden()
+                    fullscreenCallback = null
+                    Log.i(TAG, "player web saiu da tela cheia")
                 }
             }
         }
@@ -342,8 +404,27 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun hideSystemBars() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller =
+            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
+    private fun showSystemBars() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+            .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
+
     @Deprecated("Deprecated in Android")
     override fun onBackPressed() {
+        if (fullscreenOverlay != null) {
+            webView.webChromeClient?.onHideCustomView()
+            return
+        }
         if (!this::webView.isInitialized) {
             super.onBackPressed()
             return
@@ -374,6 +455,12 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (fullscreenOverlay != null) {
+            (fullscreenOverlay?.parent as? ViewGroup)?.removeView(fullscreenOverlay)
+            fullscreenOverlay = null
+            fullscreenCallback = null
+            showSystemBars()
+        }
         if (isFinishing) {
             HubRuntime.stop()
         }
