@@ -33,13 +33,15 @@ object HubRuntime {
         val hubDatabase = HubDb.get(appContext)
         val hubEvents = EventHub()
 
-        // Liga os conectores ao banco: chaves cifradas e mídia já salva.
+        // Ligação dos conectores ao banco e ao extrator de novels.
+        val novelExtractor = NovelExtractor(appContext)
         com.minhabolha.android.connectors.Registry.configure(
             secrets = object : com.minhabolha.android.connectors.SecretAccess {
                 override fun value(key: String): String? = hubDatabase.secretValue(key)
             },
             mediaLookup = { sourceId -> hubDatabase.mediaBySource(sourceId) },
-            stremioAuthKey = { hubDatabase.stremioAuthKey() }
+            stremioAuthKey = { hubDatabase.stremioAuthKey() },
+            novelExtractor = { novelExtractor }
         )
 
         // O calendário global é criado no primeiro boot (AniList não exige chave).
@@ -49,7 +51,6 @@ object HubRuntime {
         StremioAccount.ensureSource(hubDatabase)
 
         val hubScheduler = HubScheduler(hubDatabase, hubEvents)
-        val novelExtractor = NovelExtractor(appContext)
 
 
         for (candidate in listOf(PREFERRED_PORT, 0)) {

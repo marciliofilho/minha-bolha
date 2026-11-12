@@ -18,7 +18,8 @@ object Registry {
     fun configure(
         secrets: SecretAccess,
         mediaLookup: (String) -> MediaRow?,
-        stremioAuthKey: () -> String? = { null }
+        stremioAuthKey: () -> String? = { null },
+        novelExtractor: () -> com.minhabolha.android.NovelExtractor? = { null }
     ) {
         val tmdb = TmdbConnector(secrets)
         val anilist = AnilistConnector(tmdb, secrets, mediaLookup)
@@ -31,6 +32,7 @@ object Registry {
         connectors["global-releases"] = GlobalReleasesConnector(tmdb, anilist)
         connectors["stremio-library"] = StremioLibraryConnector(stremioAuthKey)
         connectors["steam-wishlist"] = SteamWishlistConnector()
+        connectors["webnovel"] = WebnovelConnector(novelExtractor)
     }
 
     fun has(type: String): Boolean = connectors.containsKey(type)

@@ -25,13 +25,16 @@ class NovelExtractor(context: Context) {
 
     data class Extracted(val title: String, val text: String)
 
+    data class ChapterLink(val title: String, val url: String)
+
+    data class ChapterList(val title: String, val links: List<ChapterLink>)
+
     private companion object {
         const val TAG = "MinhaBolha"
         const val RENDER_DELAY_MS = 1_500L
         const val DEFAULT_TIMEOUT_MS = 30_000L
 
-        const val EXTRACT_JS = """
-            (function() {
+        const val EXTRACT_JS = """            (function() {
               try {
                 var junk = document.querySelectorAll('script, style, noscript, iframe, nav, header, footer, aside, form');
                 for (var i = 0; i < junk.length; i++) { junk[i].parentNode && junk[i].parentNode.removeChild(junk[i]); }
@@ -59,6 +62,28 @@ class NovelExtractor(context: Context) {
               }
             })();
         """
+
+        const val CHAPTERS_JS = """
+            (function() {
+              try {
+                var title = (document.querySelector('h1') ? document.querySelector('h1').textContent : '') || document.title || '';
+                var links = [];
+                var anchors = document.querySelectorAll('a[href]');
+                for (var i = 0; i < anchors.length && links.length < 500; i++) {
+                  var a = anchors[i];
+                  var text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+                  if (text.length < 2 || text.length > 160) continue;
+                  var href = a.href || '';
+                  if (!/^https?:/i.test(href)) continue;
+                  if (!/(cap[ií]tulo|chapter|epis[oó]dio|volume)/i.test(text) && !/^\d{1,5}([.,]\d+)?$/.test(text)) continue;
+                  links.push({ title: text, url: href });
+                }
+                return JSON.stringify({ title: title.trim(), links: links });
+              } catch (error) {
+                return JSON.stringify({ title: '', links: [], error: String(error) });
+              }
+            })();
+        """
     }
 
     private val appContext: Context = context.applicationContext
@@ -70,6 +95,55 @@ class NovelExtractor(context: Context) {
     /** Precisa de uma janela real: WebViews soltos não carregam de forma confiável. */
     fun attach(root: android.view.ViewGroup) {
         host = root
+    }
+
+    /** Lista os capítulos (links) da página da novel. */
+    fun chapters(rawUrl: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): ChapterList? {
+        val url = try {
+            com.minhabolha.android.connectors.PublicUrl.assert(rawUrl).toString()
+        } catch (error: Exception) {
+            throw HubException(400, "validation", "URL inválida para a novel.")
+        }
+
+        synchronized(lock) {
+            val latch = CountDownLatch(1)
+            var result: ChapterList? = null
+
+            main.post { loadScript(url, CHAPTERS_JS) { raw ->
+                result = parseChapters(raw)
+                latch.countDown()
+            } }
+
+            if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
+            return result
+        }
+    }
+
+    private fun parseChapters(raw: String?): ChapterList? {
+        if (raw.isNullOrBlank() || raw == "null") return null
+        val json = try {
+            JSONObject(org.json.JSONTokener(raw).nextValue().toString())
+        } catch (error: Exception) {
+            return null
+        }
+
+        val title = json.optString("title").trim()
+        val array = json.optJSONArray("links") ?: return null
+        val links = mutableListOf<ChapterLink>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val url = item.optString("url")
+            val name = item.optString("title").trim()
+            if (url.isEmpty() || name.isEmpty()) continue
+            links.add(ChapterLink(name, url))
+        }
+        if (links.isEmpty()) return null
+        return ChapterList(title.ifEmpty { "Novel" }, links)
+    }
+
+    /** Executa um script arbitrário na página carregada. */
+    private fun loadScript(url: String, script: String, callback: (String?) -> Unit) {
+        loadInternal(url, script) { raw, _ -> callback(raw) }
     }
 
     fun extract(rawUrl: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Extracted? {
@@ -104,13 +178,17 @@ class NovelExtractor(context: Context) {
     }
 
     private fun load(url: String, callback: (Extracted?, String?) -> Unit) {
+        loadInternal(url, EXTRACT_JS) { raw, error -> callback(parse(raw), error) }
+    }
+
+    private fun loadInternal(url: String, script: String, callback: (String?, String?) -> Unit) {
         val view = webView ?: createWebView().also { webView = it }
 
         var completed = false
-        fun finish(extracted: Extracted?, error: String?) {
+        fun finish(raw: String?, error: String?) {
             if (completed) return
             completed = true
-            callback(extracted, error)
+            callback(raw, error)
         }
 
         view.webViewClient = object : WebViewClient() {
@@ -119,8 +197,8 @@ class NovelExtractor(context: Context) {
 
             override fun onPageFinished(view: WebView, finishedUrl: String) {
                 view.postDelayed({
-                    view.evaluateJavascript(EXTRACT_JS) { value ->
-                        finish(parse(value), null)
+                    view.evaluateJavascript(script) { value ->
+                        finish(value, null)
                     }
                 }, RENDER_DELAY_MS)
             }
