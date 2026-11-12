@@ -30,6 +30,8 @@ object StremioSubtitles {
     )
 
     private val subtitleExecutor = Executors.newFixedThreadPool(6)
+    private data class ListCacheEntry(val payload: JSONObject, val expiresAt: Long)
+    private val listCache = ConcurrentHashMap<String, ListCacheEntry>()
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
 
@@ -77,6 +79,12 @@ object StremioSubtitles {
     ): JSONObject {
         val effectiveVideoId = videoId?.takeIf { it.isNotBlank() }
             ?: if (type == "series" && season != null && episode != null) "$id:$season:$episode" else id
+
+        val cacheKey = "$type|$effectiveVideoId"
+        val cached = listCache[cacheKey]
+        if (cached != null && cached.expiresAt > System.currentTimeMillis()) {
+            return JSONObject(cached.payload.toString())
+        }
 
         val started = System.currentTimeMillis()
         val subtitles = org.json.JSONArray()
@@ -151,13 +159,18 @@ object StremioSubtitles {
             }
         }
 
-        return JSONObject()
+        val payload = JSONObject()
             .put("type", type)
             .put("id", id)
             .put("videoId", effectiveVideoId)
             .put("subtitles", subtitles)
             .put("errors", errors)
             .put("elapsedMs", System.currentTimeMillis() - started)
+        listCache[cacheKey] = ListCacheEntry(
+            JSONObject(payload.toString()),
+            System.currentTimeMillis() + 10 * 60_000L
+        )
+        return payload
     }
 
     private fun supportsResource(manifest: JSONObject, resource: String, type: String): Boolean {

@@ -4,6 +4,7 @@ import com.minhabolha.android.connectors.ConnectorError
 import com.minhabolha.android.connectors.Http
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -18,7 +19,12 @@ import java.util.concurrent.TimeUnit
 object StremioStreams {
 
     private const val STREAM_TIMEOUT_MS = 8_000L
+    private const val STREAM_CACHE_MS = 3 * 60_000L
     private val streamExecutor = Executors.newFixedThreadPool(8)
+
+    private data class CacheEntry(val payload: JSONObject, val expiresAt: Long)
+
+    private val streamCache = ConcurrentHashMap<String, CacheEntry>()
 
     private data class AddonResult(
         val streams: List<JSONObject>,
@@ -35,6 +41,13 @@ object StremioStreams {
     ): JSONObject {
         val effectiveVideoId = videoId?.takeIf { it.isNotBlank() }
             ?: seriesVideoId(type, id, season, episode)
+
+        val cacheKey = "$type|$effectiveVideoId"
+        val cached = streamCache[cacheKey]
+        if (cached != null && cached.expiresAt > System.currentTimeMillis()) {
+            return JSONObject(cached.payload.toString())
+                .put("cache", JSONObject().put("used", true).put("refreshing", false))
+        }
 
         val started = System.currentTimeMillis()
         val collected = mutableListOf<JSONObject>()
@@ -110,7 +123,7 @@ object StremioStreams {
         val streams = JSONArray()
         for (stream in ordered) streams.put(stream)
 
-        return JSONObject()
+        val payload = JSONObject()
             .put("type", type)
             .put("id", id)
             .put("videoId", effectiveVideoId)
@@ -118,6 +131,11 @@ object StremioStreams {
             .put("errors", errors)
             .put("cache", JSONObject().put("used", false).put("refreshing", false))
             .put("elapsedMs", System.currentTimeMillis() - started)
+        streamCache[cacheKey] = CacheEntry(
+            JSONObject(payload.toString()),
+            System.currentTimeMillis() + STREAM_CACHE_MS
+        )
+        return payload
     }
 
     private fun qualityRank(quality: String?): Int = when {

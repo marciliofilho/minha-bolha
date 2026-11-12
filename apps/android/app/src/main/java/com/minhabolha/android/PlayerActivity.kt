@@ -280,12 +280,24 @@ class PlayerActivity : Activity() {
                         }
                     })
 
-                    mediaController.setMediaItem(buildItem(emptyList()))
-                    mediaController.prepare()
-                    mediaController.playWhenReady = true
-
-                    loadSubtitles()
-                    handler.postDelayed(saveProgress, SAVE_INTERVAL_MS)
+                    // Busca as legendas antes de iniciar o MediaItem. Antes
+                    // o player começava sem legendas e era reconfigurado no
+                    // meio do carregamento, causando piscadas/reinícios.
+                    Thread {
+                        val subtitleData = fetchSubtitleData()
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            addonSubtitleOptions.clear()
+                            addonSubtitleOptions.addAll(subtitleData.second)
+                            autoSubtitleApplied = false
+                            mediaController.setMediaItem(
+                                buildItem(subtitleData.first)
+                            )
+                            mediaController.prepare()
+                            mediaController.playWhenReady = true
+                            handler.postDelayed(saveProgress, SAVE_INTERVAL_MS)
+                        }
+                    }.start()
                     Log.i(TAG, "player nativo iniciado: $title")
                 } catch (error: Exception) {
                     Log.e(TAG, "falha ao conectar no serviço de mídia", error)
@@ -316,89 +328,77 @@ class PlayerActivity : Activity() {
             .build()
     }
 
-    /** Anexa as legendas dos addons sem interromper o que já está tocando. */
-    private fun loadSubtitles() {
-        if (metaId.isEmpty() || baseUrl.isEmpty()) return
+    /**
+     * Busca as legendas antes de iniciar o MediaItem. Retorna as configurações
+     * e os metadados usados no popup.
+     */
+    private fun fetchSubtitleData(): Pair<
+        List<MediaItem.SubtitleConfiguration>,
+        List<AddonSubtitleOption>
+        > {
+        val configurations = mutableListOf<MediaItem.SubtitleConfiguration>()
+        val options = mutableListOf<AddonSubtitleOption>()
+        if (metaId.isEmpty() || baseUrl.isEmpty()) return configurations to options
 
-        Thread {
-            val configurations = mutableListOf<MediaItem.SubtitleConfiguration>()
-            var subtitleOptions: List<AddonSubtitleOption> = emptyList()
-            try {
-                val query = buildString {
-                    append(baseUrl).append("/api/stremio/subtitles")
-                    append("?type=").append(URLEncoder.encode(metaType, "UTF-8"))
-                    append("&id=").append(URLEncoder.encode(metaId, "UTF-8"))
-                    if (videoId.isNotEmpty()) {
-                        append("&videoId=").append(URLEncoder.encode(videoId, "UTF-8"))
-                    }
+        try {
+            val query = buildString {
+                append(baseUrl).append("/api/stremio/subtitles")
+                append("?type=").append(URLEncoder.encode(metaType, "UTF-8"))
+                append("&id=").append(URLEncoder.encode(metaId, "UTF-8"))
+                if (videoId.isNotEmpty()) {
+                    append("&videoId=").append(URLEncoder.encode(videoId, "UTF-8"))
                 }
-                val connection = URL(query).openConnection() as HttpURLConnection
-                connection.connectTimeout = 8000
-                connection.readTimeout = 20_000
-                val text = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
-
-                val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
-                val options = mutableListOf<AddonSubtitleOption>()
-                for (index in 0 until subtitles.length()) {
-                    // Mantém todas as faixas, inclusive as repetidas: duas
-                    // legendas em PT-BR podem ter sincronias diferentes.
-                    if (configurations.size >= 150) break
-                    val item = subtitles.optJSONObject(index) ?: continue
-                    val proxyUrl = item.optString("proxyUrl")
-                    if (proxyUrl.isEmpty()) continue
-                    val language = item.optString("lang").ifEmpty { "und" }
-                    val label = subtitleLabel(language, item.optString("language"))
-                    val source = item.optString("addonName").ifEmpty { "Addon" }
-                    val fileName = item.optString("url")
-                        .substringAfterLast('/')
-                        .substringBefore('?')
-                        .take(72)
-                    val detail = listOf(source, fileName)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" · ")
-                    val configId = "sub-$index"
-                    // Media3 não expõe um id no SubtitleConfiguration; o
-                    // label único serve para reencontrar a faixa no TrackGroup.
-                    val media3Label = "$label · $source · ${index + 1}"
-                    configurations.add(
-                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
-                            .setMimeType(MimeTypes.TEXT_VTT)
-                            .setLanguage(language)
-                            .setLabel(media3Label)
-                            .build()
-                    )
-                    options.add(
-                        AddonSubtitleOption(
-                            id = configId,
-                            label = label,
-                            language = language,
-                            source = source,
-                            detail = detail,
-                            media3Label = media3Label
-                        )
-                    )
-                }
-                subtitleOptions = options
-            } catch (error: Exception) {
-                Log.w(TAG, "falha ao carregar legendas", error)
             }
+            val connection = URL(query).openConnection() as HttpURLConnection
+            connection.connectTimeout = 2000
+            connection.readTimeout = 3000
+            val text = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
 
-            if (configurations.isEmpty()) return@Thread
-
-            runOnUiThread {
-                val mediaController = controller ?: return@runOnUiThread
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                addonSubtitleOptions.clear()
-                addonSubtitleOptions.addAll(subtitleOptions)
-                mediaController.setMediaItem(buildItem(configurations), false)
-                mediaController.prepare()
-                // As novas faixas chegam em onTracksChanged; permite escolher
-                // automaticamente a PT-BR mais bem colocada.
-                autoSubtitleApplied = false
-                Log.i(TAG, "player nativo: ${configurations.size} faixa(s) de legenda")
+            val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
+            for (index in 0 until subtitles.length()) {
+                // Mantém todas as faixas, inclusive as repetidas: duas
+                // legendas em PT-BR podem ter sincronias diferentes.
+                if (configurations.size >= 150) break
+                val item = subtitles.optJSONObject(index) ?: continue
+                val proxyUrl = item.optString("proxyUrl")
+                if (proxyUrl.isEmpty()) continue
+                val language = item.optString("lang").ifEmpty { "und" }
+                val label = subtitleLabel(language, item.optString("language"))
+                val source = item.optString("addonName").ifEmpty { "Addon" }
+                val fileName = item.optString("url")
+                    .substringAfterLast('/')
+                    .substringBefore('?')
+                    .take(72)
+                val detail = listOf(source, fileName)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                // Media3 não expõe um id no SubtitleConfiguration; o label
+                // único serve para reencontrar a faixa no TrackGroup.
+                val media3Label = "$label · $source · ${index + 1}"
+                configurations.add(
+                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
+                        .setMimeType(MimeTypes.TEXT_VTT)
+                        .setLanguage(language)
+                        .setLabel(media3Label)
+                        .build()
+                )
+                options.add(
+                    AddonSubtitleOption(
+                        id = "sub-$index",
+                        label = label,
+                        language = language,
+                        source = source,
+                        detail = detail,
+                        media3Label = media3Label
+                    )
+                )
             }
-        }.start()
+        } catch (error: Exception) {
+            Log.w(TAG, "falha ao carregar legendas", error)
+        }
+        Log.i(TAG, "player nativo: ${configurations.size} faixa(s) de legenda")
+        return configurations to options
     }
 
     private fun subtitleLabel(language: String, rawLabel: String?): String {

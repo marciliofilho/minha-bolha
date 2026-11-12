@@ -84,8 +84,8 @@ android {
         // pelas migrations compartilhadas com o desktop.
         minSdk = 30
         targetSdk = 35
-        versionCode = 36
-        versionName = "0.5.0-alpha36"
+        versionCode = 37
+        versionName = "0.5.0-alpha37"
 
         // libtorrent4j traz bibliotecas nativas: só as ABIs suportadas.
         ndk {
