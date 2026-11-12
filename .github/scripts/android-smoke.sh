@@ -75,6 +75,10 @@ case "$health" in
   *'"windowFunctions":true'*) ;;
   *) fail "/api/health sem window functions no SQLite" ;;
 esac
+case "$health" in
+  *'"version":"3.49.'*) ;;
+  *) fail "SQLite empacotado (3.49) não está em uso" ;;
+esac
 
 categories="$(curl -fsS --max-time 15 "$BASE/api/categories" || true)"
 echo "categories: $(printf '%s' "$categories" | cut -c1-160)"

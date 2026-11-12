@@ -11,7 +11,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - Kotlin app with an embedded HTTP server (`NanoHTTPD`) bound to `127.0.0.1`.
 - The Android app serves the same React build used by the desktop; no separate UI.
 - SQLite database created from the **same migrations** as the desktop
-  (`apps/api/src/db/migrations`), with `_migrations` tracking.
+  (`apps/api/src/db/migrations`), with `_migrations` tracking. The app bundles
+  SQLite 3.49 (`sqlite-android`), so JSON1 and window functions work even on
+  system images that lack them (BlueStacks and some Android 11 devices).
 - System categories seeded on first boot, mirroring `@hub/shared`.
 - Connectors **YouTube** (public Atom feed + channel page fallback) and
   **RSS/Atom/RDF**, with the same SSRF guard and HTTP policy as the desktop.
@@ -100,6 +102,12 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 Screens whose endpoints are still missing show the app's normal error state.
 
+## Requirements
+
+Android 11 (API 30) or newer. On BlueStacks, use an **Android 11/13** instance
+(`BlueStacks App Player 9` in the default setup); the Android 9 (Pie64) instance
+cannot install the APK because of `minSdk`.
+
 ## Build
 
 The repository does not require Android Studio for the debug build.
@@ -187,6 +195,7 @@ The smoke test uses API 34 (`google_apis`, `x86_64`) to get a modern WebView.
 ## Known differences from the desktop
 
 - WebView instead of Electron Chromium: no CDP, no Puppeteer, no hidden windows.
-- `minSdk` is 30 because the shared migrations use JSON1 and window functions.
-- No background scheduler yet, so the feed is only reloaded when the UI asks.
+- `minSdk` is 30 (Android 11). The bundled SQLite already provides JSON1 and
+  window functions; the floor comes from the rest of the platform APIs.
+- MediaSession exposes only the current item (no queue/next/previous).
 - Play Store/AAB packaging and signing are not configured.
