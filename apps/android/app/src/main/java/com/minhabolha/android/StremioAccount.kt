@@ -37,7 +37,14 @@ object StremioAccount {
         }
 
         database.saveStremioAccount(resolvedEmail, authKey)
-        syncLibrary(database)
+
+        // A conta já está válida; uma falha de rede na primeira sincronização
+        // não deve desfazer o login.
+        try {
+            syncLibrary(database)
+        } catch (error: Exception) {
+            android.util.Log.w("MinhaBolha", "primeira sincronização da biblioteca falhou", error)
+        }
         ensureSource(database)
         return status(database)
     }

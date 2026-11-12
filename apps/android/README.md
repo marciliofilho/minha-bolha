@@ -27,6 +27,10 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Stremio subtitles**: tracks from the enabled addons, downloaded through a
   same-origin proxy that detects UTF-8/Windows-1252, converts SRT/ASS to WebVTT
   and is attached to both the web and the native player.
+- **Stremio account**: login with e-mail/password or an auth key (the session
+  key is encrypted with the Android Keystore), hourly library sync through a
+  `stremio-library` source, local favourites/watch‑later and shared
+  continue‑watching progress.
 - **Torrents**: libtorrent4j engine with sequential download, file selection and
   an HTTP Range endpoint, so MP4/WebM torrents play while they download.
   MKV/HEVC torrents are handed to a **native Media3/ExoPlayer** screen through
@@ -71,7 +75,6 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 ## Not ported yet
 
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
-- Stremio account login and library sync.
 - Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, library mutations and novel connectors.
