@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 object StremioCatalog {
 
     private const val MAX_MANIFEST_BYTES = 512 * 1024
-    private const val SEARCH_TIMEOUT_MS = 8_000L
+    private const val SEARCH_TIMEOUT_MS = 5_000L
     private val searchExecutor = Executors.newFixedThreadPool(8)
 
     // ---------------------------------------------------------------------

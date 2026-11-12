@@ -36,13 +36,34 @@ class NovelExtractor(context: Context) {
     private companion object {
         const val TAG = "MinhaBolha"
         const val RENDER_DELAY_MS = 5_000L
-        const val EXTRACT_DELAY_MS = 1_500L
+        const val EXTRACT_DELAY_MS = 1_000L
         const val DEFAULT_TIMEOUT_MS = 45_000L
 
         const val EXTRACT_JS = """            (function() {
               try {
-                var junk = document.querySelectorAll('script, style, noscript, iframe, nav, header, footer, aside, form');
+                var junk = document.querySelectorAll(
+                  'script, style, noscript, iframe, nav, header, footer, aside, form,' +
+                  ' [role="navigation"], [role="banner"], [role="contentinfo"],' +
+                  ' [role="complementary"], [role="search"], .nav, .navbar, .menu,' +
+                  ' .breadcrumb, .cookies, .ad, .ads, .advert, .advertisement, .promo,' +
+                  ' .related, .recommended, .social, .share, [data-component="nav"],' +
+                  ' [data-component="header"], [data-component="ad"],' +
+                  ' [data-component="related"], [data-component="share"]'
+                );
                 for (var i = 0; i < junk.length; i++) { junk[i].parentNode && junk[i].parentNode.removeChild(junk[i]); }
+
+                function collectText(node) {
+                  var blocks = node.querySelectorAll('p, h2, h3, blockquote');
+                  if (blocks.length >= 3) {
+                    var parts = [];
+                    for (var b = 0; b < blocks.length; b++) {
+                      var blockText = (blocks[b].innerText || blocks[b].textContent || '').trim();
+                      if (blockText) parts.push(blockText);
+                    }
+                    if (parts.length >= 3) return parts.join('\n\n');
+                  }
+                  return node.innerText || node.textContent || '';
+                }
 
                 // Webnovel: o corpo real fica em .cha-words; o container
                 // mobile inclui cabeçalho/menus e seria escolhido por tamanho.
@@ -68,12 +89,12 @@ class NovelExtractor(context: Context) {
                   '.reading-content', '.entry-content', '.post-content', '.content',
                   'article', 'main', 'body'
                 ];
-                var best = null, bestLen = 0;
+                var best = null, bestText = '';
                 for (var s = 0; s < selectors.length; s++) {
                   var nodes = document.querySelectorAll(selectors[s]);
                   for (var n = 0; n < nodes.length; n++) {
-                    var value = (nodes[n].textContent || '').trim();
-                    if (value.length > bestLen) { bestLen = value.length; best = nodes[n]; }
+                    var value = collectText(nodes[n]).trim();
+                    if (value.length > bestText.length) { bestText = value; best = nodes[n]; }
                   }
                 }
 
@@ -81,10 +102,7 @@ class NovelExtractor(context: Context) {
                 var title = heading ? (heading.textContent || '').trim() : '';
                 if (!title) title = (document.title || '').trim();
 
-                return JSON.stringify({
-                  title: title,
-                  text: best ? (best.innerText || best.textContent || '') : ''
-                });
+                return JSON.stringify({ title: title, text: best ? bestText : '' });
               } catch (error) {
                 return JSON.stringify({ title: '', text: '', error: String(error) });
               }
