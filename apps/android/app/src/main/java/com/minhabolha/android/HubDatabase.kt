@@ -799,7 +799,8 @@ class HubDatabase(private val context: Context) {
         chapterName: String,
         chapterIndex: Int,
         chapterCount: Int,
-        coverUrl: String?
+        coverUrl: String?,
+        bookTitle: String
     ) {
         var targetId: String? = null
         var targetMeta: JSONObject? = null
@@ -853,6 +854,13 @@ class HubDatabase(private val context: Context) {
             put("meta", meta.toString())
             if (chapterName.isNotBlank()) put("title", chapterName)
             if (!coverUrl.isNullOrBlank()) put("thumbnail_url", coverUrl)
+            if (bookTitle.isNotBlank()) {
+                put(
+                    "description",
+                    "$bookTitle · $chapterCount " +
+                        if (chapterCount == 1) "capítulo" else "capítulos"
+                )
+            }
         }
         db.update("items", values, "id = ?", arrayOf(id))
     }

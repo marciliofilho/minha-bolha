@@ -1178,7 +1178,8 @@ class HubServer(
                 chapterName = it.title,
                 chapterIndex = page.links.size - 1,
                 chapterCount = page.links.size,
-                coverUrl = page.cover
+                coverUrl = page.cover,
+                bookTitle = title
             )
         }
 

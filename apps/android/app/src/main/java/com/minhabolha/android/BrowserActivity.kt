@@ -38,32 +38,69 @@ class BrowserActivity : Activity() {
     private lateinit var forwardButton: Button
 
     private companion object {
+        const val HOME_HTML = """
+            <!doctype html>
+            <html lang="pt-BR">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                html, body { height: 100%; margin: 0; }
+                body { background: #080a0f; color: #e5e7eb; font-family: system-ui, sans-serif;
+                       display: flex; align-items: center; justify-content: center; }
+                main { width: min(680px, 92vw); }
+                h1 { font-size: 20px; margin: 0 0 18px; }
+                form { display: flex; gap: 8px; }
+                input { flex: 1; height: 48px; border-radius: 12px; border: 1px solid #263042;
+                        background: #111827; color: #fff; padding: 0 14px; font-size: 16px; }
+                button { height: 48px; border-radius: 12px; border: 0; background: #4f7cff;
+                         color: #fff; font-weight: 600; padding: 0 18px; font-size: 15px; }
+                p { color: #8b93a7; font-size: 12px; margin-top: 14px; }
+              </style>
+            </head>
+            <body>
+              <main>
+                <h1>Minha Bolha</h1>
+                <form onsubmit="HubBrowser.search(this.q.value); return false;">
+                  <input name="q" type="search" placeholder="Pesquisar no DuckDuckGo" autofocus>
+                  <button type="submit"
+                          onclick="HubBrowser.search(this.form.q.value); return false;">Pesquisar</button>
+                </form>
+                <p>Resultados pela versão HTML leve do DuckDuckGo.</p>
+              </main>
+            </body>
+            </html>
+        """
+
         const val DUCKDUCKGO_FORM_JS = """
             (function() {
+              if (window.__mbDuckDuckGoHooked) return;
+              window.__mbDuckDuckGoHooked = true;
               var submit = function(form) {
+                if (!form) return true;
                 var input = form.querySelector('input[name="q"]');
                 var q = input ? String(input.value || '').trim() : '';
-                if (!q) return;
-                window.location.href =
-                  'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q);
+                if (!q) return true;
+                if (window.HubBrowser && HubBrowser.search) HubBrowser.search(q);
+                return false;
               };
-              var forms = document.querySelectorAll('form');
-              for (var i = 0; i < forms.length; i++) {
-                var form = forms[i];
-                if (!form.querySelector('input[name="q"]') || form.dataset.mbHooked) continue;
-                form.dataset.mbHooked = '1';
-                form.addEventListener('submit', function(event) {
+              document.addEventListener('submit', function(event) {
+                var form = event.target;
+                if (form && form.querySelector && form.querySelector('input[name="q"]')) {
                   event.preventDefault();
                   submit(form);
-                }, true);
-                var buttons = form.querySelectorAll('input[type="submit"], button[type="submit"]');
-                for (var b = 0; b < buttons.length; b++) {
-                  buttons[b].addEventListener('click', function(event) {
-                    event.preventDefault();
-                    submit(form);
-                  }, true);
                 }
-              }
+              }, true);
+              document.addEventListener('click', function(event) {
+                var el = event.target;
+                if (!el || !el.matches) return;
+                if (!el.matches('input[type="submit"], button[type="submit"]')) return;
+                var form = el.form || (el.closest ? el.closest('form') : null);
+                if (form && form.querySelector('input[name="q"]')) {
+                  event.preventDefault();
+                  submit(form);
+                }
+              }, true);
             })();
         """
     }
@@ -140,6 +177,17 @@ class BrowserActivity : Activity() {
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
+            addJavascriptInterface(
+                object {
+                    @android.webkit.JavascriptInterface
+                    fun search(query: String) {
+                        if (query.isBlank()) return
+                        post { this@BrowserActivity.loadUrl(query) }
+                    }
+                },
+                "HubBrowser"
+            )
+
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val uri = request.url
@@ -204,7 +252,18 @@ class BrowserActivity : Activity() {
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
-        loadUrl(initialUrl.ifEmpty { "https://html.duckduckgo.com/html/" })
+        if (initialUrl.isEmpty()) loadHome() else loadUrl(initialUrl)
+    }
+
+    private fun loadHome() {
+        webView.loadDataWithBaseURL(
+            "https://html.duckduckgo.com/",
+            HOME_HTML,
+            "text/html",
+            "utf-8",
+            null
+        )
+        urlField.setText("https://html.duckduckgo.com/html/")
     }
 
     /**
