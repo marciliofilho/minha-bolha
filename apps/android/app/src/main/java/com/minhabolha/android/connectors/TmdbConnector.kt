@@ -93,19 +93,16 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
             val isMovie = mediaType == "movie"
             val title = if (isMovie) item.optText("title") else item.optText("name")
             val date = if (isMovie) item.optString("release_date") else item.optString("first_air_date")
-            val original = if (isMovie) item.optString("original_title") else item.optString("original_name")
+            val original = if (isMovie) item.optText("original_title") else item.optText("original_name")
             MediaSearchResult(
                 provider = PROVIDER,
                 ref = "tmdb:${if (isMovie) "movie" else "tv"}:${item.optInt("id")}",
                 mediaType = if (isMovie) "movie" else "series",
-                title = title.ifEmpty { "Sem título" },
-                originalTitle = original.ifEmpty { null },
+                title = title ?: "Sem título",
+                originalTitle = original,
                 year = yearOf(date),
                 posterUrl = imageUrl(item.optText("poster_path")),
-                overview = TextUtil.truncate(
-                    TextUtil.stripHtml(item.optString("overview")),
-                    220
-                ).ifEmpty { null }
+                overview = item.optText("overview")?.let { TextUtil.truncate(TextUtil.stripHtml(it), 220) }
             )
         }
 
