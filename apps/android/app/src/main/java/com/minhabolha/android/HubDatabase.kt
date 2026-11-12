@@ -2278,6 +2278,136 @@ class HubDatabase(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------
+    // Cache/offline de novels
+    // ---------------------------------------------------------------------
+
+    fun cacheNovelChapter(
+        url: String,
+        title: String,
+        text: String,
+        bookTitle: String,
+        chapterIndex: Int?,
+        expiresAt: String
+    ) {
+        val data = org.json.JSONObject()
+            .put("url", url)
+            .put("title", title)
+            .put("text", text)
+            .put("bookTitle", bookTitle)
+            .put("chapterIndex", chapterIndex ?: org.json.JSONObject.NULL)
+        db.execSQL(
+            """
+            INSERT INTO novel_cache (cache_key, kind, data, fetched_at, expires_at)
+            VALUES (?, 'chapter', ?, ?, ?)
+            ON CONFLICT(cache_key) DO UPDATE SET
+              data = excluded.data,
+              fetched_at = excluded.fetched_at,
+              expires_at = excluded.expires_at
+            """.trimIndent(),
+            arrayOf(url, data.toString(), nowIso(), expiresAt)
+        )
+    }
+
+    fun cachedNovelChapter(url: String): org.json.JSONObject? {
+        db.rawQuery(
+            "SELECT data FROM novel_cache WHERE cache_key = ? AND kind = 'chapter'",
+            arrayOf(url)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return try {
+                org.json.JSONObject(cursor.getString(0))
+            } catch (error: Exception) {
+                null
+            }
+        }
+    }
+
+    /** Agrupa os capítulos baixados por livro. */
+    fun novelOfflineBooks(): org.json.JSONArray {
+        val books = org.json.JSONArray()
+        val grouped = LinkedHashMap<String, Pair<Int, String>>()
+
+        db.rawQuery(
+            "SELECT data, fetched_at FROM novel_cache WHERE kind = 'chapter' ORDER BY fetched_at DESC",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val data = try {
+                    org.json.JSONObject(cursor.getString(0))
+                } catch (error: Exception) {
+                    continue
+                }
+                val bookTitle = data.optString("bookTitle").ifEmpty { "Novel" }
+                val fetchedAt = cursor.getString(1)
+                val current = grouped[bookTitle]
+                grouped[bookTitle] = (current?.first ?: 0) + 1 to (current?.second ?: fetchedAt)
+            }
+        }
+
+        for ((title, value) in grouped) {
+            books.put(
+                org.json.JSONObject()
+                    .put("bookId", bookIdOf(title))
+                    .put("title", title)
+                    .put("chapterCount", value.first)
+                    .put("updatedAt", value.second)
+                    .put("author", org.json.JSONObject.NULL)
+                    .put("coverUrl", org.json.JSONObject.NULL)
+            )
+        }
+        return books
+    }
+
+    fun novelOfflineBook(bookId: String): org.json.JSONObject? {
+        val chapters = org.json.JSONArray()
+        var title: String? = null
+
+        db.rawQuery(
+            "SELECT data FROM novel_cache WHERE kind = 'chapter' ORDER BY fetched_at ASC",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val data = try {
+                    org.json.JSONObject(cursor.getString(0))
+                } catch (error: Exception) {
+                    continue
+                }
+                val bookTitle = data.optString("bookTitle").ifEmpty { "Novel" }
+                if (bookIdOf(bookTitle) != bookId) continue
+                title = bookTitle
+                chapters.put(
+                    org.json.JSONObject()
+                        .put("url", data.optString("url"))
+                        .put("name", data.optString("title"))
+                        .put("index", if (data.has("chapterIndex")) data.opt("chapterIndex") else org.json.JSONObject.NULL)
+                        .put("fetchedAt", data.optString("url"))
+                )
+            }
+        }
+
+        val bookTitle = title ?: return null
+        return org.json.JSONObject()
+            .put("bookId", bookId)
+            .put("title", bookTitle)
+            .put("chapters", chapters)
+    }
+
+    fun deleteNovelChapters(urls: List<String>): Int {
+        if (urls.isEmpty()) return 0
+        var removed = 0
+        for (url in urls.distinct()) {
+            db.execSQL("DELETE FROM novel_cache WHERE cache_key = ?", arrayOf(url))
+            removed++
+        }
+        return removed
+    }
+
+    private fun bookIdOf(title: String): String = android.util.Base64.encodeToString(
+        title.toByteArray(Charsets.UTF_8),
+        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+    )
+
+    // ---------------------------------------------------------------------
     // Saúde / estatísticas
     // ---------------------------------------------------------------------
 

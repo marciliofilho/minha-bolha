@@ -91,6 +91,21 @@ class HubServer(
 
             segments == listOf("novels", "chapter") && method == Method.GET -> novelChapter(session)
             segments == listOf("articles", "content") && method == Method.GET -> articleContent(session)
+            segments == listOf("novels", "download") && method == Method.POST -> novelDownload(session)
+            segments.size == 3 && segments[0] == "novels" && segments[1] == "download" &&
+                method == Method.GET -> novelDownloadStatus(segments[2])
+            segments.size == 4 && segments[0] == "novels" && segments[1] == "download" &&
+                segments[3] == "cancel" && method == Method.POST -> novelDownloadCancel(segments[2])
+            segments == listOf("novels", "offline") && method == Method.GET ->
+                json(JSONObject().put("books", database.novelOfflineBooks()))
+            segments.size == 4 && segments[0] == "novels" && segments[1] == "offline" &&
+                segments[2] == "books" && method == Method.GET ->
+                json(
+                    database.novelOfflineBook(segments[3])
+                        ?: throw HubException(404, "not_found", "Livro offline não encontrado.")
+                )
+            segments == listOf("novels", "offline", "delete") && method == Method.POST ->
+                novelOfflineDelete(session)
 
             segments.size == 3 && segments[0] == "sources" && segments[2] == "novel" &&
                 method == Method.GET -> novelDetails(segments[1])
@@ -723,6 +738,21 @@ class HubServer(
         val url = param(session, "url")
             ?: throw HubException(400, "validation", "Informe a URL do capítulo.")
 
+        // Offline primeiro: capítulos baixados abrem sem rede.
+        val cached = database.cachedNovelChapter(url)
+        if (cached != null) {
+            return json(
+                JSONObject()
+                    .put("url", url)
+                    .put("title", cached.optString("title"))
+                    .put("text", cached.optString("text"))
+                    .put("textWithComments", JSONObject.NULL)
+                    .put("translatedText", JSONObject.NULL)
+                    .put("translatedLanguage", JSONObject.NULL)
+                    .put("fetchedAt", Dates.nowIso())
+            )
+        }
+
         val extracted = extractor.extract(url)
             ?: throw HubException(
                 502,
@@ -740,6 +770,58 @@ class HubServer(
                 .put("translatedLanguage", JSONObject.NULL)
                 .put("fetchedAt", Dates.nowIso())
         )
+    }
+
+    // ---------------------------------------------------------------------
+    // Download/offline de novels
+    // ---------------------------------------------------------------------
+
+    private fun novelDownload(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val title = body.optString("title").trim()
+        val array = body.optJSONArray("chapters")
+            ?: throw HubException(400, "validation", "Nenhum capítulo para baixar.")
+
+        val chapters = mutableListOf<Triple<String, String, Int?>>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val url = item.optString("url")
+            if (url.isEmpty()) continue
+            chapters.add(
+                Triple(
+                    url,
+                    item.optString("name").ifEmpty { "Capítulo" },
+                    if (item.has("index") && !item.isNull("index")) item.optInt("index") else null
+                )
+            )
+        }
+
+        val job = NovelDownloads.start(extractor, database, title, chapters)
+        val status = NovelDownloads.status(job.id)
+            ?: throw HubException(500, "database", "Não foi possível iniciar o download.")
+        return json(status, Response.Status.ACCEPTED)
+    }
+
+    private fun novelDownloadStatus(id: String): Response {
+        val status = NovelDownloads.status(id)
+            ?: throw HubException(404, "not_found", "Download não encontrado.")
+        return json(status)
+    }
+
+    private fun novelDownloadCancel(id: String): Response {
+        NovelDownloads.cancel(id)
+        return json(NovelDownloads.status(id) ?: JSONObject().put("id", id))
+    }
+
+    private fun novelOfflineDelete(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val array = body.optJSONArray("urls") ?: JSONArray()
+        val urls = mutableListOf<String>()
+        for (index in 0 until array.length()) {
+            val value = array.optString(index)
+            if (value.isNotEmpty()) urls.add(value)
+        }
+        return json(JSONObject().put("removed", database.deleteNovelChapters(urls)))
     }
 
     // ---------------------------------------------------------------------
