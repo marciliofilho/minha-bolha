@@ -66,7 +66,7 @@ object StremioAddonTest {
             if (sample != null) {
                 val streams = testStreams(base, sample)
                 summary.put("streams", streams)
-                val error = streams.optString("error").ifEmpty { null }
+                val error = streams.optText("error")
                 if (error != null) {
                     warnings.put(error)
                 } else if (streams.optInt("count") == 0) {

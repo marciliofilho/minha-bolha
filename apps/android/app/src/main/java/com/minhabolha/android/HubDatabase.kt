@@ -1402,6 +1402,79 @@ class HubDatabase(private val context: Context) {
         )
     }
 
+    fun updateStremioAddon(
+        id: String,
+        enabled: Boolean? = null,
+        priority: Int? = null,
+        name: String? = null
+    ) {
+        val sets = mutableListOf<String>()
+        val args = mutableListOf<Any?>()
+        if (enabled != null) {
+            sets.add("enabled = ?")
+            args.add(if (enabled) 1 else 0)
+        }
+        if (priority != null) {
+            sets.add("priority = ?")
+            args.add(priority)
+        }
+        if (name != null) {
+            sets.add("name = ?")
+            args.add(name)
+        }
+        if (sets.isEmpty()) return
+        sets.add("updated_at = ?")
+        args.add(nowIso())
+        args.add(id)
+        db.execSQL(
+            "UPDATE stremio_addons SET ${sets.joinToString(", ")} WHERE id = ?",
+            args.toTypedArray()
+        )
+    }
+
+    fun reorderStremioAddons(ids: List<String>) {
+        val now = nowIso()
+        db.beginTransaction()
+        try {
+            ids.forEachIndexed { index, id ->
+                db.execSQL(
+                    "UPDATE stremio_addons SET priority = ?, updated_at = ? WHERE id = ?",
+                    arrayOf((index + 1) * 10, now, id)
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun updateStremioAddonSource(
+        id: String,
+        urlHash: String,
+        transportUrl: String,
+        manifest: JSONObject
+    ) {
+        db.execSQL(
+            """
+            UPDATE stremio_addons
+            SET url_hash = ?, transport_url_enc = ?, addon_id = ?, name = ?,
+                version = ?, description = ?, manifest_json = ?, updated_at = ?
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(
+                urlHash,
+                SecretCrypto.encrypt(transportUrl),
+                manifest.optText("id"),
+                manifest.optText("name") ?: "Addon",
+                manifest.optText("version"),
+                manifest.optText("description"),
+                manifest.toString(),
+                nowIso(),
+                id
+            )
+        )
+    }
+
     fun updateStremioAddonTest(id: String, ok: Boolean, error: String?, summary: JSONObject) {
         db.execSQL(
             """

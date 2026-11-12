@@ -146,8 +146,13 @@ class HubServer(
             segments == listOf("stremio", "addons") && method == Method.GET ->
                 json(JSONObject().put("addons", StremioCatalog.listAddons(database)))
             segments == listOf("stremio", "addons") && method == Method.POST -> addStremioAddon(session)
+            segments == listOf("stremio", "addons", "reorder") && method == Method.POST ->
+                reorderStremioAddons(session)
             segments.size == 3 && segments[0] == "stremio" && segments[1] == "addons" &&
                 method == Method.DELETE -> removeStremioAddon(segments[2])
+            segments.size == 3 && segments[0] == "stremio" && segments[1] == "addons" &&
+                (method == Method.PATCH || method == Method.PUT) ->
+                updateStremioAddon(session, segments[2])
             segments.size == 4 && segments[0] == "stremio" && segments[1] == "addons" &&
                 segments[3] == "test" && method == Method.POST -> testStremioAddon(segments[2])
             segments == listOf("stremio", "catalogs") && method == Method.GET ->
@@ -707,6 +712,36 @@ class HubServer(
         val summary = StremioAddonTest.run(database, id)
         events.broadcast("stremio:changed", JSONObject().put("addons", true))
         return json(JSONObject().put("summary", summary))
+    }
+
+    private fun updateStremioAddon(session: IHTTPSession, id: String): Response {
+        val body = readJsonBody(session)
+        val addon = StremioCatalog.updateAddon(
+            database = database,
+            id = id,
+            url = if (body.has("url")) body.optText("url") else null,
+            name = if (body.has("name")) body.optText("name") else null,
+            enabled = if (body.has("enabled")) body.optBoolean("enabled") else null,
+            priority = if (body.has("priority")) body.optInt("priority") else null
+        )
+        events.broadcast("stremio:changed", JSONObject().put("addons", true))
+        return json(JSONObject().put("addon", addon))
+    }
+
+    private fun reorderStremioAddons(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val ids = mutableListOf<String>()
+        body.optJSONArray("ids")?.let { array ->
+            for (index in 0 until array.length()) {
+                val id = array.optString(index)
+                if (id.isNotEmpty()) ids.add(id)
+            }
+        }
+        database.reorderStremioAddons(ids)
+        events.broadcast("stremio:changed", JSONObject().put("addons", true))
+        return json(
+            JSONObject().put("addons", StremioCatalog.listAddons(database))
+        )
     }
 
     private fun stremioCatalog(session: IHTTPSession): Response {

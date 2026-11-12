@@ -29,7 +29,7 @@ object StremioCatalog {
         return result
     }
 
-    private fun toAddonDto(addon: StremioAddonRow): JSONObject {
+    fun toAddonDto(addon: StremioAddonRow): JSONObject {
         val manifest = addon.manifest
         return JSONObject()
             .put("id", addon.id)
@@ -168,6 +168,40 @@ object StremioCatalog {
     }
 
     fun removeAddon(database: HubDatabase, id: String): Boolean = database.deleteStremioAddon(id)
+
+    /** Atualiza nome, estado, prioridade e, opcionalmente, a URL do manifest. */
+    fun updateAddon(
+        database: HubDatabase,
+        id: String,
+        url: String?,
+        name: String?,
+        enabled: Boolean?,
+        priority: Int?
+    ): JSONObject {
+        val existing = database.stremioAddon(id)
+            ?: throw HubException(404, "not_found", "Addon não encontrado.")
+
+        if (!url.isNullOrBlank()) {
+            val normalized = normalizeManifestUrl(url)
+            if (normalized != existing.transportUrl) {
+                val hash = sha256(normalized)
+                val duplicate = database.findStremioAddonByHash(hash)
+                if (duplicate != null && duplicate.id != id) {
+                    throw HubException(409, "conflict", "Este addon já está cadastrado.")
+                }
+                val manifest = fetchManifest(normalized)
+                database.updateStremioAddonSource(id, hash, normalized, manifest)
+            }
+        }
+
+        database.updateStremioAddon(
+            id = id,
+            enabled = enabled,
+            priority = priority,
+            name = name?.takeIf { it.isNotBlank() }
+        )
+        return toAddonDto(database.stremioAddon(id) ?: existing)
+    }
 
     private fun normalizeManifestUrl(raw: String): String {
         val value = raw.trim()
