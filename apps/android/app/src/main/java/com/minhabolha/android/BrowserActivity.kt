@@ -37,6 +37,37 @@ class BrowserActivity : Activity() {
     private lateinit var backButton: Button
     private lateinit var forwardButton: Button
 
+    private companion object {
+        const val DUCKDUCKGO_FORM_JS = """
+            (function() {
+              var submit = function(form) {
+                var input = form.querySelector('input[name="q"]');
+                var q = input ? String(input.value || '').trim() : '';
+                if (!q) return;
+                window.location.href =
+                  'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q);
+              };
+              var forms = document.querySelectorAll('form');
+              for (var i = 0; i < forms.length; i++) {
+                var form = forms[i];
+                if (!form.querySelector('input[name="q"]') || form.dataset.mbHooked) continue;
+                form.dataset.mbHooked = '1';
+                form.addEventListener('submit', function(event) {
+                  event.preventDefault();
+                  submit(form);
+                }, true);
+                var buttons = form.querySelectorAll('input[type="submit"], button[type="submit"]');
+                for (var b = 0; b < buttons.length; b++) {
+                  buttons[b].addEventListener('click', function(event) {
+                    event.preventDefault();
+                    submit(form);
+                  }, true);
+                }
+              }
+            })();
+        """
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -134,6 +165,11 @@ class BrowserActivity : Activity() {
                 override fun onPageFinished(view: WebView, url: String) {
                     if (!urlField.hasFocus()) urlField.setText(url)
                     refreshNav()
+                    if (url.contains("duckduckgo.com")) {
+                        // O formulário HTML do DuckDuckGo usa POST, que alguns
+                        // WebViews ignoram. Reescreve para GET na própria página.
+                        view.evaluateJavascript(DUCKDUCKGO_FORM_JS, null)
+                    }
                 }
             }
             webChromeClient = object : WebChromeClient() {
