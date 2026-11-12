@@ -11,6 +11,8 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import org.json.JSONTokener
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Servidor local do Minha Bolha no Android.
@@ -28,6 +30,21 @@ class HubServer(
     private val events: EventHub,
     private val version: String
 ) : NanoHTTPD("127.0.0.1", port) {
+
+    private val translationExecutor = Executors.newFixedThreadPool(4)
+    private val contentMemory = object : java.util.LinkedHashMap<String, JSONObject>(24, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, JSONObject>?
+        ): Boolean = size > 60
+    }
+
+    private fun memoryGet(key: String): JSONObject? = synchronized(contentMemory) {
+        contentMemory[key]?.let { JSONObject(it.toString()) }
+    }
+
+    private fun memoryPut(key: String, value: JSONObject) {
+        synchronized(contentMemory) { contentMemory[key] = JSONObject(value.toString()) }
+    }
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
@@ -937,29 +954,46 @@ class HubServer(
         if (target !in allowed) throw HubException(400, "validation", "Idioma de destino inválido.")
 
         try {
+            val chunks = translationChunks(text, 3_900)
+            // Traduz os blocos em paralelo; capítulos/notícias longos deixam
+            // de esperar uma chamada após a outra.
+            val futures = chunks.map { chunk ->
+                translationExecutor.submit<Pair<String, String?>> {
+                    val url = "https://translate.googleapis.com/translate_a/single" +
+                        "?client=gtx&sl=auto&tl=" +
+                        java.net.URLEncoder.encode(target, "UTF-8") +
+                        "&dt=t&q=" + java.net.URLEncoder.encode(chunk, "UTF-8")
+                    val response = com.minhabolha.android.connectors.Http.fetchText(
+                        url,
+                        accept = "application/json",
+                        headers = mapOf("referer" to "https://translate.google.com/"),
+                        retries = 2,
+                        timeoutMs = 25_000
+                    )
+                    val payload = JSONArray(response.text)
+                    val sentences = payload.optJSONArray(0) ?: JSONArray()
+                    val builder = StringBuilder()
+                    for (index in 0 until sentences.length()) {
+                        val pair = sentences.optJSONArray(index) ?: continue
+                        builder.append(pair.optString(0))
+                    }
+                    builder.toString() to payload.optString(2).takeIf { it.isNotBlank() }
+                }
+            }
+
             val output = StringBuilder()
             var source: String? = null
-            for (chunk in translationChunks(text, 3_900)) {
-                val url = "https://translate.googleapis.com/translate_a/single" +
-                    "?client=gtx&sl=auto&tl=" +
-                    java.net.URLEncoder.encode(target, "UTF-8") +
-                    "&dt=t&q=" + java.net.URLEncoder.encode(chunk, "UTF-8")
-                val response = com.minhabolha.android.connectors.Http.fetchText(
-                    url,
-                    accept = "application/json",
-                    headers = mapOf("referer" to "https://translate.google.com/"),
-                    retries = 2,
-                    timeoutMs = 25_000
-                )
-                val payload = JSONArray(response.text)
-                val sentences = payload.optJSONArray(0) ?: JSONArray()
+            for (future in futures) {
+                val (translated, chunkSource) = try {
+                    future.get(30, TimeUnit.SECONDS)
+                } catch (error: Exception) {
+                    future.cancel(true)
+                    throw error
+                }
                 // Mantém a separação entre os blocos (parágrafos) traduzidos.
                 if (output.isNotEmpty()) output.append("\n\n")
-                for (index in 0 until sentences.length()) {
-                    val pair = sentences.optJSONArray(index) ?: continue
-                    output.append(pair.optString(0))
-                }
-                if (source == null) source = payload.optString(2).takeIf { it.isNotBlank() }
+                output.append(translated)
+                if (source == null) source = chunkSource
             }
             return json(
                 JSONObject()
@@ -1004,19 +1038,21 @@ class HubServer(
         val url = param(session, "url")
             ?: throw HubException(400, "validation", "Informe a URL do capítulo.")
 
+        memoryGet("novel:$url")?.let { return json(it) }
+
         // Offline primeiro: capítulos baixados abrem sem rede.
         val cached = database.cachedNovelChapter(url)
         if (cached != null) {
-            return json(
-                JSONObject()
-                    .put("url", url)
-                    .put("title", cached.optString("title"))
-                    .put("text", cached.optString("text"))
-                    .put("textWithComments", JSONObject.NULL)
-                    .put("translatedText", JSONObject.NULL)
-                    .put("translatedLanguage", JSONObject.NULL)
-                    .put("fetchedAt", Dates.nowIso())
-            )
+            val payload = JSONObject()
+                .put("url", url)
+                .put("title", cached.optString("title"))
+                .put("text", cached.optString("text"))
+                .put("textWithComments", JSONObject.NULL)
+                .put("translatedText", JSONObject.NULL)
+                .put("translatedLanguage", JSONObject.NULL)
+                .put("fetchedAt", Dates.nowIso())
+            memoryPut("novel:$url", payload)
+            return json(payload)
         }
 
         val extracted = extractor.extract(url)
@@ -1026,16 +1062,16 @@ class HubServer(
                 "Não foi possível extrair o capítulo (site bloqueado, lento ou sem texto)."
             )
 
-        return json(
-            JSONObject()
-                .put("url", url)
-                .put("title", extracted.title)
-                .put("text", extracted.text)
-                .put("textWithComments", JSONObject.NULL)
-                .put("translatedText", JSONObject.NULL)
-                .put("translatedLanguage", JSONObject.NULL)
-                .put("fetchedAt", Dates.nowIso())
-        )
+        val payload = JSONObject()
+            .put("url", url)
+            .put("title", extracted.title)
+            .put("text", extracted.text)
+            .put("textWithComments", JSONObject.NULL)
+            .put("translatedText", JSONObject.NULL)
+            .put("translatedLanguage", JSONObject.NULL)
+            .put("fetchedAt", Dates.nowIso())
+        memoryPut("novel:$url", payload)
+        return json(payload)
     }
 
     // ---------------------------------------------------------------------
@@ -1269,15 +1305,21 @@ class HubServer(
         JSONObject()
     }
 
-    private fun articleContent(session: IHTTPSession): Response {        val url = param(session, "url")
+    private fun articleContent(session: IHTTPSession): Response {
+        val url = param(session, "url")
             ?: throw HubException(400, "validation", "Informe a URL do artigo.")
 
+        memoryGet("article:$url")?.let { return json(it) }
+
         val extracted = extractor.extract(url)
-            ?: throw HubException(
+        val fallback = database.itemByUrl(url)
+        if (extracted == null && fallback == null) {
+            throw HubException(
                 502,
                 "article",
                 "Não foi possível extrair o artigo (site bloqueado, lento ou sem texto)."
             )
+        }
 
         val siteName = try {
             java.net.URL(url).host.removePrefix("www.")
@@ -1285,14 +1327,18 @@ class HubServer(
             JSONObject.NULL
         }
 
-        return json(
-            JSONObject()
-                .put("url", url)
-                .put("title", extracted.title)
-                .put("siteName", siteName)
-                .put("text", extracted.text)
-                .put("fetchedAt", Dates.nowIso())
-        )
+        val payload = JSONObject()
+            .put("url", url)
+            .put("title", extracted?.title ?: fallback?.optString("title").orEmpty())
+            .put("siteName", siteName)
+            .put(
+                "text",
+                extracted?.text
+                    ?: fallback?.optString("description").orEmpty()
+            )
+            .put("fetchedAt", Dates.nowIso())
+        memoryPut("article:$url", payload)
+        return json(payload)
     }
 
     private fun backupImport(session: IHTTPSession): Response {        val document = readJsonBody(session)

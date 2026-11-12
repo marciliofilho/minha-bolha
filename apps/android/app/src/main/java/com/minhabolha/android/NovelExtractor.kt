@@ -230,6 +230,16 @@ class NovelExtractor(context: Context) {
     private val appContext: Context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val lock = Any()
+
+    @Volatile
+    private var interactiveRequests: Int = 0
+
+    /** Downloads em segundo plano esperam leituras/notícias interativas. */
+    fun awaitInteractiveIdle() {
+        while (interactiveRequests > 0) {
+            Thread.sleep(120)
+        }
+    }
     private var webView: WebView? = null
     private var host: android.view.ViewGroup? = null
 
@@ -246,20 +256,25 @@ class NovelExtractor(context: Context) {
             throw HubException(400, "validation", "URL inválida para a novel.")
         }
 
-        synchronized(lock) {
-            // O catálogo do Webnovel hidrata em etapas; espera a lista
-            // crescer antes de aceitar uma extração parcial.
-            val minLinks =
-                if (Regex("webnovel\\.com", RegexOption.IGNORE_CASE).containsMatchIn(url)) 5 else 0
+        interactiveRequests++
+        try {
+            synchronized(lock) {
+                // O catálogo do Webnovel hidrata em etapas; espera a lista
+                // crescer antes de aceitar uma extração parcial.
+                val minLinks =
+                    if (Regex("webnovel\\.com", RegexOption.IGNORE_CASE).containsMatchIn(url)) 5 else 0
 
-            var result = loadChapters(url, minLinks, timeoutMs)
-            if (result == null) {
-                // Às vezes o primeiro carregamento cai no desafio do
-                // Cloudflare. Recarregar com os cookies já obtidos resolve.
-                Log.w(TAG, "nova tentativa de catálogo: $url")
-                result = loadChapters(url, minLinks, timeoutMs)
+                var result = loadChapters(url, minLinks, timeoutMs)
+                if (result == null) {
+                    // Às vezes o primeiro carregamento cai no desafio do
+                    // Cloudflare. Recarregar com os cookies já obtidos resolve.
+                    Log.w(TAG, "nova tentativa de catálogo: $url")
+                    result = loadChapters(url, minLinks, timeoutMs)
+                }
+                return result
             }
-            return result
+        } finally {
+            interactiveRequests--
         }
     }
 
@@ -333,27 +348,32 @@ class NovelExtractor(context: Context) {
             throw HubException(400, "validation", "URL inválida para leitura.")
         }
 
-        synchronized(lock) {
-            val latch = CountDownLatch(1)
-            var result: Extracted? = null
-            Log.i(TAG, "extraindo: $url")
-            var failure: String? = null
+        interactiveRequests++
+        try {
+            synchronized(lock) {
+                val latch = CountDownLatch(1)
+                var result: Extracted? = null
+                Log.i(TAG, "extraindo: $url")
+                var failure: String? = null
 
-            main.post { load(url) { extracted, error ->
-                result = extracted
-                failure = error
-                latch.countDown()
-            } }
+                main.post { load(url) { extracted, error ->
+                    result = extracted
+                    failure = error
+                    latch.countDown()
+                } }
 
-            val finished = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
-            if (!finished) {
-                Log.w(TAG, "extração de novel sem resposta: $url")
-                return null
+                val finished = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+                if (!finished) {
+                    Log.w(TAG, "extração de novel sem resposta: $url")
+                    return null
+                }
+                if (failure != null) {
+                    Log.w(TAG, "falha na extração de novel: $failure")
+                }
+                return result
             }
-            if (failure != null) {
-                Log.w(TAG, "falha na extração de novel: $failure")
-            }
-            return result
+        } finally {
+            interactiveRequests--
         }
     }
 

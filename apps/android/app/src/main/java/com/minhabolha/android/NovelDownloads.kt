@@ -65,6 +65,10 @@ object NovelDownloads {
                     val (url, name, index) = chapter
                     val state = job.states.getOrNull(position)
                     job.current = name
+                    // Cede o WebView para leitura de notícias/novels antes de
+                    // baixar o próximo capítulo em segundo plano.
+                    extractor.awaitInteractiveIdle()
+                    if (job.status != "running") break
                     state?.status = "downloading"
                     val extracted = try {
                         extractor.extract(url)

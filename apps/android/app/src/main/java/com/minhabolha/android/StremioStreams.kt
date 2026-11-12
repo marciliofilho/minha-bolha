@@ -4,6 +4,8 @@ import com.minhabolha.android.connectors.ConnectorError
 import com.minhabolha.android.connectors.Http
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Streams dos addons do Stremio.
@@ -14,6 +16,14 @@ import org.json.JSONObject
  * nativo não existe no Android.
  */
 object StremioStreams {
+
+    private const val STREAM_TIMEOUT_MS = 8_000L
+    private val streamExecutor = Executors.newFixedThreadPool(8)
+
+    private data class AddonResult(
+        val streams: List<JSONObject>,
+        val error: JSONObject?
+    )
 
     fun fetch(
         database: HubDatabase,
@@ -30,37 +40,63 @@ object StremioStreams {
         val collected = mutableListOf<JSONObject>()
         val errors = JSONArray()
 
-        for (addon in database.stremioAddons()) {
-            if (!addon.enabled) continue
-            if (!supportsStream(addon.manifest, type)) continue
+        val addons = database.stremioAddons().filter { addon ->
+            addon.enabled && supportsStream(addon.manifest, type)
+        }
 
-            try {
-                val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
-                val response = Http.fetchText(
-                    "$base/stream/$type/${enc(effectiveVideoId)}.json",
-                    accept = "application/json",
-                    retries = 1
-                )
-                val payload = JSONObject(response.text)
-                val items = payload.optJSONArray("streams") ?: continue
-
-                for (index in 0 until items.length()) {
-                    val stream = items.optJSONObject(index) ?: continue
-                    collected.add(normalize(addon, stream, index))
+        // Dispara todos os addons ao mesmo tempo. Antes, um addon lento
+        // (FenixFlix/FrostStream) atrasava Torrentio e os demais.
+        val futures = addons.map { addon ->
+            addon to streamExecutor.submit<AddonResult> {
+                try {
+                    val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
+                    val response = Http.fetchText(
+                        "$base/stream/$type/${enc(effectiveVideoId)}.json",
+                        accept = "application/json",
+                        retries = 0,
+                        timeoutMs = STREAM_TIMEOUT_MS
+                    )
+                    val payload = JSONObject(response.text)
+                    val items = payload.optJSONArray("streams") ?: JSONArray()
+                    val list = mutableListOf<JSONObject>()
+                    for (index in 0 until items.length()) {
+                        val stream = items.optJSONObject(index) ?: continue
+                        list.add(normalize(addon, stream, index))
+                    }
+                    AddonResult(list, null)
+                } catch (error: Exception) {
+                    val message = when (error) {
+                        is ConnectorError -> error.message ?: error.code
+                        else -> error.message ?: "falha ao consultar o addon"
+                    }
+                    AddonResult(
+                        emptyList(),
+                        JSONObject()
+                            .put("addonId", addon.id)
+                            .put("addonName", addon.name)
+                            .put("message", message)
+                            .put("helpUrl", JSONObject.NULL)
+                    )
                 }
+            }
+        }
+
+        for ((addon, future) in futures) {
+            val result = try {
+                future.get(STREAM_TIMEOUT_MS + 1_500, TimeUnit.MILLISECONDS)
             } catch (error: Exception) {
-                val message = when (error) {
-                    is ConnectorError -> error.message ?: error.code
-                    else -> error.message ?: "falha ao consultar o addon"
-                }
-                errors.put(
+                future.cancel(true)
+                AddonResult(
+                    emptyList(),
                     JSONObject()
                         .put("addonId", addon.id)
                         .put("addonName", addon.name)
-                        .put("message", message)
+                        .put("message", "timeout")
                         .put("helpUrl", JSONObject.NULL)
                 )
             }
+            collected.addAll(result.streams)
+            result.error?.let { errors.put(it) }
         }
 
         // Diretos primeiro; depois os torrents com mais seeds. Sem isso o

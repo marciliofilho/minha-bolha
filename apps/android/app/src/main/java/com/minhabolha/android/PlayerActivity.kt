@@ -289,7 +289,14 @@ class PlayerActivity : Activity() {
                     Log.i(TAG, "player nativo iniciado: $title")
                 } catch (error: Exception) {
                     Log.e(TAG, "falha ao conectar no serviço de mídia", error)
-                    finish()
+                    errorText.text = buildString {
+                        appendLine("Não foi possível conectar ao player.")
+                        appendLine()
+                        appendLine(error.message ?: error.javaClass.simpleName)
+                        appendLine()
+                        append("Volte e tente abrir o vídeo novamente.")
+                    }
+                    errorBox.visibility = View.VISIBLE
                 }
             },
             ContextCompat.getMainExecutor(this)

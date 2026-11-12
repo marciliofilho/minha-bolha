@@ -6,6 +6,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.CodingErrorAction
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Legendas dos addons do Stremio.
@@ -18,8 +20,16 @@ object StremioSubtitles {
     private const val MAX_BYTES = 8 * 1024 * 1024
     private const val CACHE_TTL_MS = 60L * 60_000L
     private const val MAX_HOPS = 4
+    private const val SUBTITLE_TIMEOUT_MS = 6_000L
 
     private data class CacheEntry(val value: Any, val expiresAt: Long)
+
+    private data class AddonSubtitleResult(
+        val items: List<JSONObject>,
+        val error: JSONObject?
+    )
+
+    private val subtitleExecutor = Executors.newFixedThreadPool(6)
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
 
@@ -72,43 +82,72 @@ object StremioSubtitles {
         val subtitles = org.json.JSONArray()
         val errors = org.json.JSONArray()
 
-        for (addon in database.stremioAddons()) {
-            if (!addon.enabled) continue
-            if (!supportsResource(addon.manifest, "subtitles", type)) continue
+        val addons = database.stremioAddons().filter { addon ->
+            addon.enabled && supportsResource(addon.manifest, "subtitles", type)
+        }
 
-            try {
-                val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
-                val response = com.minhabolha.android.connectors.Http.fetchText(
-                    "$base/subtitles/$type/${enc(effectiveVideoId)}.json",
-                    accept = "application/json",
-                    retries = 1
-                )
-                val items = JSONObject(response.text).optJSONArray("subtitles") ?: continue
-
-                for (index in 0 until items.length()) {
-                    val item = items.optJSONObject(index) ?: continue
-                    val url = item.optString("url")
-                    if (url.isEmpty()) continue
-                    val lang = item.optString("lang").ifEmpty { "und" }
-
-                    subtitles.put(
+        val futures = addons.map { addon ->
+            addon to subtitleExecutor.submit<AddonSubtitleResult> {
+                try {
+                    val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
+                    val response = com.minhabolha.android.connectors.Http.fetchText(
+                        "$base/subtitles/$type/${enc(effectiveVideoId)}.json",
+                        accept = "application/json",
+                        retries = 0,
+                        timeoutMs = SUBTITLE_TIMEOUT_MS
+                    )
+                    val items = JSONObject(response.text).optJSONArray("subtitles")
+                        ?: org.json.JSONArray()
+                    val list = mutableListOf<JSONObject>()
+                    for (index in 0 until items.length()) {
+                        val item = items.optJSONObject(index) ?: continue
+                        val url = item.optString("url")
+                        if (url.isEmpty()) continue
+                        val lang = item.optString("lang").ifEmpty { "und" }
+                        list.add(
+                            JSONObject()
+                                .put("id", item.optString("id").ifEmpty { "${addon.id}:$index" })
+                                .put("addonId", addon.id)
+                                .put("addonName", addon.name)
+                                .put("lang", lang)
+                                .put("language", languageName(lang))
+                                .put("url", url)
+                                .put("proxyUrl", "/api/stremio/subtitle?url=" + enc(url))
+                        )
+                    }
+                    AddonSubtitleResult(list, null)
+                } catch (error: Exception) {
+                    AddonSubtitleResult(
+                        emptyList(),
                         JSONObject()
-                            .put("id", item.optString("id").ifEmpty { "${addon.id}:$index" })
                             .put("addonId", addon.id)
                             .put("addonName", addon.name)
-                            .put("lang", lang)
-                            .put("language", languageName(lang))
-                            .put("url", url)
-                            .put("proxyUrl", "/api/stremio/subtitle?url=" + enc(url))
+                            .put("message", error.message ?: "falha ao consultar legendas")
                     )
                 }
+            }
+        }
+
+        val seenUrls = mutableSetOf<String>()
+        for ((addon, future) in futures) {
+            val result = try {
+                future.get(SUBTITLE_TIMEOUT_MS + 1_500, TimeUnit.MILLISECONDS)
             } catch (error: Exception) {
-                errors.put(
+                future.cancel(true)
+                AddonSubtitleResult(
+                    emptyList(),
                     JSONObject()
                         .put("addonId", addon.id)
                         .put("addonName", addon.name)
-                        .put("message", error.message ?: "falha ao consultar legendas")
+                        .put("message", "timeout")
                 )
+            }
+            result.error?.let { errors.put(it) }
+            for (item in result.items) {
+                // Remove apenas duplicatas exatas; faixas com URLs diferentes
+                // continuam disponíveis para resolver dessincronização.
+                if (!seenUrls.add(item.optString("url"))) continue
+                subtitles.put(item)
             }
         }
 

@@ -741,6 +741,30 @@ class HubDatabase(private val context: Context) {
             .put("inStremioLibrary", cursor.getInt(cursor.getColumnIndexOrThrow("in_stremio_library")) == 1)
     }
 
+    fun itemByUrl(url: String): JSONObject? {
+        db.rawQuery(
+            """
+            SELECT i.*, s.name AS source_name, s.type AS source_type, c.label AS category_label,
+                   m.imdb_id AS media_imdb_id, m.kind AS media_kind,
+                   EXISTS (
+                     SELECT 1 FROM stremio_library l
+                     WHERE l.removed = 0 AND l.imdb_id = m.imdb_id
+                   ) AS in_stremio_library
+            FROM items i
+            JOIN sources s ON s.id = i.source_id
+            JOIN categories c ON c.id = i.category_id
+            LEFT JOIN media m ON m.id = json_extract(i.meta, '$.mediaId')
+            WHERE i.url = ?
+            ORDER BY i.published_at DESC
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(url)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return feedItemFromCursor(cursor)
+        }
+    }
+
     fun item(id: String): JSONObject? {
         db.rawQuery(
             """
