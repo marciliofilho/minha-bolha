@@ -35,6 +35,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Backup**: export/preview/import in the desktop `hub-backup` v2 format
   (settings, categories, sources, games, calendar, feed, playback, Stremio
   library), so data can move between the PC and the phone.
+- **Embedded browser**: a native WebView screen with address bar, back/forward,
+  reload and cookies. External links and the feed's "Browser" button open it
+  (the desktop's CDP/Puppeteer live view is not portable).
 - **Stremio account**: login with e-mail/password or an auth key (the session
   key is encrypted with the Android Keystore), hourly library sync through a
   `stremio-library` source, local favourites/watch‑later and shared
@@ -87,7 +90,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - Backup sections not covered yet: addons, apiKeys, stremioAccount, novels and
   localLibrary (credentials stay on the device; addons are re-added by URL).
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
-- Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
+- Browser features that depend on CDP: page extraction, Cloudflare handling and
+  the live screenshot view used by the desktop's novel/paywall flows.
 - Novels: catalog, reader, chapter cache and offline downloads.
 
 Because those endpoints do not exist yet, the corresponding screens show their
