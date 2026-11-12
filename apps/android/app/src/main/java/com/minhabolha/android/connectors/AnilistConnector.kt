@@ -1,6 +1,7 @@
 package com.minhabolha.android.connectors
 
 import com.minhabolha.android.Dates
+import com.minhabolha.android.optText
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -129,15 +130,16 @@ class AnilistConnector(
     }
 
     private fun titleOf(media: JSONObject): String {
-        val title = media.optJSONObject("title") ?: return "Anime ${media.optInt("id")}"
-        return title.optString("english").ifEmpty { title.optString("romaji") }
-            .ifEmpty { title.optString("native") }
-            .ifEmpty { "Anime ${media.optInt("id")}" }
+        val title = media.optJSONObject("title")
+        return title?.optText("english")
+            ?: title?.optText("romaji")
+            ?: title?.optText("native")
+            ?: "Anime ${media.optInt("id")}"
     }
 
     private fun imageUrl(media: JSONObject): String? {
         val cover = media.optJSONObject("coverImage") ?: return null
-        return cover.optString("extraLarge").ifEmpty { cover.optString("large") }.ifEmpty { null }
+        return cover.optText("extraLarge") ?: cover.optText("large")
     }
 
     private fun yearOf(media: JSONObject): Int? {
@@ -157,7 +159,7 @@ class AnilistConnector(
                 ref = "anilist:${media.optInt("id")}",
                 mediaType = "anime",
                 title = titleOf(media),
-                originalTitle = media.optJSONObject("title")?.optString("native")?.ifEmpty { null },
+                originalTitle = media.optJSONObject("title")?.optText("native"),
                 year = yearOf(media),
                 posterUrl = imageUrl(media),
                 overview = TextUtil.truncate(
@@ -218,11 +220,11 @@ class AnilistConnector(
             externalId = media.optInt("id").toString(),
             kind = "anime",
             title = titleOf(media),
-            originalTitle = media.optJSONObject("title")?.optString("native")?.ifEmpty { null },
+            originalTitle = media.optJSONObject("title")?.optText("native"),
             posterUrl = imageUrl(media),
-            backdropUrl = media.optString("bannerImage").ifEmpty { null },
+            backdropUrl = media.optText("bannerImage"),
             year = yearOf(media),
-            status = media.optString("status").ifEmpty { null },
+            status = media.optText("status"),
             nextEpisodeAt = next?.optLong("airingAt")?.takeIf { it > 0 }
                 ?.let { java.time.Instant.ofEpochSecond(it).toString() },
             url = "$SITE/anime/${media.optInt("id")}",
@@ -337,7 +339,7 @@ class AnilistConnector(
                         provider = "anilist",
                         mediaKind = "anime",
                         title = titleOf(media),
-                        originalTitle = media.optJSONObject("title")?.optString("native")?.ifEmpty { null },
+                        originalTitle = media.optJSONObject("title")?.optText("native"),
                         posterUrl = imageUrl(media),
                         kind = "airing",
                         releaseDate = Dates.dateInZone(instant, timezone),

@@ -64,25 +64,47 @@ object Dates {
         "$date" + "T12:00:00.000Z"
     }
 
-    /** Normaliza datas em vários formatos para ISO UTC. */
+    /**
+     * Normaliza datas em vários formatos para ISO UTC.
+     *
+     * Feeds RSS costumam usar RFC 822/1123 ("Thu, 12 Nov 2026 09:28:00 GMT"),
+     * enquanto Atom usa ISO 8601. Sem o RFC 1123 todos os itens de um feed RSS
+     * ficavam com a data de descoberta.
+     */
     fun safeIso(value: String?, fallback: String): String {
         if (value.isNullOrBlank()) return fallback
-        val trimmed = value.trim()
-        val parsed = try {
-            java.time.OffsetDateTime.parse(trimmed).toInstant()
-        } catch (error: Exception) {
+        return parseInstant(value.trim())?.let { ISO.format(it) } ?: fallback
+    }
+
+    private fun parseInstant(value: String): Instant? {
+        val attempts = listOf<() -> Instant>(
+            { java.time.OffsetDateTime.parse(value).toInstant() },
+            { java.time.ZonedDateTime.parse(value).toInstant() },
+            {
+                java.time.ZonedDateTime
+                    .parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                    .toInstant()
+            },
+            {
+                java.time.LocalDateTime
+                    .parse(value, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                    .toInstant(ZoneOffset.UTC)
+            },
+            { java.time.LocalDateTime.parse(value).toInstant(ZoneOffset.UTC) },
+            {
+                java.time.LocalDate.parse(value.take(10))
+                    .atStartOfDay()
+                    .toInstant(ZoneOffset.UTC)
+            }
+        )
+
+        for (attempt in attempts) {
             try {
-                java.time.LocalDateTime.parse(trimmed).toInstant(ZoneOffset.UTC)
-            } catch (error2: Exception) {
-                try {
-                    java.time.LocalDate.parse(trimmed.take(10))
-                        .atStartOfDay()
-                        .toInstant(ZoneOffset.UTC)
-                } catch (error3: Exception) {
-                    null
-                }
+                return attempt()
+            } catch (error: Exception) {
+                // tenta o próximo formato
             }
         }
-        return parsed?.let { ISO.format(it) } ?: fallback
+        return null
     }
 }

@@ -645,10 +645,10 @@ class HubServer(
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index) ?: continue
             val haystack = listOf(
-                event.optString("title"),
-                event.optString("originalTitle"),
-                event.optString("episodeTitle"),
-                event.optString("sourceName")
+                event.optText("title").orEmpty(),
+                event.optText("originalTitle").orEmpty(),
+                event.optText("episodeTitle").orEmpty(),
+                event.optText("sourceName").orEmpty()
             ).filter { it.isNotEmpty() }.joinToString(" ")
             if (normalizeSearch(haystack).contains(needle)) {
                 matches.put(event)

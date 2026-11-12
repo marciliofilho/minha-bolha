@@ -1703,10 +1703,11 @@ class HubDatabase(private val context: Context) {
 
     fun stremioLibrary(search: String?, limit: Int = 500): JSONArray {
         val query = search?.trim().orEmpty()
+        val safeLimit = limit.coerceIn(1, 1000)
         val args = if (query.isEmpty()) {
-            arrayOf(limit.coerceIn(1, 1000).toString())
+            arrayOf(safeLimit.toString())
         } else {
-            arrayOf("%${query.lowercase()}%", limit.coerceIn(1, 1000).toString())
+            arrayOf("%${query.lowercase()}%", safeLimit.toString())
         }
         val where = if (query.isEmpty()) {
             "l.removed = 0"
@@ -1717,7 +1718,12 @@ class HubDatabase(private val context: Context) {
         val result = JSONArray()
         db.rawQuery(
             """
-            SELECT l.*, COALESCE(s.is_favorite, 0) AS is_favorite, COALESCE(s.is_watch_later, 0) AS is_watch_later
+            SELECT l.*, COALESCE(s.is_favorite, 0) AS is_favorite,
+                   COALESCE(s.is_watch_later, 0) AS is_watch_later,
+                   EXISTS (
+                     SELECT 1 FROM media m
+                     WHERE m.imdb_id = l.imdb_id AND lower(m.raw) LIKE '%anima%'
+                   ) AS media_animation
             FROM stremio_library l
             LEFT JOIN stremio_library_state s ON s.meta_id = l.meta_id
             WHERE $where
@@ -1728,13 +1734,45 @@ class HubDatabase(private val context: Context) {
         ).use { cursor ->
             while (cursor.moveToNext()) result.put(stremioItemFromCursor(cursor))
         }
+
+        // Títulos salvos apenas no aparelho (favoritos, assistir depois e
+        // Minha biblioteca) que não vieram da conta do Stremio.
+        val stateArgs = if (query.isEmpty()) {
+            arrayOf(safeLimit.toString())
+        } else {
+            arrayOf("%${query.lowercase()}%", safeLimit.toString())
+        }
+        db.rawQuery(
+            """
+            SELECT s.*,
+                   EXISTS (
+                     SELECT 1 FROM media m
+                     WHERE m.imdb_id = s.meta_id AND lower(m.raw) LIKE '%anima%'
+                   ) AS media_animation
+            FROM stremio_library_state s
+            WHERE NOT EXISTS (SELECT 1 FROM stremio_library l WHERE l.meta_id = s.meta_id)
+              AND (s.in_library = 1 OR s.is_favorite = 1 OR s.is_watch_later = 1)
+              ${if (query.isEmpty()) "" else "AND lower(COALESCE(s.name, s.meta_id)) LIKE ?"}
+            ORDER BY COALESCE(s.added_at, s.updated_at) DESC
+            LIMIT ?
+            """.trimIndent(),
+            stateArgs
+        ).use { cursor ->
+            while (cursor.moveToNext()) result.put(stremioLocalItemFromCursor(cursor))
+        }
+
         return result
     }
 
     fun stremioLibraryItem(metaId: String): JSONObject? {
         db.rawQuery(
             """
-            SELECT l.*, COALESCE(s.is_favorite, 0) AS is_favorite, COALESCE(s.is_watch_later, 0) AS is_watch_later
+            SELECT l.*, COALESCE(s.is_favorite, 0) AS is_favorite,
+                   COALESCE(s.is_watch_later, 0) AS is_watch_later,
+                   EXISTS (
+                     SELECT 1 FROM media m
+                     WHERE m.imdb_id = l.imdb_id AND lower(m.raw) LIKE '%anima%'
+                   ) AS media_animation
             FROM stremio_library l
             LEFT JOIN stremio_library_state s ON s.meta_id = l.meta_id
             WHERE l.meta_id = ?
@@ -1745,6 +1783,10 @@ class HubDatabase(private val context: Context) {
             return stremioItemFromCursor(cursor)
         }
     }
+
+    private fun isAnimeMetaId(metaId: String): Boolean =
+        Regex("^(kitsu|anilist|mal|myanimelist|anidb):", RegexOption.IGNORE_CASE)
+            .containsMatchIn(metaId)
 
     private fun stremioItemFromCursor(cursor: Cursor): JSONObject {
         fun text(column: String): String? {
@@ -1757,6 +1799,7 @@ class HubDatabase(private val context: Context) {
             return if (index < 0 || cursor.isNull(index)) null else cursor.getInt(index)
         }
 
+        val metaId = cursor.getString(cursor.getColumnIndexOrThrow("meta_id"))
         val offset = cursor.getLong(cursor.getColumnIndexOrThrow("time_offset")).takeIf { it > 0 }
         val duration = intOrNull("duration")?.toLong()?.takeIf { it > 0 }
         val progress = if (offset != null && duration != null) {
@@ -1764,9 +1807,11 @@ class HubDatabase(private val context: Context) {
         } else {
             0.0
         }
+        val mediaAnimation = cursor.getColumnIndex("media_animation")
+            .let { index -> index >= 0 && cursor.getInt(index) == 1 }
 
         return JSONObject()
-            .put("metaId", cursor.getString(cursor.getColumnIndexOrThrow("meta_id")))
+            .put("metaId", metaId)
             .put("imdbId", text("imdb_id") ?: JSONObject.NULL)
             .put("videoId", text("video_id") ?: JSONObject.NULL)
             .put("type", cursor.getString(cursor.getColumnIndexOrThrow("type")))
@@ -1782,7 +1827,52 @@ class HubDatabase(private val context: Context) {
             .put("isFavorite", cursor.getInt(cursor.getColumnIndexOrThrow("is_favorite")) == 1)
             .put("isWatchLater", cursor.getInt(cursor.getColumnIndexOrThrow("is_watch_later")) == 1)
             .put("inLibrary", true)
+            .put("isLocal", intOrNull("temp") == 1)
+            .put("isAnime", mediaAnimation || isAnimeMetaId(metaId))
     }
+
+    /** Item que existe apenas em `stremio_library_state` (sem conta Stremio). */
+    private fun stremioLocalItemFromCursor(cursor: Cursor): JSONObject {
+        fun text(column: String): String? {
+            val index = cursor.getColumnIndex(column)
+            return if (index < 0 || cursor.isNull(index)) null else cursor.getString(index)
+        }
+
+        val metaId = cursor.getString(cursor.getColumnIndexOrThrow("meta_id"))
+        val imdbId = Regex("^tt\\d{7,10}", RegexOption.IGNORE_CASE).find(metaId)?.value
+        val mediaAnimation = cursor.getColumnIndex("media_animation")
+            .let { index -> index >= 0 && cursor.getInt(index) == 1 }
+
+        return JSONObject()
+            .put("metaId", metaId)
+            .put("imdbId", imdbId ?: JSONObject.NULL)
+            .put("videoId", JSONObject.NULL)
+            .put("type", if (text("meta_type") == "series") "series" else "movie")
+            .put("name", text("name") ?: metaId)
+            .put("poster", text("poster") ?: JSONObject.NULL)
+            .put("season", JSONObject.NULL)
+            .put("episode", JSONObject.NULL)
+            .put("progress", 0.0)
+            .put("timeOffsetMs", JSONObject.NULL)
+            .put("durationMs", JSONObject.NULL)
+            .put("watchedVideoId", JSONObject.NULL)
+            .put("lastWatchedAt", text("added_at") ?: text("updated_at") ?: JSONObject.NULL)
+            .put("isFavorite", cursor.getInt(cursor.getColumnIndexOrThrow("is_favorite")) == 1)
+            .put("isWatchLater", cursor.getInt(cursor.getColumnIndexOrThrow("is_watch_later")) == 1)
+            .put("inLibrary", cursor.getInt(cursor.getColumnIndexOrThrow("in_library")) == 1)
+            .put("isLocal", true)
+            .put("isAnime", mediaAnimation || isAnimeMetaId(metaId))
+    }
+
+    private data class StremioLocalState(
+        val favorite: Boolean,
+        val watchLater: Boolean,
+        val inLibrary: Boolean,
+        val metaType: String?,
+        val name: String?,
+        val poster: String?,
+        val addedAt: String?
+    )
 
     fun setStremioLibraryState(
         metaId: String,
@@ -1795,58 +1885,81 @@ class HubDatabase(private val context: Context) {
     ): JSONObject {
         val now = nowIso()
 
-        if (favorite != null || watchLater != null) {
-            val current = db.rawQuery(
-                "SELECT is_favorite, is_watch_later FROM stremio_library_state WHERE meta_id = ?",
-                arrayOf(metaId)
-            ).use { cursor ->
-                if (cursor.moveToFirst()) {
-                    (cursor.getInt(0) == 1) to (cursor.getInt(1) == 1)
-                } else {
-                    false to false
-                }
-            }
-            val nextFavorite = favorite ?: current.first
-            val nextLater = watchLater ?: current.second
-            db.execSQL(
-                """
-                INSERT INTO stremio_library_state (meta_id, is_favorite, is_watch_later, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(meta_id) DO UPDATE SET
-                  is_favorite = excluded.is_favorite,
-                  is_watch_later = excluded.is_watch_later,
-                  updated_at = excluded.updated_at
-                """.trimIndent(),
-                arrayOf(metaId, if (nextFavorite) 1 else 0, if (nextLater) 1 else 0, now)
-            )
-        }
-
-        if (inLibrary == true && stremioLibraryItem(metaId) == null) {
-            db.execSQL(
-                """
-                INSERT INTO stremio_library (
-                  meta_id, imdb_id, type, name, poster, removed, temp, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 0, 1, ?)
-                """.trimIndent(),
-                arrayOf(
-                    metaId,
-                    if (metaId.startsWith("tt")) metaId.substringBefore(':') else null,
-                    if (type == "series") "series" else "movie",
-                    name ?: metaId,
-                    poster,
-                    now
+        val existing = db.rawQuery(
+            """
+            SELECT is_favorite, is_watch_later, in_library, meta_type, name, poster, added_at
+            FROM stremio_library_state WHERE meta_id = ?
+            """.trimIndent(),
+            arrayOf(metaId)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                StremioLocalState(
+                    favorite = cursor.getInt(0) == 1,
+                    watchLater = cursor.getInt(1) == 1,
+                    inLibrary = cursor.getInt(2) == 1,
+                    metaType = if (cursor.isNull(3)) null else cursor.getString(3),
+                    name = if (cursor.isNull(4)) null else cursor.getString(4),
+                    poster = if (cursor.isNull(5)) null else cursor.getString(5),
+                    addedAt = if (cursor.isNull(6)) null else cursor.getString(6)
                 )
-            )
-        } else if (inLibrary == false) {
-            db.execSQL("DELETE FROM stremio_library WHERE meta_id = ?", arrayOf(metaId))
+            }
         }
 
-        val item = stremioLibraryItem(metaId)
+        val library = stremioLibraryItem(metaId)
+        val nextFavorite = favorite ?: existing?.favorite ?: library?.optBoolean("isFavorite") ?: false
+        val nextLater = watchLater ?: existing?.watchLater ?: library?.optBoolean("isWatchLater") ?: false
+        val nextInLibrary = inLibrary ?: existing?.inLibrary ?: (library != null)
+
+        if (!nextFavorite && !nextLater && !nextInLibrary) {
+            db.execSQL("DELETE FROM stremio_library_state WHERE meta_id = ?", arrayOf(metaId))
+            return JSONObject()
+                .put("metaId", metaId)
+                .put("isFavorite", false)
+                .put("isWatchLater", false)
+                .put("inLibrary", false)
+        }
+
+        val metaType = (type ?: existing?.metaType ?: library?.optText("type"))
+            ?.takeIf { it == "series" } ?: "movie"
+        val title = name ?: existing?.name ?: library?.optText("name") ?: metaId
+        val art = poster ?: existing?.poster ?: library?.optText("poster")
+        val addedAt = existing?.addedAt ?: now
+
+        db.execSQL(
+            """
+            INSERT INTO stremio_library_state (
+              meta_id, meta_type, name, poster, in_library, is_favorite,
+              is_watch_later, added_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(meta_id) DO UPDATE SET
+              meta_type = excluded.meta_type,
+              name = excluded.name,
+              poster = excluded.poster,
+              in_library = excluded.in_library,
+              is_favorite = excluded.is_favorite,
+              is_watch_later = excluded.is_watch_later,
+              updated_at = excluded.updated_at
+            """.trimIndent(),
+            arrayOf(
+                metaId,
+                metaType,
+                title,
+                art,
+                if (nextInLibrary) 1 else 0,
+                if (nextFavorite) 1 else 0,
+                if (nextLater) 1 else 0,
+                addedAt,
+                now
+            )
+        )
+
         return JSONObject()
             .put("metaId", metaId)
-            .put("isFavorite", item?.optBoolean("isFavorite") ?: false)
-            .put("isWatchLater", item?.optBoolean("isWatchLater") ?: false)
-            .put("inLibrary", item != null)
+            .put("isFavorite", nextFavorite)
+            .put("isWatchLater", nextLater)
+            .put("inLibrary", nextInLibrary)
     }
 
     // ---------------------------------------------------------------------
@@ -2414,10 +2527,10 @@ class HubDatabase(private val context: Context) {
                 java.util.UUID.randomUUID().toString(),
                 hash,
                 SecretCrypto.encrypt(transportUrl),
-                manifest.optString("id").ifEmpty { null },
+                manifest.optText("id"),
                 name,
-                manifest.optString("version").ifEmpty { null },
-                manifest.optString("description").ifEmpty { null },
+                manifest.optText("version"),
+                manifest.optText("description"),
                 manifest.toString(),
                 if (enabled) 1 else 0,
                 priority,

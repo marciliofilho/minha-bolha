@@ -1,6 +1,7 @@
 package com.minhabolha.android.connectors
 
 import com.minhabolha.android.Dates
+import com.minhabolha.android.optText
 import org.json.JSONObject
 
 /**
@@ -124,9 +125,9 @@ class GlobalReleasesConnector(
                         externalKey = "tmdb:movie:$id:cinema:$region",
                         provider = "tmdb",
                         mediaKind = "movie",
-                        title = movie.optString("title").ifEmpty { "Sem título" },
-                        originalTitle = movie.optString("original_title").ifEmpty { null },
-                        posterUrl = tmdb.imageUrl(movie.optString("poster_path").ifEmpty { null }),
+                        title = movie.optText("title") ?: "Sem título",
+                        originalTitle = movie.optText("original_title"),
+                        posterUrl = tmdb.imageUrl(movie.optText("poster_path")),
                         kind = "cinema",
                         releaseDate = date,
                         timezone = timezone,
@@ -177,16 +178,16 @@ class GlobalReleasesConnector(
                     externalKey = "tmdb:tv:$id:s${next.optInt("season_number")}e${next.optInt("episode_number")}",
                     provider = "tmdb",
                     mediaKind = "series",
-                    title = details.optString("name").ifEmpty { "Sem título" },
-                    originalTitle = details.optString("original_name").ifEmpty { null },
-                    posterUrl = tmdb.imageUrl(details.optString("poster_path").ifEmpty { null }),
+                    title = details.optText("name") ?: "Sem título",
+                    originalTitle = details.optText("original_name"),
+                    posterUrl = tmdb.imageUrl(details.optText("poster_path")),
                     kind = "episode",
                     releaseDate = date,
                     timezone = timezone,
                     region = region,
                     season = next.optInt("season_number"),
                     episode = next.optInt("episode_number"),
-                    episodeTitle = next.optString("name").ifEmpty { null },
+                    episodeTitle = next.optText("name"),
                     url = "${TmdbConnector.SITE}/tv/$id?language=pt-BR",
                     imdbId = details.optJSONObject("external_ids")?.optString("imdb_id")?.ifEmpty { null }
                 )
@@ -216,16 +217,16 @@ class GlobalReleasesConnector(
                         externalKey = "tmdb:tv:$id:s1e1",
                         provider = "tmdb",
                         mediaKind = "series",
-                        title = show.optString("name").ifEmpty { "Sem título" },
-                        originalTitle = show.optString("original_name").ifEmpty { null },
-                        posterUrl = tmdb.imageUrl(show.optString("poster_path").ifEmpty { null }),
+                        title = show.optText("name") ?: "Sem título",
+                        originalTitle = show.optText("original_name"),
+                        posterUrl = tmdb.imageUrl(show.optText("poster_path")),
                         kind = "episode",
                         releaseDate = date,
                         timezone = timezone,
                         region = region,
                         season = 1,
                         episode = 1,
-                        episodeTitle = show.optString("name").ifEmpty { null },
+                        episodeTitle = show.optText("name"),
                         url = "${TmdbConnector.SITE}/tv/$id?language=pt-BR"
                     )
                 )

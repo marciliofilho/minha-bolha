@@ -37,8 +37,8 @@ object StremioCatalog {
             .put("name", addon.name)
             .put("version", addon.version ?: JSONObject.NULL)
             .put("description", addon.description ?: JSONObject.NULL)
-            .put("logo", manifest.optString("logo").ifEmpty { null } ?: JSONObject.NULL)
-            .put("background", manifest.optString("background").ifEmpty { null } ?: JSONObject.NULL)
+            .put("logo", manifest.optText("logo") ?: JSONObject.NULL)
+            .put("background", manifest.optText("background") ?: JSONObject.NULL)
             .put("maskedUrl", maskUrl(addon.transportUrl))
             .put("resources", resourcesOf(manifest))
             .put("types", stringArray(manifest.optJSONArray("types")))
@@ -145,8 +145,8 @@ object StremioCatalog {
         }
 
         val manifest = fetchManifest(transportUrl)
-        val addonId = manifest.optString("id").ifEmpty { null }
-        val name = manifest.optString("name").ifEmpty { addonId ?: "Addon" }
+        val addonId = manifest.optText("id")
+        val name = manifest.optText("name") ?: addonId ?: "Addon"
 
         val rowId = UUID.randomUUID().toString()
         val priority = database.countStremioAddons() + 100
@@ -156,8 +156,8 @@ object StremioCatalog {
             transportUrl = transportUrl,
             addonId = addonId,
             name = name,
-            version = manifest.optString("version").ifEmpty { null },
-            description = manifest.optString("description").ifEmpty { null },
+            version = manifest.optText("version"),
+            description = manifest.optText("description"),
             manifest = manifest,
             priority = priority
         )
@@ -297,10 +297,10 @@ object StremioCatalog {
                     .put("addonName", addon.name)
                     .put("type", meta.optString("type").ifEmpty { type })
                     .put("id", id)
-                    .put("name", meta.optString("name").ifEmpty { id })
-                    .put("poster", meta.optString("poster").ifEmpty { null } ?: JSONObject.NULL)
+                    .put("name", meta.optText("name") ?: id)
+                    .put("poster", meta.optText("poster") ?: JSONObject.NULL)
                     .put("year", meta.optInt("year").takeIf { it > 0 } ?: JSONObject.NULL)
-                    .put("imdbRating", meta.optString("imdbRating").ifEmpty { null } ?: JSONObject.NULL)
+                    .put("imdbRating", meta.optText("imdbRating") ?: JSONObject.NULL)
                     .put(
                         "description",
                         TextUtil.truncate(TextUtil.stripHtml(meta.optString("description")), 220)
@@ -463,7 +463,7 @@ object StremioCatalog {
                         .put("name", "Temporada $season")
                         .put("episodeCount", count)
                         .put("airDate", JSONObject.NULL)
-                        .put("posterUrl", meta.optString("poster").ifEmpty { null } ?: JSONObject.NULL)
+                        .put("posterUrl", meta.optText("poster") ?: JSONObject.NULL)
                         .put("overview", JSONObject.NULL)
                 )
             }
@@ -489,18 +489,18 @@ object StremioCatalog {
             .put("id", meta.optString("id").ifEmpty { fallbackId })
             .put("type", if (isSeries) "series" else "movie")
             .put("metaType", metaType)
-            .put("name", meta.optString("name").ifEmpty { fallbackId })
-            .put("originalName", meta.optString("originalName").ifEmpty { null } ?: JSONObject.NULL)
+            .put("name", meta.optText("name") ?: fallbackId)
+            .put("originalName", meta.optText("originalName") ?: JSONObject.NULL)
             .put(
                 "overview",
                 TextUtil.stripHtml(meta.optString("description")).ifEmpty { null } ?: JSONObject.NULL
             )
-            .put("posterUrl", meta.optString("poster").ifEmpty { null } ?: JSONObject.NULL)
-            .put("backdropUrl", meta.optString("background").ifEmpty { null } ?: JSONObject.NULL)
+            .put("posterUrl", meta.optText("poster") ?: JSONObject.NULL)
+            .put("backdropUrl", meta.optText("background") ?: JSONObject.NULL)
             .put("year", year ?: JSONObject.NULL)
             .put("genres", genres)
             .put("runtimeMinutes", runtime ?: JSONObject.NULL)
-            .put("status", meta.optString("status").ifEmpty { null } ?: JSONObject.NULL)
+            .put("status", meta.optText("status") ?: JSONObject.NULL)
             .put(
                 "imdbId",
                 (if (meta.optString("id").startsWith("tt")) meta.optString("id") else null)

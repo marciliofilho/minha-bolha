@@ -1,6 +1,7 @@
 package com.minhabolha.android.connectors
 
 import com.minhabolha.android.Dates
+import com.minhabolha.android.optText
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -90,7 +91,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
             val mediaType = item.optString("media_type")
             if (mediaType != "movie" && mediaType != "tv") return@mapNotNull null
             val isMovie = mediaType == "movie"
-            val title = if (isMovie) item.optString("title") else item.optString("name")
+            val title = if (isMovie) item.optText("title") else item.optText("name")
             val date = if (isMovie) item.optString("release_date") else item.optString("first_air_date")
             val original = if (isMovie) item.optString("original_title") else item.optString("original_name")
             MediaSearchResult(
@@ -100,7 +101,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                 title = title.ifEmpty { "Sem título" },
                 originalTitle = original.ifEmpty { null },
                 year = yearOf(date),
-                posterUrl = imageUrl(item.optString("poster_path").ifEmpty { null }),
+                posterUrl = imageUrl(item.optText("poster_path")),
                 overview = TextUtil.truncate(
                     TextUtil.stripHtml(item.optString("overview")),
                     220
@@ -272,7 +273,7 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                         timezone = timezone,
                         season = seasonNumber,
                         episode = episode.optInt("episode_number"),
-                        episodeTitle = episode.optString("name").ifEmpty { null },
+                        episodeTitle = episode.optText("name"),
                         url = "$SITE/tv/$id/season/$seasonNumber/episode/${episode.optInt("episode_number")}?language=pt-BR"
                     )
                 )
@@ -292,12 +293,12 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                     provider = PROVIDER,
                     externalId = "movie:$id",
                     kind = "movie",
-                    title = details.optString("title").ifEmpty { "Sem título" },
-                    originalTitle = details.optString("original_title").ifEmpty { null },
-                    posterUrl = imageUrl(details.optString("poster_path").ifEmpty { null }),
-                    backdropUrl = imageUrl(details.optString("backdrop_path").ifEmpty { null }),
+                    title = details.optText("title") ?: "Sem título",
+                    originalTitle = details.optText("original_title"),
+                    posterUrl = imageUrl(details.optText("poster_path")),
+                    backdropUrl = imageUrl(details.optText("backdrop_path")),
                     year = yearOf(details.optString("release_date")),
-                    status = details.optString("status").ifEmpty { null },
+                    status = details.optText("status"),
                     nextEpisodeAt = null,
                     url = "$SITE/movie/$id?language=pt-BR",
                     imdbId = details.optJSONObject("external_ids")?.optString("imdb_id")?.ifEmpty { null },
@@ -313,12 +314,12 @@ class TmdbConnector(private val secrets: SecretAccess) : Connector {
                     provider = PROVIDER,
                     externalId = "tv:$id",
                     kind = "series",
-                    title = details.optString("name").ifEmpty { "Sem título" },
-                    originalTitle = details.optString("original_name").ifEmpty { null },
-                    posterUrl = imageUrl(details.optString("poster_path").ifEmpty { null }),
-                    backdropUrl = imageUrl(details.optString("backdrop_path").ifEmpty { null }),
+                    title = details.optText("name") ?: "Sem título",
+                    originalTitle = details.optText("original_name"),
+                    posterUrl = imageUrl(details.optText("poster_path")),
+                    backdropUrl = imageUrl(details.optText("backdrop_path")),
                     year = yearOf(details.optString("first_air_date")),
-                    status = details.optString("status").ifEmpty { null },
+                    status = details.optText("status"),
                     totalSeasons = details.optInt("number_of_seasons").takeIf { it > 0 },
                     nextEpisodeAt = next?.optString("air_date")?.take(10)?.let { Dates.dateToIso(it) },
                     url = "$SITE/tv/$id?language=pt-BR",

@@ -22,6 +22,7 @@ import { Button, Chip, ErrorBanner, InfoBanner, Modal, SuccessNote, Switch } fro
 import { api } from '@/lib/api';
 import { useStremioAddons, useStremioStatus } from '@/lib/queries';
 import { useI18n } from '@/lib/i18n';
+import { isAndroidShell } from '@/lib/platform';
 import { cn, formatRelative } from '@/lib/utils';
 
 const RESOURCES = ['catalog', 'meta', 'stream', 'subtitles'] as const;
@@ -436,7 +437,8 @@ export function AddonsPanel() {
           </Button>
         </div>
         <p className="mt-1.5 text-[10px] leading-relaxed text-faint">
-          {t('A URL é criptografada com')} <span className="font-mono">APP_SECRET</span>{' '}
+          {t('A URL é criptografada com')}{' '}
+          <span className="font-mono">{isAndroidShell() ? 'Android Keystore' : 'APP_SECRET'}</span>{' '}
           {t('e nunca é devolvida pela API. A interface mostra apenas uma versão mascarada.')}
         </p>
       </div>

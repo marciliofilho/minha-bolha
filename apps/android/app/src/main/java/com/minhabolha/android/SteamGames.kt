@@ -55,9 +55,9 @@ object SteamGames {
 
         return SteamApp(
             appid = appid,
-            name = data.optString("name").ifEmpty { "App $appid" },
-            headerUrl = data.optString("header_image").ifEmpty { null },
-            coverUrl = data.optString("capsule_image").ifEmpty { null },
+            name = data.optText("name") ?: "App $appid",
+            headerUrl = data.optText("header_image"),
+            coverUrl = data.optText("capsule_image"),
             currency = price?.optString("currency").orEmpty().ifEmpty { "BRL" },
             baseCents = base,
             finalCents = final,
@@ -92,8 +92,8 @@ object SteamGames {
             result.put(
                 JSONObject()
                     .put("appid", appid)
-                    .put("name", item.optString("name").ifEmpty { "App $appid" })
-                    .put("imageUrl", item.optString("tiny_image").ifEmpty { null } ?: JSONObject.NULL)
+                    .put("name", item.optText("name") ?: "App $appid")
+                    .put("imageUrl", item.optText("tiny_image") ?: JSONObject.NULL)
                     .put("priceLabel", formatPrice(price))
             )
         }
