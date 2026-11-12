@@ -131,6 +131,16 @@ class PlayerActivity : Activity() {
         }
         val backButton = Button(this).apply {
             text = "Voltar"
+            setTextColor(Color.parseColor("#080A0F"))
+            setBackgroundColor(Color.parseColor("#7C9CFF"))
+            setPadding(64, 24, 64, 24)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = 32
+            }
             setOnClickListener { finish() }
         }
         val errorBox = LinearLayout(this).apply {
@@ -178,10 +188,13 @@ class PlayerActivity : Activity() {
 
                         override fun onPlayerError(error: PlaybackException) {
                             Log.e(TAG, "player nativo: erro", error)
+                            val detail = error.cause?.message?.takeIf { it.isNotBlank() }
+                                ?: error.message
+                                ?: error.errorCodeName
                             errorText.text = buildString {
                                 appendLine("Não foi possível reproduzir este stream.")
                                 appendLine()
-                                appendLine(error.message ?: error.errorCodeName)
+                                appendLine(detail)
                                 appendLine()
                                 append("Volte e escolha outro stream.")
                             }
@@ -275,6 +288,11 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
+    @Deprecated("Deprecated in Android")
+    override fun onBackPressed() {
+        finish()
+    }
+
     override fun onStop() {
         persistProgress()
         super.onStop()
@@ -307,6 +325,8 @@ class PlayerActivity : Activity() {
         if (metaId.isEmpty() || videoId.isEmpty() || baseUrl.isEmpty()) return
 
         val position = mediaController.currentPosition.coerceAtLeast(0)
+        // Não cria "Continuar assistindo" para um stream que nunca começou.
+        if (position <= 0 && !completed) return
         val duration = mediaController.duration.takeIf { it > 0 }
 
         val body = JSONObject()

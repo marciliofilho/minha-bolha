@@ -211,3 +211,16 @@ webview {
   height: 100%;
   background: #ffffff;
 }
+
+/* Android: o shell mobile continua em paisagem (usado pelo fullscreen de vídeo). */
+html[data-platform='android'] #app-sidebar {
+  display: none !important;
+}
+
+html[data-platform='android'] #app-content {
+  padding-left: 0 !important;
+}
+
+html[data-platform='android'] #app-mobile-nav {
+  display: block !important;
+}

@@ -139,6 +139,7 @@ export function AppShell() {
 
       {/* Conteúdo */}
       <div
+        id="app-content"
         className={cn(
           'transition-[padding] duration-200',
           sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-60'
@@ -158,7 +159,10 @@ export function AppShell() {
       </div>
 
       {/* Mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line/80 bg-surface/85 backdrop-blur-xl lg:hidden">
+      <nav
+        id="app-mobile-nav"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line/80 bg-surface/85 backdrop-blur-xl lg:hidden"
+      >
         <div className="mx-auto flex max-w-lg items-stretch justify-between px-2 py-1.5">
           {NAV_ITEMS.map((item) => (
             <NavLink

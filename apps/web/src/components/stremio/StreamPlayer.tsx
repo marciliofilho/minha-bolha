@@ -435,8 +435,9 @@ export function StreamPlayer({
       .then((prep) => {
         if (cancelled) return;
 
-        // Android: MKV/HEVC não toca no WebView, então o player nativo assume.
-        if (!prep.directPlayable && window.HubNative) {
+        // Android: o player nativo (Media3) assume qualquer torrent, inclusive
+        // MP4, para ter tela cheia, codecs e MediaSession consistentes.
+        if (window.HubNative) {
           window.HubNative.playTorrent(
             JSON.stringify({
               url: prep.directUrl,
@@ -446,7 +447,6 @@ export function StreamPlayer({
             })
           );
           setTorrentPreparing(false);
-          onClose();
           return;
         }
 

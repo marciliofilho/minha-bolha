@@ -14,6 +14,7 @@ import type { TitleStreamDto } from '@hub/shared';
 import { Chip, ErrorBanner, InfoBanner } from '@/components/ui';
 import { useStremioEpisodes, useStremioServerStatus, useStremioStreams } from '@/lib/queries';
 import { useI18n } from '@/lib/i18n';
+import { isAndroidShell } from '@/lib/platform';
 import { cn } from '@/lib/utils';
 import { StreamPlayer } from './StreamPlayer';
 
@@ -148,9 +149,50 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
   const title = target.title;
   const background = target.backdrop ?? target.poster;
 
+  /**
+   * No Android, streams diretos/HLS vão para o player nativo (Media3). O
+   * player web fica para o desktop e para YouTube. Isso também resolve HEVC,
+   * redirecionamentos e a tela cheia sem depender do layout do WebView.
+   */
+  const nativePayload = (stream: TitleStreamDto): string =>
+    JSON.stringify({
+      url: stream.playbackUrl,
+      title,
+      tracking: {
+        metaId: target.metaId,
+        type: target.type,
+        videoId: playbackVideoId,
+        season: target.type === 'series' ? effectiveSeason : null,
+        episode: target.type === 'series' ? effectiveEpisode : null,
+        name: target.title,
+        poster: target.poster,
+        backdrop: target.backdrop,
+        year: target.year,
+        addonId: stream.addonId,
+        streamSignature: [
+          stream.addonId,
+          stream.quality,
+          stream.name,
+          stream.infoHash,
+          stream.fileIdx
+        ]
+          .filter((value) => value !== null && value !== undefined)
+          .join('|')
+      }
+    });
+
   const selectStream = (stream: TitleStreamDto): void => {
     if (stream.kind === 'external' && stream.externalUrl && !stream.ytId) {
       window.open(stream.externalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (
+      isAndroidShell() &&
+      window.HubNative &&
+      stream.kind !== 'torrent' &&
+      stream.playbackUrl
+    ) {
+      window.HubNative.playTorrent(nativePayload(stream));
       return;
     }
     setPlaying(stream);
