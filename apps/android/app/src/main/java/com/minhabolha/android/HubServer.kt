@@ -154,7 +154,8 @@ class HubServer(
             segments == listOf("stremio", "card-info") && method == Method.POST ->
                 json(JSONObject().put("items", JSONArray()))
 
-            segments == listOf("calendar") && method == Method.GET -> calendar(session)            segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
+            segments == listOf("calendar") && method == Method.GET -> calendar(session)
+            segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
             segments == listOf("calendar", "refresh") && method == Method.POST -> calendarRefresh()
 
             segments.firstOrNull() == "sources" -> serveSources(session, method, segments)
