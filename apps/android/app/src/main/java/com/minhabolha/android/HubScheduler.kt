@@ -224,6 +224,13 @@ class HubScheduler(
                 Log.i(TAG, "calendário global: $saved lançamento(s)")
             }
 
+            // Preços do gg.deals: aplica na biblioteca de jogos.
+            if (result.prices.isNotEmpty()) {
+                val updated = database.applyGgPrices(result.prices)
+                events.broadcast("games:changed", JSONObject().put("updated", updated).put("sourceId", row.id))
+                Log.i(TAG, "gg.deals: $updated preço(s) atualizado(s)")
+            }
+
             // Wishlist da Steam: metadados e preços viram a biblioteca de jogos.
             if (result.steamWishlist.isNotEmpty()) {
                 var saved = 0

@@ -20,8 +20,8 @@ object BackupService {
     private val DEFAULT_SECTIONS = listOf("settings", "categories", "sources")
 
     private val ALL_SECTIONS = listOf(
-        "settings", "categories", "sources", "games", "calendar", "feed",
-        "playback", "stremioLibrary"
+        "settings", "categories", "sources", "addons", "games", "calendar", "feed",
+        "playback", "stremioLibrary", "localLibrary", "novels"
     )
 
     private val SENSITIVE = setOf("addons", "apiKeys", "stremioAccount")
@@ -32,7 +32,9 @@ object BackupService {
         "calendar" to listOf("media", "release_events", "global_releases"),
         "feed" to listOf("items"),
         "playback" to listOf("stremio_playback"),
-        "stremioLibrary" to listOf("stremio_library")
+        "stremioLibrary" to listOf("stremio_library"),
+        "localLibrary" to listOf("stremio_library_state"),
+        "novels" to listOf("novel_cache")
     )
 
     // ---------------------------------------------------------------------
@@ -108,6 +110,22 @@ object BackupService {
             }
         }
 
+        if ("addons" in selected) {
+            val addons = JSONArray()
+            for (addon in database.stremioAddons()) {
+                if (addon.transportUrl.isEmpty()) continue
+                addons.put(
+                    JSONObject()
+                        .put("transportUrl", addon.transportUrl)
+                        .put("manifest", addon.manifest)
+                        .put("name", addon.name)
+                        .put("enabled", addon.enabled)
+                        .put("priority", addon.priority)
+                )
+            }
+            document.put("addons", addons)
+        }
+
         return document
     }
 
@@ -159,6 +177,7 @@ object BackupService {
 
                 "categories" -> incomingCategories.length()
                 "sources" -> incomingSources.length()
+                "addons" -> document.optJSONArray("addons")?.length() ?: 0
                 else -> RAW_TABLES[section]?.sumOf { table ->
                     val key = if (RAW_TABLES.getValue(section).size == 1) section else "$section:$table"
                     document.optJSONArray(key)?.length() ?: 0
@@ -266,6 +285,25 @@ object BackupService {
                 }
             }
             sectionCounts.put(section, total)
+        }
+
+        if ("addons" in sections) {
+            val addons = document.optJSONArray("addons") ?: JSONArray()
+            var imported = 0
+            for (index in 0 until addons.length()) {
+                val addon = addons.optJSONObject(index) ?: continue
+                val transportUrl = addon.optString("transportUrl")
+                if (transportUrl.isEmpty()) continue
+                database.importAddon(
+                    transportUrl = transportUrl,
+                    manifest = addon.optJSONObject("manifest") ?: JSONObject(),
+                    name = addon.optString("name").ifEmpty { "Addon" },
+                    enabled = addon.optBoolean("enabled", true),
+                    priority = addon.optInt("priority", 100)
+                )
+                imported++
+            }
+            sectionCounts.put("addons", imported)
         }
 
         return JSONObject()

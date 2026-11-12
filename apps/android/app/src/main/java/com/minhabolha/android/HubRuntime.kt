@@ -41,7 +41,8 @@ object HubRuntime {
             },
             mediaLookup = { sourceId -> hubDatabase.mediaBySource(sourceId) },
             stremioAuthKey = { hubDatabase.stremioAuthKey() },
-            novelExtractor = { novelExtractor }
+            novelExtractor = { novelExtractor },
+            gamesProvider = { hubDatabase.gamesForPriceCheck(20) }
         )
 
         // O calendário global é criado no primeiro boot (AniList não exige chave).
@@ -49,6 +50,7 @@ object HubRuntime {
 
         // Reconecta a fonte da biblioteca se a conta do Stremio estiver salva.
         StremioAccount.ensureSource(hubDatabase)
+        GgDealsSource.ensure(hubDatabase)
 
         val hubScheduler = HubScheduler(hubDatabase, hubEvents)
 

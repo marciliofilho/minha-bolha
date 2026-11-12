@@ -2181,7 +2181,7 @@ class HubDatabase(private val context: Context) {
 
     private val BACKUP_TABLES = setOf(
         "games", "price_history", "media", "release_events", "global_releases",
-        "items", "stremio_playback", "stremio_library"
+        "items", "stremio_playback", "stremio_library", "stremio_library_state", "novel_cache"
     )
 
     private val SAFE_COLUMN = Regex("^[a-z_][a-z0-9_]*$")
@@ -2242,8 +2242,45 @@ class HubDatabase(private val context: Context) {
         )
     }
 
-    fun importSource(
-        id: String,
+    /** Restaura um addon do backup (URL cifrada de novo, dedupe por hash). */
+    fun importAddon(
+        transportUrl: String,
+        manifest: org.json.JSONObject,
+        name: String,
+        enabled: Boolean,
+        priority: Int
+    ) {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(transportUrl.toByteArray(Charsets.UTF_8))
+        val hash = digest.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        val now = nowIso()
+
+        db.execSQL("DELETE FROM stremio_addons WHERE url_hash = ?", arrayOf(hash))
+        db.execSQL(
+            """
+            INSERT INTO stremio_addons (
+              id, url_hash, transport_url_enc, addon_id, name, version, description,
+              manifest_json, enabled, priority, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf(
+                java.util.UUID.randomUUID().toString(),
+                hash,
+                SecretCrypto.encrypt(transportUrl),
+                manifest.optString("id").ifEmpty { null },
+                name,
+                manifest.optString("version").ifEmpty { null },
+                manifest.optString("description").ifEmpty { null },
+                manifest.toString(),
+                if (enabled) 1 else 0,
+                priority,
+                now,
+                now
+            )
+        )
+    }
+
+    fun importSource(        id: String,
         type: String,
         name: String,
         categoryId: String,

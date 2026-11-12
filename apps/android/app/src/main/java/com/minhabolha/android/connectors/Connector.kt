@@ -59,6 +59,7 @@ data class ConnectorResult(
     val globalReleaseProviders: List<String> = emptyList(),
     val stremioLibrary: List<com.minhabolha.android.StremioLibraryItem> = emptyList(),
     val steamWishlist: List<com.minhabolha.android.SteamApp> = emptyList(),
+    val prices: List<com.minhabolha.android.GgPrice> = emptyList(),
     val warnings: List<String> = emptyList()
 )
 

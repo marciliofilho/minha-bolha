@@ -17,7 +17,12 @@ object NovelDownloads {
     private const val MAX_CHAPTERS = 100
     private const val OFFLINE_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000
 
-    class Job(val id: String, val title: String, val total: Int) {
+    class Job(
+        val id: String,
+        val title: String,
+        val total: Int,
+        val chapters: List<Triple<String, String, Int?>>
+    ) {
         @Volatile var done: Int = 0
         @Volatile var failed: Int = 0
         @Volatile var current: String? = null
@@ -36,7 +41,7 @@ object NovelDownloads {
     ): Job {
         if (chapters.isEmpty()) throw HubException(400, "validation", "Nenhum capítulo para baixar.")
         val limited = chapters.take(MAX_CHAPTERS)
-        val job = Job(UUID.randomUUID().toString(), title.ifEmpty { "Novel" }, limited.size)
+        val job = Job(UUID.randomUUID().toString(), title.ifEmpty { "Novel" }, limited.size, limited)
         jobs[job.id] = job
 
         executor.execute {
@@ -73,6 +78,13 @@ object NovelDownloads {
         }
 
         return job
+    }
+
+    /** Recomeça um job parado/falho com os mesmos capítulos. */
+    fun retry(extractor: NovelExtractor, database: HubDatabase, id: String): Job? {
+        val job = jobs[id] ?: return null
+        if (job.status == "running") return job
+        return start(extractor, database, job.title, job.chapters)
     }
 
     fun status(id: String): JSONObject? {

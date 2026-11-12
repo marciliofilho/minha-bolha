@@ -96,6 +96,8 @@ class HubServer(
                 method == Method.GET -> novelDownloadStatus(segments[2])
             segments.size == 4 && segments[0] == "novels" && segments[1] == "download" &&
                 segments[3] == "cancel" && method == Method.POST -> novelDownloadCancel(segments[2])
+            segments.size == 4 && segments[0] == "novels" && segments[1] == "download" &&
+                segments[3] == "retry" && method == Method.POST -> novelDownloadRetry(segments[2])
             segments == listOf("novels", "offline") && method == Method.GET ->
                 json(JSONObject().put("books", database.novelOfflineBooks()))
             segments.size == 4 && segments[0] == "novels" && segments[1] == "offline" &&
@@ -806,6 +808,12 @@ class HubServer(
         val status = NovelDownloads.status(id)
             ?: throw HubException(404, "not_found", "Download não encontrado.")
         return json(status)
+    }
+
+    private fun novelDownloadRetry(id: String): Response {
+        val job = NovelDownloads.retry(extractor, database, id)
+            ?: throw HubException(404, "not_found", "Download não encontrado.")
+        return json(NovelDownloads.status(job.id) ?: JSONObject(), Response.Status.ACCEPTED)
     }
 
     private fun novelDownloadCancel(id: String): Response {

@@ -35,7 +35,8 @@ class RefreshWorker(
                 },
                 mediaLookup = { sourceId -> database.mediaBySource(sourceId) },
                 stremioAuthKey = { database.stremioAuthKey() },
-                novelExtractor = { null }
+                novelExtractor = { null },
+                gamesProvider = { database.gamesForPriceCheck(20) }
             )
             GlobalReleasesSource.ensure(database)
 
