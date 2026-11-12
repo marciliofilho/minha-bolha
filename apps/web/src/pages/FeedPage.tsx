@@ -52,6 +52,7 @@ import { FeedViewSwitcher, type FeedView } from '@/components/feed/FeedViewSwitc
 import { GameDetailModal } from '@/components/games/GameDetailModal';
 import { GameFeedCard } from '@/components/games/GameFeedCard';
 import { useI18n } from '@/lib/i18n';
+import { isAndroidShell } from '@/lib/platform';
 import { ContinueWatchingSection } from '@/components/stremio/ContinueWatching';
 import { LocalContinueWatchingSection } from '@/components/stremio/LocalContinueWatching';
 import type { StreamTarget } from '@/components/stremio/StreamPicker';
@@ -1227,13 +1228,26 @@ export function FeedPage() {
               onMouseEnter={() => setHeroPaused(true)}
               onMouseLeave={() => setHeroPaused(false)}
             >
+              {isAndroidShell() ? (
+                <div className="mb-3">
+                  <FeedBrowserToggle
+                    open={browserOpen}
+                    onOpen={() => setBrowserOpen(true)}
+                    onClose={() => setBrowserOpen(false)}
+                    title={t('Abrir navegador embutido')}
+                  />
+                </div>
+              ) : null}
+
               <div className={cn('flex w-full gap-3', browserOpen ? 'items-stretch' : 'items-start')}>
-                <FeedBrowserToggle
-                  open={browserOpen}
-                  onOpen={() => setBrowserOpen(true)}
-                  onClose={() => setBrowserOpen(false)}
-                  title={t('Abrir navegador ao lado do destaque')}
-                />
+                {!isAndroidShell() ? (
+                  <FeedBrowserToggle
+                    open={browserOpen}
+                    onOpen={() => setBrowserOpen(true)}
+                    onClose={() => setBrowserOpen(false)}
+                    title={t('Abrir navegador ao lado do destaque')}
+                  />
+                ) : null}
 
                 <div className="min-w-0 flex-1">
                   {streamTarget ? (
