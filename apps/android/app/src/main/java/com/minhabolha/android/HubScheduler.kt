@@ -224,11 +224,18 @@ class HubScheduler(
                 Log.i(TAG, "calendário global: $saved lançamento(s)")
             }
 
-            // Preços do gg.deals: aplica na biblioteca de jogos.
+            // Preços do gg.deals: aplica na biblioteca e gera alertas no feed.
             if (result.prices.isNotEmpty()) {
                 val updated = database.applyGgPrices(result.prices)
+                val alerts = database.upsertPriceDropItems(row.id, result.prices)
                 events.broadcast("games:changed", JSONObject().put("updated", updated).put("sourceId", row.id))
-                Log.i(TAG, "gg.deals: $updated preço(s) atualizado(s)")
+                if (alerts > 0) {
+                    events.broadcast(
+                        "items:new",
+                        JSONObject().put("sourceId", row.id).put("count", alerts)
+                    )
+                }
+                Log.i(TAG, "gg.deals: $updated preço(s), $alerts alerta(s)")
             }
 
             // Wishlist da Steam: metadados e preços viram a biblioteca de jogos.

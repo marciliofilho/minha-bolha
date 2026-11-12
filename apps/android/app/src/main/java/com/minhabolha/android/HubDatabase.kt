@@ -2059,6 +2059,99 @@ class HubDatabase(private val context: Context) {
         return ordered
     }
 
+    /**
+     * Cria/atualiza um card de alerta por jogo quando o preço bate o alvo ou
+     * atinge o menor valor já visto. Dedupe por appid: o mesmo card é
+     * atualizado em vez de duplicar no feed.
+     */
+    fun upsertPriceDropItems(sourceId: String, prices: List<GgPrice>): Int {
+        if (prices.isEmpty()) return 0
+        val now = nowIso()
+        var created = 0
+
+        for (price in prices) {
+            if (!price.found) continue
+            val game = db.rawQuery(
+                """
+                SELECT id, appid, name, target_price_cents, current_official_cents,
+                       current_keyshop_cents, is_at_low, gg_url, header_url
+                FROM games WHERE appid = ?
+                """.trimIndent(),
+                arrayOf(price.appid.toString())
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else cursor
+            } ?: continue
+
+            val id = game.getString(0)
+            val name = game.getString(2)
+            val target = if (game.isNull(3)) null else game.getInt(3)
+            val official = if (game.isNull(4)) null else game.getInt(4)
+            val keyshop = if (game.isNull(5)) null else game.getInt(5)
+            val atLow = game.getInt(6) == 1
+            val ggUrl = if (game.isNull(7)) null else game.getString(7)
+            val header = if (game.isNull(8)) null else game.getString(8)
+            game.close()
+
+            val best = listOfNotNull(official, keyshop).minOrNull() ?: continue
+            val bestKind = if (keyshop != null && keyshop == best) "keyshop" else "official"
+            val belowTarget = target != null && best <= target
+            if (!belowTarget && !atLow) continue
+
+            val priceLabel = SteamGames.formatCents(best, price.currency)
+            val title = if (belowTarget) "$name — $priceLabel (seu alvo)"
+            else "$name — $priceLabel (menor preço)"
+            val description = if (belowTarget && target != null) {
+                "Bateu o preço-alvo de ${SteamGames.formatCents(target, price.currency)}."
+            } else {
+                "Menor preço registrado até agora."
+            }
+            val url = ggUrl ?: "https://store.steampowered.com/app/${price.appid}/"
+            val meta = JSONObject()
+                .put("gameId", id)
+                .put("appid", price.appid)
+                .put("priceCents", best)
+                .put("priceKind", bestKind)
+                .put("targetPriceCents", target ?: JSONObject.NULL)
+                .put("ggUrl", ggUrl ?: JSONObject.NULL)
+
+            db.execSQL(
+                """
+                INSERT INTO items (
+                  id, source_id, external_id, dedupe_key, category_id, kind, title, url,
+                  thumbnail_url, description, author, published_at, discovered_at,
+                  is_read, is_favorite, is_watch_later, is_hidden, meta
+                ) VALUES (?, ?, ?, ?, 'game', 'price_drop', ?, ?, ?, ?, NULL, ?, ?, 0, 0, 0, 0, ?)
+                ON CONFLICT(dedupe_key) DO UPDATE SET
+                  title = excluded.title,
+                  url = excluded.url,
+                  thumbnail_url = excluded.thumbnail_url,
+                  description = excluded.description,
+                  published_at = excluded.published_at,
+                  discovered_at = excluded.discovered_at,
+                  is_read = 0,
+                  read_at = NULL,
+                  meta = excluded.meta
+                """.trimIndent(),
+                arrayOf(
+                    UUID.randomUUID().toString(),
+                    sourceId,
+                    "game:${price.appid}",
+                    "price:${price.appid}",
+                    title,
+                    url,
+                    header,
+                    description,
+                    now,
+                    now,
+                    meta.toString()
+                )
+            )
+            created++
+        }
+
+        return created
+    }
+
     /** Aplica os preços do gg.deals e devolve quantos jogos foram atualizados. */
     fun applyGgPrices(prices: List<GgPrice>): Int {
         if (prices.isEmpty()) return 0
