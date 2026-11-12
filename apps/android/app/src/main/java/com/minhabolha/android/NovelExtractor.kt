@@ -35,7 +35,7 @@ class NovelExtractor(context: Context) {
 
     private companion object {
         const val TAG = "MinhaBolha"
-        const val RENDER_DELAY_MS = 2_500L
+        const val RENDER_DELAY_MS = 4_000L
         const val DEFAULT_TIMEOUT_MS = 30_000L
 
         const val EXTRACT_JS = """            (function() {
@@ -89,19 +89,40 @@ class NovelExtractor(context: Context) {
                   if (img) cover = img.currentSrc || img.src || '';
                 }
 
+                var containers = document.querySelectorAll(
+                  '#chapters, #chapterlist, #chapter-list, .chapters, .chapter-list, .list-chapter,' +
+                  ' .list-chapters, .chapter-list-wrap, .volume-list, .chapter-item-list, .manga-chapter,' +
+                  ' .chp-list, .chapter-list-container, table#chapters, ul.chapter-list'
+                );
+                var anchors = [];
+                var inList = {};
+                if (containers.length > 0) {
+                  for (var c = 0; c < containers.length; c++) {
+                    var list = containers[c].querySelectorAll('a[href]');
+                    for (var j = 0; j < list.length; j++) {
+                      anchors.push(list[j]);
+                      inList[list[j].href] = true;
+                    }
+                  }
+                }
+                if (anchors.length === 0) anchors = document.querySelectorAll('a[href]');
+
                 var links = [];
                 var seen = {};
-                var anchors = document.querySelectorAll('a[href]');
+                var nav = /^(prev|previous|next|read now|start reading|home|index|table of contents|login|register|search|menu|novel|voltar|pr[oó]ximo|anterior|continue reading|buy)$/i;
                 for (var i = 0; i < anchors.length && links.length < 3000; i++) {
                   var a = anchors[i];
                   var text = (a.textContent || '').replace(/\s+/g, ' ').trim();
                   if (text.length < 1 || text.length > 200) continue;
                   var href = a.href || '';
                   if (!/^https?:/i.test(href)) continue;
-                  var looksChapter = /(cap[ií]tulo|chapter|epis[oó]dio|episode|volume|vol\.)/i.test(text) ||
-                    /^\s*\d{1,5}([.,]\d+)?(\s*[:.\-–—]\s*.*)?$/.test(text) ||
-                    /(cap[ií]tulo|chapter|epis[oó]dio|episode|\/ch\/|\/cap\/)/i.test(href);
-                  if (!looksChapter) continue;
+                  if (nav.test(text)) continue;
+                  if (/^(19|20)\d{2}$/.test(text)) continue;
+                  var listed = !!inList[href];
+                  var looksChapter = /(cap[ií]tulo|chapter|epis[oó]dio|episode|volume|vol\.|prologue|pr[oó]logo|ep[ií]logo|interlude)/i.test(text) ||
+                    /^\s*\d{1,5}([.,]\d+)?\s*([:.\-–—]\s*\S.*)?$/.test(text) ||
+                    /(cap[ií]tulo|chapter|epis[oó]dio|episode|\/ch\/|\/cap\/|chapter-)/i.test(href);
+                  if (!looksChapter && !listed) continue;
                   if (seen[href]) continue;
                   seen[href] = true;
                   links.push({ title: text, url: href });
@@ -168,7 +189,22 @@ class NovelExtractor(context: Context) {
             links.add(ChapterLink(name, url))
         }
         if (links.isEmpty()) return null
-        return ChapterList(title.ifEmpty { "Novel" }, links, cover)
+
+        // Muitos índices vêm do mais novo para o mais antigo. Ordena pelo
+        // número do capítulo para as setas anterior/próximo fazerem sentido.
+        val numbered = links.map { link ->
+            val number = Regex("(?i)(?:chapter|cap[ií]tulo|ch)\\.?\\s*(\\d{1,5})")
+                .find(link.title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("^\\s*(\\d{1,5})\\b").find(link.title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            link to number
+        }
+        val ordered = if (numbered.count { it.second != null } >= numbered.size / 2) {
+            numbered.sortedBy { it.second ?: Int.MAX_VALUE }.map { it.first }
+        } else {
+            links
+        }
+
+        return ChapterList(title.ifEmpty { "Novel" }, ordered, cover)
     }
 
     /** Executa um script arbitrário na página carregada. */
