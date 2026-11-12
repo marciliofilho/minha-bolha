@@ -111,7 +111,7 @@ class MainActivity : Activity() {
                  * O React chama `requestFullscreen()` no vídeo; sem este callback
                  * o WebView ignora e o botão de maximizar não faz nada.
                  */
-                override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                override fun onShowCustomView(view: View, callback: WebChromeClient.CustomViewCallback) {
                     if (fullscreenOverlay != null) {
                         callback.onCustomViewHidden()
                         return
