@@ -446,6 +446,96 @@ object StremioCatalog {
             .put("approximate", false)
     }
 
+    /** Metadados para a prévia (sinopse, nota, banner e trailer). */
+    fun cardInfo(database: HubDatabase, type: String, id: String): JSONObject? {
+        val addons = database.stremioAddons()
+            .filter { addon ->
+                addon.enabled && supportsMeta(addon.manifest)
+            }
+            .sortedBy { addon ->
+                if (addon.name.contains("cinemeta", ignoreCase = true)) 0 else 1
+            }
+
+        for (addon in addons) {
+            val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
+            val url = "$base/meta/${enc(type)}/${enc(id)}.json"
+            val response = try {
+                Http.fetchText(
+                    url,
+                    accept = "application/json",
+                    retries = 0,
+                    timeoutMs = 5_000
+                )
+            } catch (error: Exception) {
+                continue
+            }
+            val meta = try {
+                JSONObject(response.text).optJSONObject("meta")
+            } catch (error: Exception) {
+                null
+            } ?: continue
+
+            var trailer: String? = null
+            val trailers = meta.optJSONArray("trailers")
+            if (trailers != null) {
+                for (index in 0 until trailers.length()) {
+                    val entry = trailers.optJSONObject(index) ?: continue
+                    val source = entry.optString("source")
+                    if (source.isNotEmpty()) {
+                        trailer = source
+                        break
+                    }
+                }
+            }
+            val genres = meta.optJSONArray("genres")
+            var isAnime = type.equals("anime", ignoreCase = true) ||
+                id.startsWith("kitsu:", ignoreCase = true)
+            if (!isAnime && genres != null) {
+                for (index in 0 until genres.length()) {
+                    if (genres.optString(index).contains("anime", ignoreCase = true)) {
+                        isAnime = true
+                        break
+                    }
+                }
+            }
+
+            return JSONObject()
+                .put("type", meta.optString("type").ifEmpty { type })
+                .put("id", meta.optString("id").ifEmpty { id })
+                .put(
+                    "imdbRating",
+                    meta.optText("imdbRating") ?: JSONObject.NULL
+                )
+                .put(
+                    "overview",
+                    (meta.optText("description") ?: meta.optText("overview"))
+                        ?: JSONObject.NULL
+                )
+                .put("trailerYtId", trailer ?: JSONObject.NULL)
+                .put(
+                    "backdropUrl",
+                    (meta.optText("background") ?: meta.optText("backdrop"))
+                        ?: JSONObject.NULL
+                )
+                .put("isAnime", isAnime)
+        }
+        return null
+    }
+
+    private fun supportsMeta(manifest: JSONObject): Boolean {
+        val resources = manifest.optJSONArray("resources") ?: return false
+        for (index in 0 until resources.length()) {
+            val item = resources.opt(index)
+            val name = when (item) {
+                is String -> item
+                is JSONObject -> item.optString("name")
+                else -> ""
+            }
+            if (name == "meta") return true
+        }
+        return false
+    }
+
     private fun supportsSearch(catalog: JSONObject): Boolean {
         val extra = catalog.optJSONArray("extra") ?: return false
         for (index in 0 until extra.length()) {

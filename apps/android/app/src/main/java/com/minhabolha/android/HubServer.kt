@@ -212,7 +212,7 @@ class HubServer(
                 (method == Method.PUT || method == Method.POST) -> savePlayback(session)
             segments == listOf("playback", "progress") && method == Method.DELETE -> removePlayback(session)
             segments == listOf("stremio", "card-info") && method == Method.POST ->
-                json(JSONObject().put("items", JSONArray()))
+                stremioCardInfo(session)
 
             segments == listOf("calendar") && method == Method.GET -> calendar(session)
             segments == listOf("calendar", "search") && method == Method.GET -> calendarSearch(session)
@@ -895,6 +895,20 @@ class HubServer(
                 genre = param(session, "genre")
             )
         )
+    }
+
+    private fun stremioCardInfo(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val items = body.optJSONArray("items") ?: JSONArray()
+        val result = JSONArray()
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val type = item.optString("type").ifEmpty { "movie" }
+            val id = item.optString("id")
+            if (id.isEmpty()) continue
+            StremioCatalog.cardInfo(database, type, id)?.let { result.put(it) }
+        }
+        return json(JSONObject().put("items", result))
     }
 
     private fun stremioSearch(session: IHTTPSession): Response {
