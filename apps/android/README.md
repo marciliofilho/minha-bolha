@@ -38,6 +38,10 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Embedded browser**: a native WebView screen with address bar, back/forward,
   reload and cookies. External links and the feed's "Browser" button open it
   (the desktop's CDP/Puppeteer live view is not portable).
+- **Novels/articles extraction**: a hidden WebView (attached to the window)
+  loads the page, runs the site's JavaScript and extracts the reader text for
+  `/api/articles/content` and `/api/novels/chapter` — the Android replacement
+  for the desktop's Puppeteer pipeline.
 - **Stremio account**: login with e-mail/password or an auth key (the session
   key is encrypted with the Android Keystore), hourly library sync through a
   `stremio-library` source, local favourites/watch‑later and shared
