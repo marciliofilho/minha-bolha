@@ -27,6 +27,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Stremio subtitles**: tracks from the enabled addons, downloaded through a
   same-origin proxy that detects UTF-8/Windows-1252, converts SRT/ASS to WebVTT
   and is attached to both the web and the native player.
+- **Steam games**: add by appid, search the store, import the public wishlist
+  (no API key), track prices/history, target price and "at lowest" flag.
 - **Stremio account**: login with e-mail/password or an auth key (the session
   key is encrypted with the Android Keystore), hourly library sync through a
   `stremio-library` source, local favourites/watch‑later and shared
@@ -74,8 +76,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
+- gg.deals keyshop prices (Steam official prices are tracked; the keyshop
+  columns stay empty until the gg.deals API is ported).
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
-- Steam wishlist and gg.deals connectors, games screen.
 - Embedded browser (WebView-based, no CDP/Puppeteer equivalent).
 - Backup import/export, library mutations and novel connectors.
 
