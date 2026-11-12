@@ -14,7 +14,7 @@ import java.util.concurrent.Executors
  */
 object NovelDownloads {
 
-    private const val MAX_CHAPTERS = 100
+    private const val MAX_CHAPTERS = 500
     private const val OFFLINE_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000
 
     data class ChapterState(
