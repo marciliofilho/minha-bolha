@@ -30,11 +30,11 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 - **Steam games**: add by appid, search the store, import the public wishlist
   (no API key), track prices/history, target price and "at lowest" flag.
 - **gg.deals**: with an API key, official/keyshop prices and historical lows are
-  merged into the games library; opening the games screen refreshes the 20
-  oldest prices in the background.
-- **Backup**: export/preview/import in the desktop `hub-backup` v2 format
-  (settings, categories, sources, games, calendar, feed, playback, Stremio
-  library), so data can move between the PC and the phone.
+  merged into the games library by a scheduled ggdeals source (and on demand).
+- **Backup**: export/preview/import in the desktop hub-backup v2 format
+  (settings, categories, sources, addons, games, calendar, feed, playback,
+  Stremio library, local library and novel cache), so data can move between the
+  PC and the phone.
 - **Embedded browser**: a native WebView screen with address bar, back/forward,
   reload and cookies. External links and the feed's "Browser" button open it
   (the desktop's CDP/Puppeteer live view is not portable).
@@ -91,17 +91,14 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- gg.deals automatic source and price-drop alerts in the feed (prices refresh on
-  demand/background, but no scheduled source or `price_drop` items yet).
-- Backup sections not covered yet: addons, apiKeys, stremioAccount, novels and
-  localLibrary (credentials stay on the device; addons are re-added by URL).
+- `price_drop` items and notifications for game price alerts.
+- Backup of credentials (apiKeys/stremioAccount) is intentionally omitted.
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
-- Browser features that depend on CDP: page extraction, Cloudflare handling and
-  the live screenshot view used by the desktop's novel/paywall flows.
-- Novels: chapter list/progress UI, offline downloads and sites that require login.
+- Browser features that depend on CDP: Cloudflare handling and the live
+  screenshot view used by some desktop novel/paywall flows.
+- Novels: sites that require login/anti-bot and automatic cleanup of old downloads.
 
-Because those endpoints do not exist yet, the corresponding screens show their
-normal error state instead of data.
+Screens whose endpoints are still missing show the app's normal error state.
 
 ## Build
 
