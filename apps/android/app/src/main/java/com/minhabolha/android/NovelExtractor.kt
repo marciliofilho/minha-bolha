@@ -44,8 +44,9 @@ class NovelExtractor(context: Context) {
                 for (var i = 0; i < junk.length; i++) { junk[i].parentNode && junk[i].parentNode.removeChild(junk[i]); }
 
                 var selectors = [
-                  '#chapter-content', '.chapter-content', '.chapter-body', '.reading-content',
-                  '.entry-content', '.post-content', '.content', 'article', 'main', 'body'
+                  '#chapter-content', '.cha-words', '.chapter-content', '.chapter-body',
+                  '.reading-content', '.entry-content', '.post-content', '.content',
+                  'article', 'main', 'body'
                 ];
                 var best = null, bestLen = 0;
                 for (var s = 0; s < selectors.length; s++) {
@@ -76,23 +77,60 @@ class NovelExtractor(context: Context) {
                   (ogTitle ? ogTitle.getAttribute('content') : '') ||
                   document.title || '';
 
-                var coverNode = document.querySelector(
-                  'meta[property="og:image"], meta[name="og:image"], link[rel="image_src"]'
+                // Capas específicas primeiro: em páginas de catálogo o
+                // og:image costuma apontar para banner/anúncio, não a capa.
+                var cover = '';
+                var coverImg = document.querySelector(
+                  'img[src*="book-pic.webnovel.com/bookcover"], .g_thumb > img,' +
+                  ' .book-cover img, .novel-cover img, .cover img, .book-img img,' +
+                  ' .series-cover img, .thumbnail img'
                 );
-                var cover = coverNode
-                  ? (coverNode.getAttribute('content') || coverNode.getAttribute('href') || '')
-                  : '';
+                if (coverImg) cover = coverImg.currentSrc || coverImg.src || '';
                 if (!cover) {
-                  var img = document.querySelector(
-                    '.book-cover img, .novel-cover img, .cover img, article img, main img, img'
+                  var coverNode = document.querySelector(
+                    'meta[property="og:image"], meta[name="og:image"], link[rel="image_src"]'
                   );
-                  if (img) cover = img.currentSrc || img.src || '';
+                  cover = coverNode
+                    ? (coverNode.getAttribute('content') || coverNode.getAttribute('href') || '')
+                    : '';
+                }
+
+                var cleanTitle = function(a) {
+                  var own = (a.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+                  if (own) return own;
+                  return (a.textContent || '')
+                    .replace(/\s+/g, ' ')
+                    .replace(/\s+\d+\s+(years?|months?|days?|hours?|minutes?)\s+ago\s*$/i, '')
+                    .trim();
+                };
+
+                // Webnovel (e afins): lista de capítulos em .volume-item.
+                var volumeAnchors = document.querySelectorAll(
+                  '.j_catalog_list .volume-item li a[href], .volume-item ol > li a[href]'
+                );
+                if (volumeAnchors.length > 2) {
+                  var structured = [];
+                  var seenStructured = {};
+                  for (var v = 0; v < volumeAnchors.length; v++) {
+                    var va = volumeAnchors[v];
+                    if (va.querySelector('svg._icon')) continue;
+                    var vhref = va.href || '';
+                    if (!/^https?:/i.test(vhref) || seenStructured[vhref]) continue;
+                    var vname = cleanTitle(va);
+                    if (!vname) continue;
+                    seenStructured[vhref] = true;
+                    structured.push({ title: vname, url: vhref });
+                  }
+                  if (structured.length > 2) {
+                    return JSON.stringify({ title: title.trim(), cover: cover, links: structured });
+                  }
                 }
 
                 var containers = document.querySelectorAll(
                   '#chapters, #chapterlist, #chapter-list, .chapters, .chapter-list, .list-chapter,' +
-                  ' .list-chapters, .chapter-list-wrap, .volume-list, .chapter-item-list, .manga-chapter,' +
-                  ' .chp-list, .chapter-list-container, table#chapters, ul.chapter-list'
+                  ' .list-chapters, .chapter-list-wrap, .volume-list, .volume-item, .chapter-item-list,' +
+                  ' .manga-chapter, .chp-list, .chapter-list-container, .table-of-contents, .toc,' +
+                  ' table#chapters, ul.chapter-list'
                 );
                 var anchors = [];
                 var inList = {};
@@ -125,7 +163,7 @@ class NovelExtractor(context: Context) {
                   if (!looksChapter && !listed) continue;
                   if (seen[href]) continue;
                   seen[href] = true;
-                  links.push({ title: text, url: href });
+                  links.push({ title: listed ? cleanTitle(a) : text, url: href });
                 }
                 return JSON.stringify({ title: title.trim(), cover: cover, links: links });
               } catch (error) {
@@ -133,6 +171,19 @@ class NovelExtractor(context: Context) {
               }
             })();
         """
+    }
+
+    /**
+     * Webnovel só mostra a lista completa em `/catalog`. O usuário costuma
+     * cadastrar a página do livro, então normalizamos antes de extrair.
+     */
+    private fun catalogUrl(url: String): String {
+        val clean = url.substringBefore('?').substringBefore('#')
+        val match = Regex(
+            "^(https?://(?:www\\.|m\\.)?webnovel\\.com(?:/[a-z]{2})?/book/\\d+)/?$",
+            RegexOption.IGNORE_CASE
+        ).find(clean) ?: return url
+        return match.groupValues[1] + "/catalog"
     }
 
     private val appContext: Context = context.applicationContext
@@ -149,7 +200,7 @@ class NovelExtractor(context: Context) {
     /** Lista os capítulos (links) da página da novel. */
     fun chapters(rawUrl: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): ChapterList? {
         val url = try {
-            com.minhabolha.android.connectors.PublicUrl.assert(rawUrl).toString()
+            catalogUrl(com.minhabolha.android.connectors.PublicUrl.assert(rawUrl).toString())
         } catch (error: Exception) {
             throw HubException(400, "validation", "URL inválida para a novel.")
         }

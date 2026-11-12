@@ -789,6 +789,74 @@ class HubDatabase(private val context: Context) {
         return item(id)
     }
 
+    /**
+     * Atualiza o card do capítulo mais recente quando a lista completa da
+     * novel é aberta: capa, contagem real e índice do último capítulo.
+     */
+    fun backfillNovelItem(
+        sourceId: String,
+        chapterUrl: String,
+        chapterName: String,
+        chapterIndex: Int,
+        chapterCount: Int,
+        coverUrl: String?
+    ) {
+        var targetId: String? = null
+        var targetMeta: JSONObject? = null
+        var newestId: String? = null
+        var newestMeta: JSONObject? = null
+
+        db.query(
+            "items",
+            arrayOf("id", "meta", "url"),
+            "source_id = ? AND kind = 'chapter'",
+            arrayOf(sourceId),
+            null,
+            null,
+            "published_at DESC",
+            "50"
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val meta = jsonObjectOrEmpty(
+                    if (cursor.isNull(1)) null else cursor.getString(1)
+                )
+                val itemUrl = if (cursor.isNull(2)) "" else cursor.getString(2)
+                if (newestId == null) {
+                    newestId = cursor.getString(0)
+                    newestMeta = meta
+                }
+                val metaUrl = meta.optString("chapterUrl")
+                if (metaUrl == chapterUrl || itemUrl == chapterUrl) {
+                    targetId = cursor.getString(0)
+                    targetMeta = meta
+                    break
+                }
+            }
+        }
+
+        // Se o item antigo aponta para outro capítulo, usa o mais recente do
+        // feed: é o card que a UI exibe no grupo da novel.
+        if (targetId == null) {
+            targetId = newestId
+            targetMeta = newestMeta
+        }
+        val id = targetId ?: return
+        val meta = targetMeta ?: JSONObject()
+        meta.put("chapterUrl", chapterUrl)
+        meta.put("chapterId", chapterUrl)
+        meta.put("chapterName", chapterName)
+        meta.put("chapterIndex", chapterIndex)
+        meta.put("chapterCount", chapterCount)
+        if (!coverUrl.isNullOrBlank()) meta.put("coverUrl", coverUrl)
+
+        val values = ContentValues().apply {
+            put("meta", meta.toString())
+            if (chapterName.isNotBlank()) put("title", chapterName)
+            if (!coverUrl.isNullOrBlank()) put("thumbnail_url", coverUrl)
+        }
+        db.update("items", values, "id = ?", arrayOf(id))
+    }
+
     fun counts(): JSONArray {
         val cutoff = feedCutoffIso(settings().optInt("feedWindowHours", 48))
         val grouped = mutableMapOf<String, Array<Int>>()

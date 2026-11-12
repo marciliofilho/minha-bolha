@@ -69,6 +69,7 @@ class BrowserActivity : Activity() {
             inputType = InputType.TYPE_TEXT_VARIATION_URI
             imeOptions = EditorInfo.IME_ACTION_GO
             hint = "https://"
+            setSelectAllOnFocus(true)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -116,8 +117,15 @@ class BrowserActivity : Activity() {
                     return openExternally(uri)
                 }
 
+                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                    // Mantém a barra sincronizada durante redirecionamentos,
+                    // antes de a página terminar de carregar.
+                    if (!urlField.hasFocus()) urlField.setText(url)
+                    refreshNav()
+                }
+
                 override fun onPageFinished(view: WebView, url: String) {
-                    urlField.setText(url)
+                    if (!urlField.hasFocus()) urlField.setText(url)
                     refreshNav()
                 }
             }
@@ -166,6 +174,9 @@ class BrowserActivity : Activity() {
         } else {
             "https://duckduckgo.com/?q=" + java.net.URLEncoder.encode(trimmed, "UTF-8")
         }
+        urlField.setText(url)
+        urlField.clearFocus()
+        webView.requestFocus()
         webView.loadUrl(url)
     }
 

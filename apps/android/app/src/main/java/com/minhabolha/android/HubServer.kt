@@ -1154,11 +1154,39 @@ class HubServer(
             )
             .put("url", url)
 
+        // A lista completa também corrige os dados já salvos: fontes antigas
+        // ficaram com capa nula e chapterCount = 1 até serem abertas.
+        val saved = JSONObject(config.toString())
+        saved.put("title", title)
+        saved.put("chapterCount", page.links.size)
+        if (!page.cover.isNullOrBlank()) saved.put("coverUrl", page.cover)
+        latest?.let {
+            saved.put(
+                "latestChapter",
+                JSONObject()
+                    .put("chapterId", it.url)
+                    .put("chapterIndex", page.links.size - 1)
+                    .put("chapterName", it.title)
+                    .put("updatedAt", Dates.nowIso())
+            )
+        }
+        database.updateSource(sourceId, config = saved)
+        latest?.let {
+            database.backfillNovelItem(
+                sourceId = sourceId,
+                chapterUrl = it.url,
+                chapterName = it.title,
+                chapterIndex = page.links.size - 1,
+                chapterCount = page.links.size,
+                coverUrl = page.cover
+            )
+        }
+
         return json(
             JSONObject()
                 .put("book", book)
                 .put("chapters", chapters)
-                .put("progress", readNovelProgress(config) ?: JSONObject.NULL)
+                .put("progress", readNovelProgress(saved) ?: JSONObject.NULL)
         )
     }
 

@@ -44,6 +44,13 @@ const DEFAULT_HOVER_OPEN_DELAY_MS = 3000;
 const HOVER_CLOSE_DELAY_MS = 220;
 const PANEL_WIDTH = 380;
 
+function totalChapters(
+  group: NovelGroup,
+  details: { chapters?: unknown[] } | undefined
+): number {
+  return Math.max(group.chapterCount, details?.chapters?.length ?? 0);
+}
+
 function canHover(): boolean {
   try {
     return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -52,9 +59,9 @@ function canHover(): boolean {
   }
 }
 
-function progressPercent(group: NovelGroup): number {
-  if (group.chapterCount <= 0) return 0;
-  return Math.max(0, Math.min(100, (group.lastReadIndex / group.chapterCount) * 100));
+function progressPercent(group: NovelGroup, total: number): number {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, (group.lastReadIndex / total) * 100));
 }
 
 function latestTarget(group: NovelGroup): NovelChapterTarget {
@@ -99,8 +106,12 @@ export function NovelCard({
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const [detailsWanted, setDetailsWanted] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
-  const details = useNovelDetails(group.sourceId, detailsWanted);
+  // Fontes antigas podem ter sido salvas sem capa/contagem. Nesse caso a
+  // prévia carrega os detalhes sozinha e corrige o card na hora.
+  const details = useNovelDetails(group.sourceId, detailsWanted || !group.coverUrl);
   const chapters = details.data?.chapters ?? [];
+  const coverUrl = details.data?.book.coverUrl ?? group.coverUrl;
+  const chapterTotal = totalChapters(group, details.data);
   const continueTarget = readTarget(group);
   const firstTarget: NovelChapterTarget | null =
     chapters.length > 0
@@ -241,7 +252,7 @@ export function NovelCard({
   const cover = (
     <div className="relative overflow-hidden rounded-xl border border-line/70 bg-elevated">
       <Thumb
-        src={group.coverUrl}
+        src={coverUrl}
         categoryId="novel"
         kind="chapter"
         alt=""
@@ -256,7 +267,7 @@ export function NovelCard({
         </span>
       ) : null}
       <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
-        {group.chapterCount} cap.
+        {chapterTotal} cap.
       </span>
     </div>
   );
@@ -272,13 +283,13 @@ export function NovelCard({
       <p className="mt-1 text-[10px] font-medium text-accent">
         {t('{read}/{total} lidos', {
           read: group.lastReadIndex,
-          total: group.chapterCount
+          total: chapterTotal
         })}
       </p>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-elevated">
         <div
           className="h-full rounded-full bg-accent transition-[width]"
-          style={{ width: `${progressPercent(group)}%` }}
+          style={{ width: `${progressPercent(group, chapterTotal)}%` }}
         />
       </div>
       {group.hasNew ? (
@@ -336,7 +347,7 @@ export function NovelCard({
               <div className="flex gap-3 p-3">
                 <div className="h-[92px] w-[64px] shrink-0 overflow-hidden rounded-lg border border-line bg-elevated">
                   <Thumb
-                    src={group.coverUrl}
+                    src={coverUrl}
                     categoryId="novel"
                     kind="chapter"
                     alt=""
@@ -353,13 +364,13 @@ export function NovelCard({
                   <p className="mt-1 text-[11px] font-semibold text-accent">
                     {t('{read}/{total} lidos', {
                       read: group.lastReadIndex,
-                      total: group.chapterCount
+                      total: chapterTotal
                     })}
                   </p>
                   <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-elevated">
                     <div
                       className="h-full rounded-full bg-accent"
-                      style={{ width: `${progressPercent(group)}%` }}
+                      style={{ width: `${progressPercent(group, chapterTotal)}%` }}
                     />
                   </div>
                   {group.hasNew ? (
