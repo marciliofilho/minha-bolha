@@ -85,7 +85,7 @@ class PlayerActivity : Activity() {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         val payload = intent.getStringExtra("payload") ?: run {
             finish()
