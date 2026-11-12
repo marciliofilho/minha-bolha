@@ -29,6 +29,9 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   and is attached to both the web and the native player.
 - **Steam games**: add by appid, search the store, import the public wishlist
   (no API key), track prices/history, target price and "at lowest" flag.
+- **gg.deals**: with an API key, official/keyshop prices and historical lows are
+  merged into the games library; opening the games screen refreshes the 20
+  oldest prices in the background.
 - **Backup**: export/preview/import in the desktop `hub-backup` v2 format
   (settings, categories, sources, games, calendar, feed, playback, Stremio
   library), so data can move between the PC and the phone.
@@ -79,8 +82,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- gg.deals keyshop prices (Steam official prices are tracked; the keyshop
-  columns stay empty until the gg.deals API is ported).
+- gg.deals automatic source and price-drop alerts in the feed (prices refresh on
+  demand/background, but no scheduled source or `price_drop` items yet).
 - Backup sections not covered yet: addons, apiKeys, stremioAccount, novels and
   localLibrary (credentials stay on the device; addons are re-added by URL).
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
