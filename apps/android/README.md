@@ -91,7 +91,7 @@ This is an **alpha** on the way to functional parity. It is not feature complete
 
 ## Not ported yet
 
-- `price_drop` items and notifications for game price alerts.
+- Notifications for price alerts (the `price_drop` cards already appear in the feed).
 - Backup of credentials (apiKeys/stremioAccount) is intentionally omitted.
 - Torrent audio transcoding (AC3/EAC3 fallback) and subtitle burn-in.
 - Browser features that depend on CDP: Cloudflare handling and the live
