@@ -171,7 +171,27 @@ object TorrentEngine {
         val fileLength = files.fileSize(chosen)
         val pieceLength = info.pieceLength().coerceAtLeast(1)
         val firstPiece = (fileOffset / pieceLength).toInt()
-        handle.setSequentialRange(firstPiece)
+        val lastPiece = ((fileOffset + fileLength - 1) / pieceLength)
+            .toInt()
+            .coerceAtMost(maxOf(firstPiece, info.numPieces() - 1))
+        handle.setSequentialRange(firstPiece, lastPiece)
+
+        // MKV (e MP4 sem fast-start) deixa o índice no fim do arquivo. Baixa
+        // algumas peças do início e do fim antes de liberar o player; assim o
+        // Media3 encontra o moov sem esperar o download sequencial inteiro.
+        val prebuffer = mutableSetOf<Int>()
+        for (piece in firstPiece..minOf(firstPiece + 4, lastPiece)) prebuffer.add(piece)
+        for (piece in maxOf(lastPiece - 6, firstPiece)..lastPiece) prebuffer.add(piece)
+        for (piece in prebuffer) {
+            runCatching { handle.setPieceDeadline(piece, 2_000) }
+        }
+        val prebufferDeadline = System.currentTimeMillis() + 20_000
+        while (
+            System.currentTimeMillis() < prebufferDeadline &&
+            prebuffer.any { !handle.havePiece(it) }
+        ) {
+            Thread.sleep(POLL_MS)
+        }
 
         val relative = files.filePath(chosen)
         val filePath = File(saveDir, relative)
@@ -322,16 +342,6 @@ object TorrentEngine {
         val deadline = System.currentTimeMillis() + PIECE_TIMEOUT_MS
 
         for (piece in firstPiece..lastPiece) {
-            if (!session.handle.havePiece(piece)) {
-                // MKV/MP4 com o índice (moov) no fim: o player pede as últimas
-                // peças antes do download sequencial chegar lá. Sem prioridade
-                // o player fica em 00:00 até o timeout.
-                try {
-                    session.handle.piecePriority(piece, Priority.TOP_PRIORITY)
-                } catch (error: Throwable) {
-                    Log.w(TAG, "falha ao priorizar a peça $piece", error)
-                }
-            }
             while (!session.handle.havePiece(piece)) {
                 if (System.currentTimeMillis() > deadline) {
                     throw java.io.IOException("Peça $piece ainda não baixada.")

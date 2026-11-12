@@ -261,6 +261,9 @@ class PlayerActivity : Activity() {
 
                 val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
                 for (index in 0 until subtitles.length()) {
+                    // Alguns addons devolvem 100+ faixas; carregar todas de uma
+                    // vez pesa no Media3 e atrasa a reprodução.
+                    if (configurations.size >= 30) break
                     val item = subtitles.optJSONObject(index) ?: continue
                     val proxyUrl = item.optString("proxyUrl")
                     if (proxyUrl.isEmpty()) continue
