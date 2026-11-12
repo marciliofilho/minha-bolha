@@ -342,7 +342,7 @@ export function NovelDownloadModal({
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-fg">
-                              {chapter.index !== null ? `${chapter.index}. ` : ''}
+                              {chapter.index !== null ? `${chapter.index + 1}. ` : ''}
                               {chapter.name}
                             </span>
                             {isDownloaded ? (

@@ -1,4 +1,4 @@
-﻿/** Modo leitura de novels dentro do Feed. */
+/** Modo leitura de novels dentro do Feed. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -374,9 +374,9 @@ export function NovelReader({
     'Capítulo';
   const chapterLabel =
     currentChapter?.index !== null && currentChapter?.index !== undefined
-      ? `Cap. ${currentChapter.index}`
+      ? `Cap. ${currentChapter.index + 1}`
       : typeof meta.chapterIndex === 'number'
-        ? `Cap. ${meta.chapterIndex}`
+        ? `Cap. ${meta.chapterIndex + 1}`
         : '';
 
   const html = useMemo(() => {
@@ -465,7 +465,7 @@ export function NovelReader({
             ) : (
               chapters.map((chapter) => (
                 <option key={chapter.id} value={chapter.id}>
-                  {chapter.index !== null ? `${chapter.index}. ` : ''}
+                  {chapter.index !== null ? `${chapter.index + 1}. ` : ''}
                   {chapter.name}
                 </option>
               ))

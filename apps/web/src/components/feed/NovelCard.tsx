@@ -489,7 +489,7 @@ export function NovelCard({
                     </option>
                     {chapters.map((chapter) => (
                       <option key={chapter.id} value={chapter.id}>
-                        {chapter.index !== null ? `${chapter.index}. ` : ''}
+                        {chapter.index !== null ? `${chapter.index + 1}. ` : ''}
                         {chapter.name}
                       </option>
                     ))}
