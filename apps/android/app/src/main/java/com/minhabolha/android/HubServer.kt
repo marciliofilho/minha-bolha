@@ -65,6 +65,14 @@ class HubServer(
             segments == listOf("status") && method == Method.GET -> status()
             segments == listOf("events") && method == Method.GET -> sse()
 
+            segments == listOf("system", "storage") && method == Method.GET -> systemStorage()
+            segments == listOf("system", "storage", "clear") && method == Method.POST ->
+                systemClearCaches()
+            segments == listOf("system", "storage", "clear-novels") && method == Method.POST ->
+                systemClearNovels()
+            segments == listOf("system", "database", "optimize") && method == Method.POST ->
+                systemOptimize()
+
             segments == listOf("settings") && method == Method.GET -> json(database.settings())
             segments == listOf("settings") && (method == Method.PATCH || method == Method.PUT) ->
                 json(database.updateSettings(readJsonBody(session)))
@@ -81,6 +89,7 @@ class HubServer(
                 deleteSecret(segments[1])
 
             segments == listOf("media", "search") && method == Method.GET -> mediaSearch(session)
+            segments == listOf("translate") && method == Method.POST -> translate(session)
 
             segments == listOf("backup", "export") && method == Method.GET ->
                 json(BackupService.export(database, param(session, "include")))
@@ -90,8 +99,12 @@ class HubServer(
                 backupImport(session)
 
             segments == listOf("novels", "chapter") && method == Method.GET -> novelChapter(session)
+            segments == listOf("novels", "chapter", "progress") && method == Method.GET ->
+                json(JSONObject().put("progress", JSONObject.NULL))
             segments == listOf("articles", "content") && method == Method.GET -> articleContent(session)
             segments == listOf("novels", "download") && method == Method.POST -> novelDownload(session)
+            segments == listOf("novels", "download", "status") && method == Method.POST ->
+                novelDownloadAvailability(session)
             segments.size == 3 && segments[0] == "novels" && segments[1] == "download" &&
                 method == Method.GET -> novelDownloadStatus(segments[2])
             segments.size == 4 && segments[0] == "novels" && segments[1] == "download" &&
@@ -139,6 +152,7 @@ class HubServer(
             segments == listOf("stremio", "disconnect") && method == Method.POST ->
                 stremioDisconnect()
             segments == listOf("stremio", "sync") && method == Method.POST -> stremioSync()
+            segments == listOf("stremio", "import") && method == Method.POST -> stremioImport()
             segments == listOf("stremio", "library") && method == Method.GET -> stremioLibrary(session)
             segments.size == 4 && segments[0] == "stremio" && segments[1] == "library" &&
                 segments[3] == "state" && (method == Method.PATCH || method == Method.PUT) ->
@@ -162,6 +176,10 @@ class HubServer(
             segments.size == 4 && segments[0] == "stremio" && segments[1] == "title" &&
                 method == Method.GET -> json(
                 StremioCatalog.title(database, segments[2], segments[3])
+            )
+            segments.size == 5 && segments[0] == "stremio" && segments[1] == "title" &&
+                segments[4] == "episodes" && method == Method.GET -> json(
+                StremioCatalog.episodes(database, segments[2], segments[3])
             )
             segments == listOf("stremio", "streams") && method == Method.GET -> stremioStreams(session)
             segments == listOf("stremio", "subtitles") && method == Method.GET -> stremioSubtitles(session)
@@ -452,6 +470,121 @@ class HubServer(
         .put("tmdb", Secrets.has(database, "tmdb"))
         .put("steam", Secrets.has(database, "steam"))
         .put("ggdeals", Secrets.has(database, "ggdeals"))
+
+    private fun dirStats(dir: java.io.File): JSONObject {
+        var bytes = 0L
+        var files = 0
+        var dirs = 0
+        if (dir.exists()) {
+            dir.walkTopDown().forEach { entry ->
+                if (entry.isFile) {
+                    bytes += entry.length()
+                    files++
+                } else if (entry != dir && entry.isDirectory) {
+                    dirs++
+                }
+            }
+        }
+        return JSONObject().put("bytes", bytes).put("files", files).put("dirs", dirs)
+    }
+
+    private fun systemStorage(): Response {
+        val dbFile = context.getDatabasePath("hub.db")
+        val torrentDir = java.io.File(context.filesDir, "torrents")
+        val browserDir = java.io.File(context.cacheDir, "browser")
+        val torrent = dirStats(torrentDir).put("path", torrentDir.absolutePath)
+        val browser = dirStats(browserDir)
+        val novels = database.novelCacheStats()
+        val total = torrent.optLong("bytes") + browser.optLong("bytes") + novels.optLong("bytes")
+        return json(
+            JSONObject()
+                .put("torrentCache", torrent)
+                .put("browserTemp", browser)
+                .put(
+                    "database",
+                    JSONObject()
+                        .put("bytes", dbFile.length())
+                        .put("path", dbFile.absolutePath)
+                )
+                .put(
+                    "novelCache",
+                    JSONObject()
+                        .put("entries", novels.optInt("entries"))
+                        .put("bytes", novels.optLong("bytes"))
+                        .put("details", novels.optInt("details"))
+                        .put("chapters", novels.optInt("chapters"))
+                )
+                .put(
+                    "novelOfflineCache",
+                    JSONObject()
+                        .put("entries", novels.optInt("chapters"))
+                        .put("bytes", novels.optLong("chaptersBytes"))
+                )
+                .put("totalCacheBytes", total)
+                .put("updatedAt", Dates.nowIso())
+        )
+    }
+
+    private fun systemClearCaches(): Response {
+        val torrentDir = java.io.File(context.filesDir, "torrents")
+        val browserDir = java.io.File(context.cacheDir, "browser")
+        val beforeTorrent = dirStats(torrentDir)
+        val beforeBrowser = dirStats(browserDir)
+
+        // Encerra o motor antes de apagar arquivos que ele mantém abertos.
+        runCatching { TorrentEngine.stop() }
+        runCatching { torrentDir.deleteRecursively() }
+        runCatching { torrentDir.mkdirs() }
+        runCatching { browserDir.deleteRecursively() }
+        runCatching { browserDir.mkdirs() }
+
+        val afterTorrent = dirStats(torrentDir)
+        val afterBrowser = dirStats(browserDir)
+        val freedBytes = (beforeTorrent.optLong("bytes") - afterTorrent.optLong("bytes"))
+            .coerceAtLeast(0) + (beforeBrowser.optLong("bytes") - afterBrowser.optLong("bytes"))
+            .coerceAtLeast(0)
+        val freedFiles = (beforeTorrent.optInt("files") - afterTorrent.optInt("files"))
+            .coerceAtLeast(0) + (beforeBrowser.optInt("files") - afterBrowser.optInt("files"))
+            .coerceAtLeast(0)
+
+        return json(
+            JSONObject()
+                .put("freedBytes", freedBytes)
+                .put("freedFiles", freedFiles)
+                .put(
+                    "torrentCache",
+                    JSONObject()
+                        .put(
+                            "freedBytes",
+                            (beforeTorrent.optLong("bytes") - afterTorrent.optLong("bytes"))
+                                .coerceAtLeast(0)
+                        )
+                        .put(
+                            "freedFiles",
+                            (beforeTorrent.optInt("files") - afterTorrent.optInt("files"))
+                                .coerceAtLeast(0)
+                        )
+                )
+                .put("browserTemp", afterBrowser)
+                .put("updatedAt", Dates.nowIso())
+        )
+    }
+
+    private fun systemClearNovels(): Response = json(database.clearNovelCache())
+
+    private fun systemOptimize(): Response {
+        val started = System.currentTimeMillis()
+        val before = database.databaseSizeBytes()
+        database.vacuumDatabase()
+        val after = database.databaseSizeBytes()
+        return json(
+            JSONObject()
+                .put("beforeBytes", before)
+                .put("afterBytes", after)
+                .put("freedBytes", (before - after).coerceAtLeast(0))
+                .put("elapsedMs", System.currentTimeMillis() - started)
+        )
+    }
 
     private fun sse(): Response {
         val response = newChunkedResponse(
@@ -780,6 +913,76 @@ class HubServer(
     // Leitura de novels e artigos (extração via WebView)
     // ---------------------------------------------------------------------
 
+    private fun translate(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val text = body.optString("text")
+        val target = body.optString("target", "pt").trim()
+        val allowed = setOf("pt", "en", "es", "fr", "de", "it", "ja", "ko", "zh-CN", "zh-TW")
+        if (text.isBlank()) throw HubException(400, "validation", "Texto vazio.")
+        if (text.length > 200_000) throw HubException(400, "validation", "Texto grande demais.")
+        if (target !in allowed) throw HubException(400, "validation", "Idioma de destino inválido.")
+
+        try {
+            val output = StringBuilder()
+            var source: String? = null
+            for (chunk in translationChunks(text, 3_900)) {
+                val url = "https://translate.googleapis.com/translate_a/single" +
+                    "?client=gtx&sl=auto&tl=" +
+                    java.net.URLEncoder.encode(target, "UTF-8") +
+                    "&dt=t&q=" + java.net.URLEncoder.encode(chunk, "UTF-8")
+                val response = com.minhabolha.android.connectors.Http.fetchText(
+                    url,
+                    accept = "application/json",
+                    retries = 1,
+                    timeoutMs = 20_000
+                )
+                val payload = JSONArray(response.text)
+                val sentences = payload.optJSONArray(0) ?: JSONArray()
+                for (index in 0 until sentences.length()) {
+                    val pair = sentences.optJSONArray(index) ?: continue
+                    output.append(pair.optString(0))
+                }
+                if (source == null) source = payload.optString(2).takeIf { it.isNotBlank() }
+            }
+            return json(
+                JSONObject()
+                    .put("text", output.toString())
+                    .put("target", target)
+                    .put("source", source ?: JSONObject.NULL)
+            )
+        } catch (error: Exception) {
+            throw HubException(
+                502,
+                "translate",
+                "Não foi possível traduzir agora. ${error.message ?: "Falha na tradução."}"
+            )
+        }
+    }
+
+    private fun translationChunks(text: String, max: Int): List<String> {
+        val chunks = mutableListOf<String>()
+        val current = StringBuilder()
+        for (paragraph in text.replace("\r", "").split(Regex("\\n{2,}"))) {
+            if (paragraph.isEmpty()) continue
+            if (paragraph.length > max) {
+                if (current.isNotEmpty()) {
+                    chunks.add(current.toString())
+                    current.setLength(0)
+                }
+                chunks.addAll(paragraph.chunked(max))
+            } else {
+                if (current.length + paragraph.length + 2 > max) {
+                    chunks.add(current.toString())
+                    current.setLength(0)
+                }
+                if (current.isNotEmpty()) current.append("\n\n")
+                current.append(paragraph)
+            }
+        }
+        if (current.isNotEmpty()) chunks.add(current.toString())
+        return chunks.ifEmpty { listOf(text) }
+    }
+
     private fun novelChapter(session: IHTTPSession): Response {
         val url = param(session, "url")
             ?: throw HubException(400, "validation", "Informe a URL do capítulo.")
@@ -846,6 +1049,24 @@ class HubServer(
         val status = NovelDownloads.status(job.id)
             ?: throw HubException(500, "database", "Não foi possível iniciar o download.")
         return json(status, Response.Status.ACCEPTED)
+    }
+
+    private fun novelDownloadAvailability(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val array = body.optJSONArray("chapters") ?: JSONArray()
+        val result = JSONArray()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val url = item.optString("url")
+            if (url.isEmpty()) continue
+            result.put(
+                JSONObject()
+                    .put("url", url)
+                    .put("downloaded", database.cachedNovelChapter(url) != null)
+                    .put("translated", false)
+            )
+        }
+        return json(JSONObject().put("chapters", result))
     }
 
     private fun novelDownloadStatus(id: String): Response {
@@ -1210,6 +1431,18 @@ class HubServer(
         val status = StremioAccount.disconnect(database)
         events.broadcast("stremio:changed", JSONObject().put("connected", false))
         return json(status)
+    }
+
+    private fun stremioImport(): Response {
+        val saved = StremioAccount.syncLibrary(database)
+        StremioAccount.ensureSource(database)
+        events.broadcast("stremio:changed", JSONObject().put("imported", saved))
+        return json(
+            JSONObject()
+                .put("created", saved)
+                .put("skipped", 0)
+                .put("errors", JSONArray())
+        )
     }
 
     private fun stremioSync(): Response {

@@ -470,6 +470,85 @@ object StremioCatalog {
         )
     }
 
+    /** Episódios por temporada (usado pelo seletor de séries). */
+    fun episodes(database: HubDatabase, type: String, id: String): JSONObject {
+        var addonName: String? = null
+        var meta: JSONObject? = null
+        for (addon in database.stremioAddons()) {
+            if (!addon.enabled) continue
+            if (!supportsMeta(addon.manifest, type)) continue
+            try {
+                val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
+                val response = Http.fetchText(
+                    "$base/meta/$type/${enc(id)}.json",
+                    accept = "application/json",
+                    retries = 1
+                )
+                meta = JSONObject(response.text).optJSONObject("meta") ?: continue
+                addonName = addon.name
+                break
+            } catch (error: Exception) {
+                // tenta o próximo addon
+            }
+        }
+
+        if (meta == null) {
+            return JSONObject()
+                .put("id", id)
+                .put("type", type)
+                .put("seasons", JSONArray())
+                .put("sourceAddonName", JSONObject.NULL)
+                .put(
+                    "error",
+                    "Nenhum addon retornou a lista de episódios para este título."
+                )
+        }
+
+        val grouped = sortedMapOf<Int, JSONArray>()
+        val seen = mutableSetOf<String>()
+        val videos = meta.optJSONArray("videos") ?: JSONArray()
+        for (index in 0 until videos.length()) {
+            val video = videos.optJSONObject(index) ?: continue
+            val season = video.optInt("season", -1)
+            val episode = video.optInt("episode", -1)
+            if (season < 0 || episode <= 0) continue
+            if (!seen.add("$season:$episode")) continue
+            val entry = JSONObject()
+                .put("id", video.optText("id") ?: "$id:$season:$episode")
+                .put("season", season)
+                .put("episode", episode)
+                .put("name", video.optText("name") ?: JSONObject.NULL)
+                .put("released", video.optText("released") ?: JSONObject.NULL)
+                .put("thumbnail", video.optText("thumbnail") ?: JSONObject.NULL)
+                .put("overview", video.optText("overview") ?: JSONObject.NULL)
+            grouped.getOrPut(season) { JSONArray() }.put(entry)
+        }
+
+        val seasons = JSONArray()
+        for ((season, episodes) in grouped) {
+            seasons.put(
+                JSONObject()
+                    .put("season", season)
+                    .put("name", if (season == 0) "Especiais" else "Temporada $season")
+                    .put("episodes", episodes)
+            )
+        }
+
+        return JSONObject()
+            .put("id", id)
+            .put("type", type)
+            .put("seasons", seasons)
+            .put("sourceAddonName", addonName ?: JSONObject.NULL)
+            .put(
+                "error",
+                if (seasons.length() == 0) {
+                    "O addon não informou episódios para este título."
+                } else {
+                    JSONObject.NULL
+                }
+            )
+    }
+
     private fun toTitleDto(
         meta: JSONObject,
         addon: StremioAddonRow,

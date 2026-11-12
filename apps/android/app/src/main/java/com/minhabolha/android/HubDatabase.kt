@@ -2409,6 +2409,59 @@ class HubDatabase(private val context: Context) {
     }
 
     /** Remove capítulos offline antigos; devolve quantos saíram do cache. */
+    /** Contagem e tamanho do cache de novels (detalhes e capítulos). */
+    fun novelCacheStats(): JSONObject {
+        var entries = 0
+        var bytes = 0L
+        var details = 0
+        var chapters = 0
+        var detailsBytes = 0L
+        var chaptersBytes = 0L
+        db.rawQuery(
+            "SELECT kind, COUNT(*), COALESCE(SUM(LENGTH(data)), 0) FROM novel_cache GROUP BY kind",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val kind = cursor.getString(0)
+                val count = cursor.getInt(1)
+                val size = cursor.getLong(2)
+                entries += count
+                bytes += size
+                if (kind == "details") {
+                    details += count
+                    detailsBytes += size
+                } else if (kind == "chapter") {
+                    chapters += count
+                    chaptersBytes += size
+                }
+            }
+        }
+        return JSONObject()
+            .put("entries", entries)
+            .put("bytes", bytes)
+            .put("details", details)
+            .put("chapters", chapters)
+            .put("detailsBytes", detailsBytes)
+            .put("chaptersBytes", chaptersBytes)
+    }
+
+    /** Apaga o cache de novels e devolve o que foi liberado. */
+    fun clearNovelCache(): JSONObject {
+        val stats = novelCacheStats()
+        db.execSQL("DELETE FROM novel_cache")
+        return JSONObject()
+            .put("entries", stats.optInt("entries"))
+            .put("bytes", stats.optLong("bytes"))
+    }
+
+    fun databaseSizeBytes(): Long = java.io.File(
+        context.getDatabasePath(DB_NAME).absolutePath
+    ).length()
+
+    fun vacuumDatabase() {
+        db.execSQL("VACUUM")
+    }
+
     fun pruneNovelOffline(days: Int): Int {
         val cutoff = Dates.iso(System.currentTimeMillis() - days.coerceIn(1, 365) * 86_400_000L)
         return db.delete("novel_cache", "kind = 'chapter' AND fetched_at < ?", arrayOf(cutoff))

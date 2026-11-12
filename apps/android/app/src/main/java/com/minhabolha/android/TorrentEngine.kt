@@ -322,6 +322,16 @@ object TorrentEngine {
         val deadline = System.currentTimeMillis() + PIECE_TIMEOUT_MS
 
         for (piece in firstPiece..lastPiece) {
+            if (!session.handle.havePiece(piece)) {
+                // MKV/MP4 com o índice (moov) no fim: o player pede as últimas
+                // peças antes do download sequencial chegar lá. Sem prioridade
+                // o player fica em 00:00 até o timeout.
+                try {
+                    session.handle.piecePriority(piece, Priority.TOP_PRIORITY)
+                } catch (error: Throwable) {
+                    Log.w(TAG, "falha ao priorizar a peça $piece", error)
+                }
+            }
             while (!session.handle.havePiece(piece)) {
                 if (System.currentTimeMillis() > deadline) {
                     throw java.io.IOException("Peça $piece ainda não baixada.")
