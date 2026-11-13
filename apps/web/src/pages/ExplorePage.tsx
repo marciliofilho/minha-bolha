@@ -25,6 +25,9 @@ const TYPE_LABELS: Record<string, string> = {
 
 const BASE_TYPES = ['movie', 'series', 'anime'] as const;
 
+/** Catálogos que só mostram conteúdo depois de um filtro e poluem a lista. */
+const HIDDEN_CATALOG_NAMES = new Set(['language', 'idioma', 'year', 'ano', 'search', 'busca']);
+
 const CATALOG_LIMITS = [25, 50, 100] as const;
 type CatalogLimit = (typeof CATALOG_LIMITS)[number];
 const CATALOG_LIMIT_KEY = 'hub.explore.limit';
@@ -117,9 +120,13 @@ export function ExplorePage() {
     const seen = new Set<string>();
     const result: AddonCatalogGroupDto[] = [];
     for (const group of filtered) {
+      const name = group.name.trim();
+      if (HIDDEN_CATALOG_NAMES.has(name.toLowerCase())) continue;
       if (requiresSearch(group)) continue;
       if (unsupportedRequired(group).length > 0) continue;
-      const key = `${group.addonId}|${group.type}|${group.name}`;
+      // Um mesmo addon costuma repetir Popular/Trending/Latest Releases para
+      // filmes e séries; mantém apenas a primeira ocorrência.
+      const key = `${group.addonId}|${name.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
       result.push(group);

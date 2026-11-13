@@ -131,7 +131,7 @@ export function SourceCard({
           <div
             className={cn(
               'flex shrink-0 items-center justify-center overflow-hidden rounded-xl border',
-              isNovel && showImage ? 'h-16 w-12' : 'h-9 w-9'
+              isNovel && showImage ? 'h-36 w-24' : 'h-10 w-10'
             )}
             style={
               showImage
