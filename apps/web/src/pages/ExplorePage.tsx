@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Compass, Search, X } from 'lucide-react';
 import type { AddonCatalogGroupDto, AddonCatalogItemDto } from '@hub/shared';
 import { EmptyState, ErrorBanner, InfoBanner, PageHeader } from '@/components/ui';
+import { HorizontalScroller } from '@/components/ui/HorizontalScroller';
 import { AddonCatalogCard } from '@/components/stremio/AddonCatalogCard';
 import {
   useStremioAddonCatalogs,
@@ -107,25 +108,39 @@ export function ExplorePage() {
     [groups, addonFilter, typeFilter]
   );
 
-  const usable = useMemo(
-    () => filtered.filter((group) => unsupportedRequired(group).length === 0),
-    [filtered]
-  );
+  /**
+   * Só mostra catálogos que abrem conteúdo sem filtros extras. Catálogos de
+   * busca, idioma, ano ou duplicados ficavam como botões sem conteúdo; a
+   * busca global acima continua cobrindo esses casos.
+   */
+  const displayGroups = useMemo(() => {
+    const seen = new Set<string>();
+    const result: AddonCatalogGroupDto[] = [];
+    for (const group of filtered) {
+      if (requiresSearch(group)) continue;
+      if (unsupportedRequired(group).length > 0) continue;
+      const key = `${group.addonId}|${group.type}|${group.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(group);
+    }
+    return result;
+  }, [filtered]);
 
   useEffect(() => {
-    if (usable.length === 0) {
+    if (displayGroups.length === 0) {
       setSelectedKey(null);
       return;
     }
-    if (!selectedKey || !usable.some((group) => catalogKey(group) === selectedKey)) {
-      const preferred = usable.find((group) => !requiresSearch(group)) ?? usable[0];
+    if (!selectedKey || !displayGroups.some((group) => catalogKey(group) === selectedKey)) {
+      const preferred = displayGroups.find((group) => !requiresSearch(group)) ?? displayGroups[0];
       setSelectedKey(catalogKey(preferred!));
     }
-  }, [usable, selectedKey]);
+  }, [displayGroups, selectedKey]);
 
   const selected = useMemo(
-    () => filtered.find((group) => catalogKey(group) === selectedKey) ?? null,
-    [filtered, selectedKey]
+    () => displayGroups.find((group) => catalogKey(group) === selectedKey) ?? null,
+    [displayGroups, selectedKey]
   );
 
   const needSearch = Boolean(selected && requiresSearch(selected));
@@ -463,45 +478,40 @@ export function ExplorePage() {
             <InfoBanner message={t('Nenhum catálogo corresponde a esses filtros. Troque o addon ou o tipo; a busca global acima continua disponível.')} />
           ) : null}
 
-          {filtered.length > 0 && usable.length === 0 ? (
-            <InfoBanner message={t('Todos os catálogos filtrados exigem configuração extra (ex.: gênero/IDs). Escolha outro addon ou tipo.')} />
+          {filtered.length > 0 && displayGroups.length === 0 ? (
+            <InfoBanner
+              message={t(
+                'Os catálogos deste addon exigem filtros (busca, idioma ou ano) e foram ocultados. Use a busca global acima.'
+              )}
+            />
           ) : null}
 
-          <div className="-mx-1 flex snap-x gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {filtered.map((group) => {
-              const active = catalogKey(group) === selectedKey;
-              const missing = unsupportedRequired(group);
-              const disabled = missing.length > 0;
-              return (
-                <button
-                  key={catalogKey(group)}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => setSelectedKey(catalogKey(group))}
-                  title={disabled ? `${t('Este catálogo exige:')} ${missing.join(', ')}` : undefined}
-                  className={cn(
-                    'w-40 max-w-[70vw] shrink-0 snap-start rounded-lg border px-2.5 py-1.5 text-left text-[11px] transition',
-                    active
-                      ? 'border-accent/50 bg-accent/10 text-fg'
-                      : disabled
-                        ? 'cursor-not-allowed border-line bg-bg/20 text-faint opacity-60'
+          {displayGroups.length > 0 ? (
+            <HorizontalScroller>
+              {displayGroups.map((group) => {
+                const active = catalogKey(group) === selectedKey;
+                return (
+                  <button
+                    key={catalogKey(group)}
+                    type="button"
+                    onClick={() => setSelectedKey(catalogKey(group))}
+                    className={cn(
+                      'w-44 max-w-[70vw] shrink-0 rounded-lg border px-2.5 py-1.5 text-left text-[11px] transition',
+                      active
+                        ? 'border-accent/50 bg-accent/10 text-fg'
                         : 'border-line bg-bg/40 text-muted hover:bg-elevated hover:text-fg'
-                  )}
-                  aria-pressed={active}
-                >
-                  <span className="block truncate font-medium">{group.name}</span>
-                  <span className="block truncate text-[10px] text-faint">
-                    {group.addonName} · {t(typeLabel(group.type))}
-                    {disabled
-                      ? ` · ${t('exige')} ${missing.join(', ')}`
-                      : requiresSearch(group)
-                        ? ` · ${t('busca global')}`
-                        : ''}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    )}
+                    aria-pressed={active}
+                  >
+                    <span className="block truncate font-medium">{group.name}</span>
+                    <span className="block truncate text-[10px] text-faint">
+                      {group.addonName} · {t(typeLabel(group.type))}
+                    </span>
+                  </button>
+                );
+              })}
+            </HorizontalScroller>
+          ) : null}
 
           {selected ? (
             <section>

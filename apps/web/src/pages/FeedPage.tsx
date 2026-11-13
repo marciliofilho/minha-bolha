@@ -314,7 +314,6 @@ export function FeedPage() {
   const [streamTarget, setStreamTarget] = useState<StreamTarget | null>(null);
   const [heroPaused, setHeroPaused] = useState(false);
   const [refreshingSection, setRefreshingSection] = useState<string | null>(null);
-  const [refreshingCurrent, setRefreshingCurrent] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [readerItem, setReaderItem] = useState<FeedItemDto | null>(null);
   const [articleReaderItem, setArticleReaderItem] = useState<FeedItemDto | null>(null);
@@ -873,21 +872,6 @@ export function FeedPage() {
     });
   };
 
-  const refreshCurrentFeed = (): void => {
-    const categoryId = tab !== 'all' ? tab : null;
-    const targets = sources.filter(
-      (source) =>
-        source.enabled &&
-        (!categoryId || source.categoryId === categoryId) &&
-        (!sourceId || source.id === sourceId)
-    );
-    if (targets.length === 0) return;
-    setRefreshingCurrent(true);
-    void Promise.all(targets.map((source) => refreshSource.mutateAsync(source.id))).finally(
-      () => setRefreshingCurrent(false)
-    );
-  };
-
   const refreshFeedSection = (section: FeedSection): void => {
     if (section.kind !== 'category') return;
     const categoryId = section.id.replace(/^category:/, '');
@@ -1044,25 +1028,8 @@ export function FeedPage() {
       />
 
       <div className="mb-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <FeedTabs counts={counts} active={tab} onChange={changeTab} />
-          </div>
-          <button
-            type="button"
-            onClick={refreshCurrentFeed}
-            disabled={refreshingCurrent}
-            aria-label={t('Atualizar este feed')}
-            title={t('Atualizar apenas este feed')}
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-elevated px-2.5 text-xs font-medium text-fg transition hover:border-accent/50 hover:bg-elevated/80 disabled:opacity-60"
-          >
-            {refreshingCurrent ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            <span className="hidden sm:inline">{t('Atualizar')}</span>
-          </button>
+        <div className="min-w-0">
+          <FeedTabs counts={counts} active={tab} onChange={changeTab} />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
