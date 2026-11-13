@@ -6,6 +6,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
@@ -73,7 +74,15 @@ class PlaybackService : MediaSessionService() {
             dataSpec.withRequestHeaders(headers)
         }
 
+        // Buffer menor: suficiente para streaming e bem mais leve em aparelhos
+        // com pouca RAM (o BlueStacks chegava a matar o processo do app).
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(10_000, 30_000, 1_000, 2_000)
+            .setTargetBufferBytes(24 * 1024 * 1024)
+            .build()
+
         val player = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingDataSource))
             .setAudioAttributes(
                 AudioAttributes.Builder()

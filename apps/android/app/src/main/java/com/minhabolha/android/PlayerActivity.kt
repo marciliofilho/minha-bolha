@@ -425,7 +425,7 @@ class PlayerActivity : Activity() {
                         isPreferredSubtitle(it.second.language, it.second.label)
                     }.thenBy { it.second.label.lowercase() }
                 )
-                .take(30)
+                .take(12)
             for ((configuration, option) in selected) {
                 configurations.add(configuration)
                 options.add(option)

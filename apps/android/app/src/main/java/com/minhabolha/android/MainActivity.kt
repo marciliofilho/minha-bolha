@@ -32,6 +32,7 @@ class MainActivity : Activity() {
 
     private lateinit var webView: WebView
     private var backendPort: Int = 0
+    private var reloadAfterPlayer: Boolean = false
 
     private var fullscreenOverlay: FrameLayout? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -375,6 +376,16 @@ class MainActivity : Activity() {
         fun playTorrent(payload: String) {
             runOnUiThread {
                 try {
+                    // Em aparelhos com pouca RAM o WebView + player nativo
+                    // estouram a memória. Descarrega a UI enquanto o vídeo
+                    // está aberto e recarrega ao voltar.
+                    reloadAfterPlayer = true
+                    if (this@MainActivity::webView.isInitialized) {
+                        webView.onPause()
+                        webView.pauseTimers()
+                        webView.stopLoading()
+                        webView.loadUrl("about:blank")
+                    }
                     startActivity(
                         Intent(this@MainActivity, PlayerActivity::class.java)
                             .putExtra("payload", payload)
@@ -454,6 +465,12 @@ class MainActivity : Activity() {
         if (this::webView.isInitialized) {
             webView.onResume()
             webView.resumeTimers()
+            if (reloadAfterPlayer) {
+                reloadAfterPlayer = false
+                if (backendPort > 0) {
+                    webView.loadUrl("http://127.0.0.1:$backendPort/")
+                }
+            }
         }
     }
 
