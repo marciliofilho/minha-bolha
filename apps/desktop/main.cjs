@@ -6,7 +6,7 @@
  * uma sessão/partição própria, então não interfere no navegador do usuário.
  */
 const { app, BrowserWindow, Menu, shell, webContents } = require('electron');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
@@ -86,7 +86,6 @@ let splashHandle = null;
 let apiProcess = null;
 let apiLogStream = null;
 let updater = null;
-let startingUp = true;
 let quitting = false;
 /** Mantém as janelas do navegador auxiliar vivas (sem referência o Electron as fecha). */
 let hostWindows = [];
@@ -180,6 +179,104 @@ function freePort() {
   });
 }
 
+/** Testa se a porta ainda está livre (sem ocupar a porta definitiva). */
+function portAvailable(port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
+  });
+}
+
+function storedUiPort() {
+  try {
+    const value = Number(fs.readFileSync(path.join(dataDir, 'ui-port'), 'utf8').trim());
+    return Number.isInteger(value) && value > 1024 && value < 65536 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Porta estável da UI.
+ *
+ * O localStorage é por origem (`http://127.0.0.1:PORTA`). Antes a porta era
+ * sorteada a cada execução, então ordem das seções do Feed, visualização,
+ * categorias recolhidas e outras preferências sumiam ao reabrir o app.
+ */
+async function resolveApiPort() {
+  const saved = storedUiPort();
+  if (saved && (await portAvailable(saved))) return saved;
+  const port = await freePort();
+  try {
+    fs.writeFileSync(path.join(dataDir, 'ui-port'), String(port));
+  } catch {
+    // Sem permissão de escrita: a UI funciona, mas as preferências não persistem.
+  }
+  return port;
+}
+
+function processImageName(pid) {
+  if (process.platform !== 'win32') return null;
+  try {
+    const out = execFileSync(
+      'tasklist',
+      ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'],
+      { encoding: 'utf8', windowsHide: true, timeout: 5000 }
+    );
+    const match = out.match(/^"([^"]+)"/m);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Encerra uma API deixada viva por uma execução anterior (fechamento abrupto,
+ * crash ou taskkill interrompido). Sem isso, a API órfã mantém o SQLite e o
+ * navegador auxiliar abertos e atrapalha a próxima abertura.
+ */
+function killStaleApi() {
+  if (!isPackaged) return;
+  const pidFile = path.join(dataDir, 'api.pid');
+  let pid = 0;
+  try {
+    pid = Number(fs.readFileSync(pidFile, 'utf8').trim()) || 0;
+  } catch {
+    return;
+  }
+  try {
+    if (!pid || pid === process.pid) return;
+    // Evita matar outro processo caso o PID tenha sido reutilizado.
+    const image = processImageName(pid);
+    if (image && image.toLowerCase() !== path.basename(process.execPath).toLowerCase()) {
+      return;
+    }
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+        timeout: 5000
+      });
+    } else {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        // já encerrado
+      }
+    }
+  } catch {
+    // sem permissão ou processo já encerrado
+  } finally {
+    try {
+      fs.rmSync(pidFile, { force: true });
+    } catch {
+      // sem pid file
+    }
+  }
+}
+
 async function waitForApi(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -253,7 +350,8 @@ async function startApi(initialLanguage = null) {
   if (!isPackaged && (await checkHealth())) return true;
 
   if (isPackaged) {
-    apiPort = await freePort();
+    killStaleApi();
+    apiPort = await resolveApiPort();
   } else {
     apiPort = DEFAULT_API_PORT;
   }
@@ -329,10 +427,26 @@ async function startApi(initialLanguage = null) {
   apiProcess.stdout?.pipe(apiLogStream);
   apiProcess.stderr?.pipe(apiLogStream);
 
+  try {
+    fs.writeFileSync(path.join(dataDir, 'api.pid'), String(apiProcess.pid));
+  } catch {
+    // Sem permissão de escrita: o encerramento ainda funciona pelo stopApi.
+  }
+
+  const spawnedPid = apiProcess.pid;
   apiProcess.once('exit', () => {
     apiLogStream?.end();
     apiLogStream = null;
     apiProcess = null;
+    try {
+      const pidFile = path.join(dataDir, 'api.pid');
+      // Só remove se ainda for o PID desta API (uma nova pode ter assumido).
+      if (fs.readFileSync(pidFile, 'utf8').trim() === String(spawnedPid)) {
+        fs.rmSync(pidFile, { force: true });
+      }
+    } catch {
+      // sem pid file
+    }
   });
 
   return waitForApi(60_000);
@@ -342,17 +456,32 @@ function stopApi() {
   const child = apiProcess;
   apiProcess = null;
   if (!child?.pid) return;
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
-      stdio: 'ignore',
-      windowsHide: true
-    });
-  } else {
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // já encerrado
+  const pidFile = path.join(dataDir, 'api.pid');
+  try {
+    if (process.platform === 'win32') {
+      // Síncrono de propósito: o app está encerrando e a árvore (API +
+      // navegador auxiliar) precisa morrer antes de o Electron sair.
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+        timeout: 5000
+      });
+    } else {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // já encerrado
+      }
     }
+  } catch {
+    // já encerrado
+  }
+  try {
+    if (fs.readFileSync(pidFile, 'utf8').trim() === String(child.pid)) {
+      fs.rmSync(pidFile, { force: true });
+    }
+  } catch {
+    // sem pid file
   }
 }
 
@@ -400,6 +529,10 @@ function createWindow(title = 'Minha Bolha', icon = null) {  mainWindow = new Br
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // A janela de extração (oculta) continua viva e impedia o
+    // `window-all-closed`, deixando o processo aberto e segurando o
+    // single instance para sempre. Fechar a janela principal encerra o app.
+    app.quit();
   });
 
   return mainWindow;
@@ -983,7 +1116,6 @@ async function bootstrap() {
 
   // A janela principal começa a carregar escondida enquanto a intro toca.
   const window = createWindow(brandName, brandIcon);
-  startingUp = false;
 
   updater = createUpdater({ getWindow: () => mainWindow, isPortable });
   updater.setup();
@@ -1158,8 +1290,9 @@ if (isBrowserHost) {
     });
 
     app.on('window-all-closed', () => {
-      // A janela de idioma pode fechar antes da intro ser criada.
-      if (startingUp) return;
+      // Sempre encerra. Antes, durante a inicialização (janela de idioma ou
+      // intro), o app ficava vivo sem janela e segurava o single instance,
+      // impedindo abrir novamente.
       app.quit();
     });
 
@@ -1168,6 +1301,11 @@ if (isBrowserHost) {
       quitting = true;
       splashHandle?.destroy();
       splashHandle = null;
+      try {
+        if (extractWindow && !extractWindow.isDestroyed()) extractWindow.destroy();
+      } catch {
+        // janela já destruída
+      }
       stopApi();
     });
   }
