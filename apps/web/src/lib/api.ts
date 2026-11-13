@@ -9,6 +9,7 @@ import type {
   BackupDocumentDto,
   BackupImportResultDto,
   BackupPreviewDto,
+  BackupSection,
   CalendarResponseDto,
   CategoryCountDto,
   CategoryDefinition,
@@ -244,7 +245,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body)
     }),
-  backupExport: () => request<BackupDocumentDto>('/backup/export'),
+  backupExport: (sections?: BackupSection[]) =>
+    request<BackupDocumentDto>(
+      `/backup/export${sections?.length ? `?include=${encodeURIComponent(sections.join(','))}` : ''}`
+    ),
   backupPreview: (data: BackupDocumentDto) =>
     request<BackupPreviewDto>('/backup/preview', {
       method: 'POST',

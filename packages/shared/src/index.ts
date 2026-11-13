@@ -398,13 +398,68 @@ export interface BackupCategoryDto {
   color: string;
 }
 
+export const BACKUP_SECTIONS = [
+  'settings',
+  'categories',
+  'sources',
+  'addons',
+  'localLibrary',
+  'playback',
+  'games',
+  'calendar',
+  'novels',
+  'feed',
+  'stremioLibrary',
+  'apiKeys',
+  'stremioAccount'
+] as const;
+
+export type BackupSection = (typeof BACKUP_SECTIONS)[number];
+
+export interface BackupAddonDto {
+  transportUrl: string;
+  manifest: Record<string, unknown>;
+  name?: string;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface BackupStremioAccountDto {
+  email: string | null;
+  authKey: string;
+}
+
+export type BackupRows = Array<Record<string, unknown>>;
+
 export interface BackupDocumentDto {
   format: 'hub-backup';
-  version: 1;
+  /** v1 = settings/categories/sources; v2 = seções opcionais. */
+  version: 1 | 2;
   exportedAt: string;
-  settings: SettingsDto;
-  categories: BackupCategoryDto[];
-  sources: BackupSourceDto[];
+  /** Presente na v2; na v1 o padrão é settings/categories/sources. */
+  sections?: BackupSection[];
+  settings?: SettingsDto;
+  categories?: BackupCategoryDto[];
+  sources?: BackupSourceDto[];
+  addons?: BackupAddonDto[];
+  localLibrary?: BackupRows;
+  playback?: BackupRows;
+  games?: BackupRows;
+  priceHistory?: BackupRows;
+  media?: BackupRows;
+  releaseEvents?: BackupRows;
+  globalReleases?: BackupRows;
+  novelCache?: BackupRows;
+  items?: BackupRows;
+  stremioLibrary?: BackupRows;
+  apiKeys?: BackupRows;
+  stremioAccount?: BackupStremioAccountDto | null;
+}
+
+export interface BackupSectionPreviewDto {
+  id: BackupSection;
+  count: number;
+  sensitive: boolean;
 }
 
 export interface BackupPreviewDto {
@@ -412,6 +467,7 @@ export interface BackupPreviewDto {
   sources: { total: number; new: number; existing: number };
   categories: { total: number; new: number; existing: number };
   settingsFields: number;
+  sections: BackupSectionPreviewDto[];
 }
 
 export interface BackupImportResultDto {
@@ -419,6 +475,7 @@ export interface BackupImportResultDto {
   sourcesUpdated: number;
   categoriesImported: number;
   settingsUpdated: boolean;
+  sections?: Record<string, number>;
 }
 
 export interface TranslationDto {

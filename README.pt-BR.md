@@ -223,7 +223,7 @@ Você pode colar as chaves em **Configurações → Chaves de API** (recomendado
 **Sistema**
 - **Configurações por categoria**: **Interface** (aparência, idioma, **Feed e prévias** — janela de YouTube/notícias e atraso da prévia —, inicialização/intro, player/legendas), **Streaming** (fontes, Stremio e addons), **Sistema** (atualizações, região/moeda, cache inteligente, armazenamento/cache e backup) e **Chaves**. As seções longas (Stremio, Addons e Chaves) podem ser minimizadas com o olho ao lado do título, e a categoria/seções ficam lembradas no navegador.
 - **Armazenamento e cache**: mostra o espaço usado pelo cache de streams/torrents/HLS, temporários do navegador e banco SQLite; permite **limpar caches** (com confirmação, interrompendo streams em andamento) e **otimizar o banco** com `VACUUM`/`PRAGMA optimize`. A seção **Cache inteligente** ajusta o TTL do cache de streams, a retenção do cache de torrents e a manutenção automática. Com a manutenção ligada, o app também cria **um snapshot diário do banco** em `data/backups` (mantém os 7 mais recentes) e **rotaciona o `api.log`** em 5 MB (`api.log.old`). Para restaurar um snapshot, feche o app e substitua o `hub.db` pelo arquivo escolhido.
-- **Backup e portabilidade**: exporta um JSON com **fontes reais, categorias personalizadas e configurações** (incluindo o progresso de leitura salvo no config das novels). Chaves de API, caches, torrents, arquivos temporários e dados da conta do Stremio **não entram** no arquivo. A importação mostra uma **prévia** com quantas fontes/categorias são novas ou já existem e, após confirmação, **mescla** os dados: fontes com o mesmo ID são atualizadas e as demais são criadas.
+- **Backup e portabilidade**: o JSON agora é **seletivo**. Você marca o que entra no arquivo: configurações, categorias, fontes, addons, biblioteca local, progresso de reprodução, jogos/preços, calendário, novels/offline, feed e biblioteca Stremio sincronizada. **Chaves de API e token do Stremio** são opções separadas, desmarcadas por padrão, com aviso de dados sensíveis. A importação restaura apenas as seções presentes no arquivo e mostra uma **prévia** com a contagem de cada uma; fontes com o mesmo ID são atualizadas e as demais são criadas.
 
 ---
 
@@ -644,8 +644,8 @@ npm run dist
 
 Gera em `release/`:
 
-- **Instalador:** `Minha-Bolha-Setup-0.4.7.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
-- **Portátil:** `Minha-Bolha-Portable-0.4.7.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
+- **Instalador:** `Minha-Bolha-Setup-0.4.8.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
+- **Portátil:** `Minha-Bolha-Portable-0.4.8.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
 
 As duas versões são independentes:
 

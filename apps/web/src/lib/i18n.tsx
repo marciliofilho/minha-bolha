@@ -355,6 +355,47 @@ const EN: Record<string, string> = {
     'Export and import sources as JSON. Available in the final phase.',
   'Exportar JSON': 'Export JSON',
   'Importar JSON': 'Import JSON',
+  'Escolha o que exportar': 'Choose what to export',
+  'Marque as seções que devem entrar no arquivo JSON. Seções não marcadas não são incluídas.':
+    'Check the sections that should be included in the JSON file. Unchecked sections are not included.',
+  'Selecionar tudo': 'Select all',
+  'Restaurar padrão': 'Restore defaults',
+  'Exportar backup': 'Export backup',
+  'Selecione pelo menos uma seção para exportar.': 'Select at least one section to export.',
+  'Esta seleção inclui dados sensíveis: URLs de addons, chaves de API e/ou token do Stremio. Guarde o arquivo com cuidado.':
+    'This selection includes sensitive data: addon URLs, API keys and/or the Stremio token. Store the file carefully.',
+  'Categorias personalizadas': 'Custom categories',
+  'Preferências de interface, feed, player, cache e região.':
+    'Interface, feed, player, cache and region preferences.',
+  'Categorias criadas por você.': 'Categories created by you.',
+  'YouTube, RSS, TMDB, AniList, Steam, novels e links.':
+    'YouTube, RSS, TMDB, AniList, Steam, novels and links.',
+  'URLs/manifests, estado e ordem dos addons.':
+    'Addon URLs/manifests, state and order.',
+  'Biblioteca local': 'Local library',
+  'Minha biblioteca, favoritos e “Assistir depois”.':
+    'My Library, favorites and “Watch later”.',
+  'Progresso de reprodução': 'Playback progress',
+  'Histórico local de “Continuar assistindo”.': 'Local “Continue watching” history.',
+  'Jogos e preços': 'Games and prices',
+  'Wishlist, preços atuais e histórico de preços.':
+    'Wishlist, current prices and price history.',
+  'Calendário e lançamentos': 'Calendar and releases',
+  'Mídias acompanhadas, episódios e lançamentos globais.':
+    'Tracked media, episodes and global releases.',
+  'Novels e capítulos offline': 'Novels and offline chapters',
+  'Cache de capítulos e leituras offline.': 'Chapter cache and offline reading.',
+  'Feed e itens lidos': 'Feed and read items',
+  'Itens do feed, lidos, favoritos e ocultos.':
+    'Feed items, read, favorites and hidden.',
+  'Biblioteca Stremio sincronizada': 'Synced Stremio library',
+  'Cópia local sincronizada da conta do Stremio.':
+    'Local synced copy of the Stremio account.',
+  'TMDB, Steam e gg.deals salvas no app.': 'TMDB, Steam and gg.deals saved in the app.',
+  'Conta Stremio': 'Stremio account',
+  'E-mail e token de acesso da conta.': 'Account email and access token.',
+  sensível: 'sensitive',
+  'Seções incluídas': 'Included sections',
   'Fontes e canais': 'Sources and channels',
   'Canais do YouTube, feeds RSS, filmes, séries, animes e jogos ficam na tela de Fontes.':
     'YouTube channels, RSS feeds, movies, series, anime and games live on the Sources screen.',
@@ -1370,8 +1411,8 @@ const EN: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Plays the opening animation sound.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'The change applies the next time the desktop app starts.',
-  '{app} v0.4.7 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.7 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
+  '{app} v0.4.8 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.8 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
 };
 
 const ES: Record<string, string> = {
@@ -1721,6 +1762,47 @@ const ES: Record<string, string> = {
     'Exportar e importar fuentes en JSON. Disponible en la fase final.',
   'Exportar JSON': 'Exportar JSON',
   'Importar JSON': 'Importar JSON',
+  'Escolha o que exportar': 'Elige qué exportar',
+  'Marque as seções que devem entrar no arquivo JSON. Seções não marcadas não são incluídas.':
+    'Marca las secciones que deben incluirse en el archivo JSON. Las secciones no marcadas no se incluyen.',
+  'Selecionar tudo': 'Seleccionar todo',
+  'Restaurar padrão': 'Restaurar valores predeterminados',
+  'Exportar backup': 'Exportar copia',
+  'Selecione pelo menos uma seção para exportar.': 'Selecciona al menos una sección para exportar.',
+  'Esta seleção inclui dados sensíveis: URLs de addons, chaves de API e/ou token do Stremio. Guarde o arquivo com cuidado.':
+    'Esta selección incluye datos sensibles: URLs de addons, claves de API y/o token de Stremio. Guarda el archivo con cuidado.',
+  'Categorias personalizadas': 'Categorías personalizadas',
+  'Preferências de interface, feed, player, cache e região.':
+    'Preferencias de interfaz, feed, reproductor, caché y región.',
+  'Categorias criadas por você.': 'Categorías creadas por ti.',
+  'YouTube, RSS, TMDB, AniList, Steam, novels e links.':
+    'YouTube, RSS, TMDB, AniList, Steam, novelas y enlaces.',
+  'URLs/manifests, estado e ordem dos addons.':
+    'URLs/manifiestos, estado y orden de los addons.',
+  'Biblioteca local': 'Biblioteca local',
+  'Minha biblioteca, favoritos e “Assistir depois”.':
+    'Mi biblioteca, favoritos y “Ver después”.',
+  'Progresso de reprodução': 'Progreso de reproducción',
+  'Histórico local de “Continuar assistindo”.': 'Historial local de “Seguir viendo”.',
+  'Jogos e preços': 'Juegos y precios',
+  'Wishlist, preços atuais e histórico de preços.':
+    'Lista de deseados, precios actuales e historial de precios.',
+  'Calendário e lançamentos': 'Calendario y estrenos',
+  'Mídias acompanhadas, episódios e lançamentos globais.':
+    'Medios seguidos, episodios y estrenos globales.',
+  'Novels e capítulos offline': 'Novelas y capítulos sin conexión',
+  'Cache de capítulos e leituras offline.': 'Caché de capítulos y lectura sin conexión.',
+  'Feed e itens lidos': 'Feed y elementos leídos',
+  'Itens do feed, lidos, favoritos e ocultos.':
+    'Elementos del feed, leídos, favoritos y ocultos.',
+  'Biblioteca Stremio sincronizada': 'Biblioteca de Stremio sincronizada',
+  'Cópia local sincronizada da conta do Stremio.':
+    'Copia local sincronizada de la cuenta de Stremio.',
+  'TMDB, Steam e gg.deals salvas no app.': 'TMDB, Steam y gg.deals guardadas en la app.',
+  'Conta Stremio': 'Cuenta de Stremio',
+  'E-mail e token de acesso da conta.': 'Correo y token de acceso de la cuenta.',
+  sensível: 'sensible',
+  'Seções incluídas': 'Secciones incluidas',
   'Fontes e canais': 'Fuentes y canales',
   'Canais do YouTube, feeds RSS, filmes, séries, animes e jogos ficam na tela de Fontes.':
     'Los canales de YouTube, feeds RSS, películas, series, animes y juegos están en la pantalla de Fuentes.',
@@ -2740,8 +2822,8 @@ const ES: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Reproduce el sonido de la animación de apertura.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'El cambio se aplica la próxima vez que se abra la app de escritorio.',
-  '{app} v0.4.7 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.7 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
+  '{app} v0.4.8 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.8 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
 };
 
 function interpolate(template: string, params?: Params): string {

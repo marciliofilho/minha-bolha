@@ -27,6 +27,12 @@ const log = createLogger('http');
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+  // O backup pode incluir feed, novels e biblioteca; aceita JSON maior apenas
+  // nas rotas de prévia/importação antes do parser global de 1 MB.
+  app.use(
+    ['/api/backup/preview', '/api/backup/import'],
+    express.json({ limit: '128mb' })
+  );
   app.use(express.json({ limit: '1mb' }));
 
   // Log curto de requisições (o SSE fica de fora para não poluir).

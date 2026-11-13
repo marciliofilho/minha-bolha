@@ -97,6 +97,10 @@ Get your keys from:
 
 Keys are stored locally in SQLite. They are never returned by the API after saving and are not encrypted at rest — the app is intended for personal, local use.
 
+### Selective backup
+
+**Settings → System → Backup and portability** lets you choose exactly which sections go into the JSON backup: settings, custom categories, sources, addons, local library, playback progress, games and prices, calendar, novels/offline chapters, feed items and the synced Stremio library. API keys and the Stremio account token are optional, disabled by default and marked as sensitive. Import restores only the sections present in the file and shows a preview with the count of each section.
+
 ---
 
 ## Architecture

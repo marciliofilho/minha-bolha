@@ -28,11 +28,13 @@ import {
 } from 'lucide-react';
 import {
   APP_LANGUAGES,
+  BACKUP_SECTIONS,
   CURRENCY_OPTIONS,
   INTERVAL_OPTIONS,
   REGION_OPTIONS,
   type BackupDocumentDto,
   type BackupPreviewDto,
+  type BackupSection,
   type SecretId,
   type SecretStatusDto,
   type SettingsDto,
@@ -58,6 +60,90 @@ import { api } from '@/lib/api';
 import { useStoredBoolean } from '@/lib/use-stored-boolean';
 import { useI18n } from '@/lib/i18n';
 import { appBrand, KOFI_URL } from '@/lib/brand';
+
+const DEFAULT_BACKUP_SECTIONS: BackupSection[] = ['settings', 'categories', 'sources'];
+
+const BACKUP_EXPORT_SECTIONS: Array<{
+  id: BackupSection;
+  label: string;
+  description: string;
+  sensitive?: boolean;
+}> = [
+  {
+    id: 'settings',
+    label: 'Configurações',
+    description: 'Preferências de interface, feed, player, cache e região.'
+  },
+  {
+    id: 'categories',
+    label: 'Categorias personalizadas',
+    description: 'Categorias criadas por você.'
+  },
+  {
+    id: 'sources',
+    label: 'Fontes',
+    description: 'YouTube, RSS, TMDB, AniList, Steam, novels e links.'
+  },
+  {
+    id: 'addons',
+    label: 'Addons',
+    description: 'URLs/manifests, estado e ordem dos addons.',
+    sensitive: true
+  },
+  {
+    id: 'localLibrary',
+    label: 'Biblioteca local',
+    description: 'Minha biblioteca, favoritos e “Assistir depois”.'
+  },
+  {
+    id: 'playback',
+    label: 'Progresso de reprodução',
+    description: 'Histórico local de “Continuar assistindo”.'
+  },
+  {
+    id: 'games',
+    label: 'Jogos e preços',
+    description: 'Wishlist, preços atuais e histórico de preços.'
+  },
+  {
+    id: 'calendar',
+    label: 'Calendário e lançamentos',
+    description: 'Mídias acompanhadas, episódios e lançamentos globais.'
+  },
+  {
+    id: 'novels',
+    label: 'Novels e capítulos offline',
+    description: 'Cache de capítulos e leituras offline.'
+  },
+  {
+    id: 'feed',
+    label: 'Feed e itens lidos',
+    description: 'Itens do feed, lidos, favoritos e ocultos.'
+  },
+  {
+    id: 'stremioLibrary',
+    label: 'Biblioteca Stremio sincronizada',
+    description: 'Cópia local sincronizada da conta do Stremio.'
+  },
+  {
+    id: 'apiKeys',
+    label: 'Chaves de API',
+    description: 'TMDB, Steam e gg.deals salvas no app.',
+    sensitive: true
+  },
+  {
+    id: 'stremioAccount',
+    label: 'Conta Stremio',
+    description: 'E-mail e token de acesso da conta.',
+    sensitive: true
+  }
+];
+
+const BACKUP_DEPENDENCIES: Partial<Record<BackupSection, BackupSection[]>> = {
+  feed: ['sources', 'categories'],
+  calendar: ['sources']
+};
+
 import { cn, formatInterval, formatRelative } from '@/lib/utils';
 
 const THEMES: Array<{ value: SettingsDto['theme']; label: string; icon: typeof Moon }> = [
@@ -694,6 +780,8 @@ export function SettingsPage() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportSections, setExportSections] = useState<BackupSection[]>(DEFAULT_BACKUP_SECTIONS);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [sourceFormOpen, setSourceFormOpen] = useState(false);
   const [sourceFormType, setSourceFormType] = useState<SourceType>('youtube');
@@ -741,12 +829,49 @@ export function SettingsPage() {
     steam: 'https://steamcommunity.com/dev/apikey'
   };
 
+  const toggleExportSection = (id: BackupSection): void => {
+    setExportSections((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+
+      // Remove dependentes quando a base é desmarcada.
+      if (!next.has('sources')) {
+        next.delete('feed');
+        next.delete('calendar');
+      }
+      if (!next.has('categories')) next.delete('feed');
+
+      // Feed/calendário precisam de fontes/categorias para restaurar.
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const section of [...next]) {
+          for (const dependency of BACKUP_DEPENDENCIES[section] ?? []) {
+            if (next.has(dependency)) continue;
+            next.add(dependency);
+            changed = true;
+          }
+        }
+      }
+      return BACKUP_SECTIONS.filter((section) => next.has(section));
+    });
+  };
+
+  const sensitiveExportSelected = exportSections.some(
+    (section) => BACKUP_EXPORT_SECTIONS.find((item) => item.id === section)?.sensitive === true
+  );
+
   const exportBackup = async (): Promise<void> => {
+    if (exportSections.length === 0) {
+      setBackupError(t('Selecione pelo menos uma seção para exportar.'));
+      return;
+    }
     setBackupBusy(true);
     setBackupError(null);
     setBackupMessage(null);
     try {
-      const backup = await api.backupExport();
+      const backup = await api.backupExport(exportSections);
       const blob = new Blob([JSON.stringify(backup, null, 2)], {
         type: 'application/json;charset=utf-8'
       });
@@ -756,6 +881,7 @@ export function SettingsPage() {
       link.download = `hub-backup-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
+      setExportOpen(false);
       setBackupMessage(t('Backup exportado com sucesso.'));
     } catch (error) {
       setBackupError(
@@ -775,7 +901,10 @@ export function SettingsPage() {
     setBackupMessage(null);
     try {
       const parsed = JSON.parse(await file.text()) as BackupDocumentDto;
-      if (parsed?.format !== 'hub-backup' || parsed.version !== 1) {
+      if (
+        parsed?.format !== 'hub-backup' ||
+        (parsed.version !== 1 && parsed.version !== 2)
+      ) {
         throw new Error(t('Este arquivo não é um backup válido do Hub.'));
       }
       const preview = await api.backupPreview(parsed);
@@ -1477,7 +1606,7 @@ export function SettingsPage() {
             <Button
               variant="subtle"
               size="sm"
-              onClick={() => void exportBackup()}
+              onClick={() => setExportOpen(true)}
               loading={backupBusy}
               icon={<Download className="h-3.5 w-3.5" />}
             >
@@ -1512,6 +1641,91 @@ export function SettingsPage() {
         ) : null}
 
         <ErrorBanner message={saveSettings.error instanceof Error ? saveSettings.error.message : null} />
+
+        <Modal
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+          title={t('Escolha o que exportar')}
+          description={t(
+            'Marque as seções que devem entrar no arquivo JSON. Seções não marcadas não são incluídas.'
+          )}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setExportOpen(false)}>
+                {t('Cancelar')}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void exportBackup()}
+                loading={backupBusy}
+                disabled={exportSections.length === 0}
+                icon={<Download className="h-4 w-4" />}
+              >
+                {t('Exportar backup')}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-xs">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => setExportSections([...BACKUP_SECTIONS])}
+              >
+                {t('Selecionar tudo')}
+              </Button>
+              <Button variant="subtle" size="sm" onClick={() => setExportSections([])}>
+                {t('Limpar')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExportSections(DEFAULT_BACKUP_SECTIONS)}
+              >
+                {t('Restaurar padrão')}
+              </Button>
+            </div>
+
+            <div className="space-y-1.5">
+              {BACKUP_EXPORT_SECTIONS.map((section) => {
+                const checked = exportSections.includes(section.id);
+                return (
+                  <label
+                    key={section.id}
+                    className={cn(
+                      'flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 transition',
+                      checked
+                        ? 'border-accent/40 bg-accent/5'
+                        : 'border-line bg-bg/40 hover:bg-elevated'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleExportSection(section.id)}
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-accent"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-fg">{t(section.label)}</span>
+                      <span className="block text-[10px] leading-relaxed text-faint">
+                        {t(section.description)}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {sensitiveExportSelected ? (
+              <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-[11px] leading-relaxed text-warning">
+                {t(
+                  'Esta seleção inclui dados sensíveis: URLs de addons, chaves de API e/ou token do Stremio. Guarde o arquivo com cuidado.'
+                )}
+              </div>
+            ) : null}
+          </div>
+        </Modal>
 
         <Modal
           open={Boolean(pendingBackup)}
@@ -1579,6 +1793,39 @@ export function SettingsPage() {
                   <p className="text-[10px] text-faint">{t('campo(s)')}</p>
                 </div>
               </div>
+
+              {pendingBackup.preview.sections.length > 0 ? (
+                <div className="rounded-xl border border-line/60 bg-bg/40 p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-faint">
+                    {t('Seções incluídas')}
+                  </p>
+                  <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                    {pendingBackup.preview.sections.map((section) => {
+                      const meta = BACKUP_EXPORT_SECTIONS.find(
+                        (item) => item.id === section.id
+                      );
+                      return (
+                        <div
+                          key={section.id}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-bg/50 px-2 py-1"
+                        >
+                          <span className="truncate text-[11px] text-fg">
+                            {t(meta?.label ?? section.id)}
+                            {section.sensitive ? (
+                              <span className="ml-1.5 rounded bg-warning/15 px-1 py-0.5 text-[9px] font-semibold text-warning">
+                                {t('sensível')}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] text-faint">
+                            {section.count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </Modal>
