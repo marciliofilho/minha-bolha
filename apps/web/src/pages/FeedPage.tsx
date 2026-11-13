@@ -1083,7 +1083,11 @@ export function FeedPage() {
         )
       ) : null}
 
-      {!feedQuery.isLoading && items.length === 0 && !(view === 'netflix' && sections.length > 0) ? (
+      {!feedQuery.isLoading &&
+      items.length === 0 &&
+      !streamTarget &&
+      !playing &&
+      !(view === 'netflix' && sections.length > 0) ? (
         <div className="space-y-4">
           <div
             className={cn(
