@@ -62,6 +62,7 @@ import {
 import { isNovelChallengePage, isSameChapter } from '../../lib/webnovel-url';
 import { fetchNovelChapterHtml } from '../../lib/novel-html';
 import { HttpError, parseBody } from '../errors';
+import { sourceImageUrl } from '../../lib/source-image';
 
 export const sourcesRouter = Router();
 
@@ -113,6 +114,21 @@ function novelInputFromConfig(config: Record<string, unknown>): string | null {
 
 sourcesRouter.get('/sources', (_req, res) => {
   res.json({ sources: listSources() });
+});
+
+/** Imagem/logo da fonte, resolvida e guardada por 3 dias. */
+sourcesRouter.get('/sources/:id/image', async (req, res) => {
+  try {
+    const url = await sourceImageUrl(req.params.id);
+    if (!url) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Cache-Control', 'public, max-age=259200');
+    res.redirect(302, url);
+  } catch {
+    res.status(404).end();
+  }
 });
 
 function logNovelCacheError(error: unknown): void {
