@@ -1145,11 +1145,21 @@ export function FeedPage() {
               : 'max-w-[79rem] 2xl:max-w-[87rem]'
           )}
         >
-          <HeroPlayer
-            item={playing.item}
-            videoId={playing.videoId}
-            onClose={() => setPlaying(null)}
-          />
+          <div className={cn('flex w-full gap-3', browserOpen ? 'items-stretch' : 'items-start')}>
+            <FeedBrowserToggle
+              open={browserOpen}
+              onOpen={() => setBrowserOpen(true)}
+              onClose={() => setBrowserOpen(false)}
+              title={t('Abrir navegador ao lado do destaque')}
+            />
+            <div className="min-w-0 flex-1">
+              <HeroPlayer
+                item={playing.item}
+                videoId={playing.videoId}
+                onClose={() => setPlaying(null)}
+              />
+            </div>
+          </div>
         </div>
       ) : !feedQuery.isLoading &&
         items.length === 0 &&
