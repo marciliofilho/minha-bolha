@@ -1075,7 +1075,55 @@ export function FeedPage() {
         )
       ) : null}
 
-      {!feedQuery.isLoading && items.length === 0 && !(view === 'netflix' && sections.length > 0) ? (
+      {streamTarget ? (
+        <div
+          ref={heroRef}
+          className={cn(
+            'mx-auto w-full',
+            browserOpen
+              ? 'max-w-[145rem] 2xl:max-w-[161rem]'
+              : 'max-w-[79rem] 2xl:max-w-[87rem]'
+          )}
+        >
+          <div className={cn('flex w-full gap-3', browserOpen ? 'items-stretch' : 'items-start')}>
+            <FeedBrowserToggle
+              open={browserOpen}
+              onOpen={() => setBrowserOpen(true)}
+              onClose={() => setBrowserOpen(false)}
+              title={t('Abrir navegador ao lado do destaque')}
+            />
+            <div className="min-w-0 flex-1">
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[30vh] items-center justify-center rounded-2xl border border-line bg-elevated">
+                    <Loader2 className="h-5 w-5 animate-spin text-faint" />
+                  </div>
+                }
+              >
+                <StreamPicker target={streamTarget} onClose={() => setStreamTarget(null)} />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : playing ? (
+        <div
+          ref={heroRef}
+          className={cn(
+            'mx-auto w-full',
+            browserOpen
+              ? 'max-w-[145rem] 2xl:max-w-[161rem]'
+              : 'max-w-[79rem] 2xl:max-w-[87rem]'
+          )}
+        >
+          <HeroPlayer
+            item={playing.item}
+            videoId={playing.videoId}
+            onClose={() => setPlaying(null)}
+          />
+        </div>
+      ) : !feedQuery.isLoading &&
+        items.length === 0 &&
+        !(view === 'netflix' && sections.length > 0) ? (
         <div className="space-y-4">
           <div
             className={cn(
