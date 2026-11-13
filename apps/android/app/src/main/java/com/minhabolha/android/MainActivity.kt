@@ -380,6 +380,7 @@ class MainActivity : Activity() {
                     // estouram a memória. Descarrega a UI enquanto o vídeo
                     // está aberto e recarrega ao voltar.
                     reloadAfterPlayer = true
+                    HubRuntime.releaseExtractorMemory()
                     if (this@MainActivity::webView.isInitialized) {
                         webView.onPause()
                         webView.pauseTimers()

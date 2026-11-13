@@ -126,6 +126,12 @@ object HubRuntime {
         extractor?.attach(root)
     }
 
+    /** Libera o WebView oculto de novels antes de abrir o player nativo. */
+    @Synchronized
+    fun releaseExtractorMemory() {
+        extractor?.dispose()
+    }
+
     @Synchronized
     fun stop() {
         scheduler?.stop()
