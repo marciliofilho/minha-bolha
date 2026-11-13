@@ -1329,23 +1329,7 @@ export function FeedPage() {
                 ) : null}
 
                 <div className="min-w-0 flex-1">
-                  {streamTarget ? (
-                    <Suspense
-                      fallback={
-                        <div className="flex min-h-[30vh] items-center justify-center rounded-2xl border border-line bg-elevated">
-                          <Loader2 className="h-5 w-5 animate-spin text-faint" />
-                        </div>
-                      }
-                    >
-                      <StreamPicker target={streamTarget} onClose={() => setStreamTarget(null)} />
-                    </Suspense>
-                  ) : playing ? (
-                    <HeroPlayer
-                      item={playing.item}
-                      videoId={playing.videoId}
-                      onClose={() => setPlaying(null)}
-                    />
-                  ) : heroItem ? (
+                  {heroItem ? (
                     <NetflixHero
                       item={heroItem}
                       onExternal={() => markRead(heroItem)}
