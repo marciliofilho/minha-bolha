@@ -8,10 +8,15 @@ const appPackage = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
 ) as { version: string };
 
+// O shell Android injeta a versão do Gradle (versionName) para que a tela
+// Sobre mostre a mesma versão do backend (/api/health). No desktop e no
+// navegador continua valendo o package.json da raiz.
+const appVersion = process.env.HUB_APP_VERSION?.trim() || appPackage.version;
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
-    __APP_VERSION__: JSON.stringify(appPackage.version)
+    __APP_VERSION__: JSON.stringify(appVersion)
   },
   resolve: {
     alias: {

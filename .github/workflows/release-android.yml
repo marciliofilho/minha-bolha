@@ -62,6 +62,17 @@ jobs:
       - name: Check Android/desktop parity
         run: node scripts/check-android-parity.mjs
 
+      - name: Read Android version
+        shell: bash
+        run: |
+          VERSION="$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/android/app/build.gradle.kts | head -n1)"
+          if [ -z "$VERSION" ]; then
+            echo "versionName não encontrado no build.gradle.kts"
+            exit 1
+          fi
+          echo "HUB_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Versão do app Android: $VERSION"
+
       - name: Build web UI
         env:
           HUB_BUILD_TARGET: es2019
