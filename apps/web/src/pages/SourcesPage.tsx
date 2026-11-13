@@ -290,14 +290,9 @@ export function SourcesPage() {
         <div
           className={cn(
             view === 'grid'
-              ? 'grid gap-3'
+              ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]'
               : 'space-y-3'
           )}
-          style={
-            view === 'grid'
-              ? { gridTemplateColumns: 'repeat(auto-fill, minmax(min(10.5rem, 46%), 1fr))' }
-              : undefined
-          }
         >
           {[0, 1, 2].map((index) => (
             <div key={index} className="card h-28 animate-pulse bg-elevated/40" />
@@ -378,12 +373,11 @@ export function SourcesPage() {
       ) : null}
 
       <div
-        className={cn(view === 'grid' ? 'grid gap-3' : 'space-y-2.5')}
-        style={
+        className={cn(
           view === 'grid'
-            ? { gridTemplateColumns: 'repeat(auto-fill, minmax(min(10.5rem, 46%), 1fr))' }
-            : undefined
-        }
+            ? 'grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]'
+            : 'space-y-2.5'
+        )}
       >
         {visibleSources.map((source) => (
           <SourceCard
