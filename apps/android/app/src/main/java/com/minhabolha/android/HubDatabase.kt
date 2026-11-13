@@ -167,6 +167,7 @@ class HubDatabase(private val context: Context) {
             put("introAudio", boolean(stored["introAudio"], DEFAULTS.introAudio))
             put("defaultIntervalMinutes", clamp(stored["defaultIntervalMinutes"], DEFAULTS.defaultIntervalMinutes, 5, 1440))
             put("feedRefreshSeconds", clamp(stored["feedRefreshSeconds"], DEFAULTS.feedRefreshSeconds, 60, 3600))
+            put("novelRefreshMinutes", clamp(stored["novelRefreshMinutes"], DEFAULTS.novelRefreshMinutes, 5, 1440))
             put("hoverPreviewSeconds", clamp(stored["hoverPreviewSeconds"], DEFAULTS.hoverPreviewSeconds, 0, 15))
             put("feedWindowHours", clamp(stored["feedWindowHours"], DEFAULTS.feedWindowHours, 1, 168))
             put("novelCacheRetentionHours", clamp(stored["novelCacheRetentionHours"], DEFAULTS.novelCacheRetentionHours, 1, 720))
@@ -368,7 +369,8 @@ class HubDatabase(private val context: Context) {
         nextRunAt = cursor.getString(cursor.getColumnIndexOrThrow("next_run_at")),
         consecutiveFailures = cursor.getInt(cursor.getColumnIndexOrThrow("consecutive_failures")),
         isDemo = cursor.getInt(cursor.getColumnIndexOrThrow("is_demo")) == 1,
-        lastSuccessAt = cursor.getString(cursor.getColumnIndexOrThrow("last_success_at"))
+        lastSuccessAt = cursor.getString(cursor.getColumnIndexOrThrow("last_success_at")),
+        lastCheckedAt = cursor.getString(cursor.getColumnIndexOrThrow("last_checked_at"))
     )
 
     fun createSource(
@@ -3155,6 +3157,7 @@ class HubDatabase(private val context: Context) {
         const val introAudio = true
         const val defaultIntervalMinutes = 30
         const val feedRefreshSeconds = 300
+        const val novelRefreshMinutes = 60
         const val hoverPreviewSeconds = 3
         const val feedWindowHours = 48
         const val novelCacheRetentionHours = 168
@@ -3196,7 +3199,7 @@ class HubDatabase(private val context: Context) {
          */
         private val SETTINGS_KEYS = listOf(
             "theme", "language", "introEnabled", "introAudio", "defaultIntervalMinutes",
-            "feedRefreshSeconds", "hoverPreviewSeconds", "feedWindowHours",
+            "feedRefreshSeconds", "novelRefreshMinutes", "hoverPreviewSeconds", "feedWindowHours",
             "novelCacheRetentionHours", "novelCacheCleanupHours", "novelChaptersOffline",
             "novelOfflineRetentionDays", "timezone", "region", "currency",
             "streamCacheTtlHours", "torrentCacheRetentionDays", "autoMaintenanceEnabled",

@@ -109,7 +109,7 @@ class HubServer(
 
             segments == listOf("settings") && method == Method.GET -> json(database.settings())
             segments == listOf("settings") && (method == Method.PATCH || method == Method.PUT) ->
-                json(database.updateSettings(readJsonBody(session)))
+                updateSettings(session)
 
             segments == listOf("categories") && method == Method.GET ->
                 json(JSONObject().put("categories", database.categories()))
@@ -422,13 +422,28 @@ class HubServer(
     }
 
     private fun refreshSource(id: String): Response {
-        if (database.source(id) == null) {
-            throw HubException(404, "not_found", "Fonte não encontrada.")
+        val row = database.sourceRow(id) ?: throw HubException(404, "not_found", "Fonte não encontrada.")
+        val cooldownMs = scheduler.novelCooldownRemainingMs(row)
+        if (cooldownMs > 0) {
+            return json(
+                JSONObject()
+                    .put("queued", false)
+                    .put("reason", "cooldown")
+                    .put("retryAfterSeconds", (cooldownMs + 999) / 1000),
+                Response.Status.ACCEPTED
+            )
         }
         return json(
             JSONObject().put("queued", scheduler.enqueueSource(id, true)),
             Response.Status.ACCEPTED
         )
+    }
+
+    private fun updateSettings(session: IHTTPSession): Response {
+        val body = readJsonBody(session)
+        val updated = database.updateSettings(body)
+        if (body.has("novelRefreshMinutes")) scheduler.rescheduleNovelSources()
+        return json(updated)
     }
 
     private fun sourceRuns(id: String): Response {

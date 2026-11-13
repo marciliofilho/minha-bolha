@@ -31,14 +31,20 @@ class HubScheduler(
         const val MAX_CONCURRENT = 2
         const val TICK_SECONDS = 30L
         const val MAX_BACKOFF_MS = 24 * 60 * 60 * 1000L
-        val FEED_REFRESH_TYPES = setOf("youtube", "rss", "webnovel", "custom")
+        const val NOVEL_MANUAL_COOLDOWN_MS = 5 * 60_000L
+        const val NOVEL_START_SPACING_MS = 2_000L
+        val FEED_REFRESH_TYPES = setOf("youtube", "rss", "custom")
+        val NOVEL_REFRESH_TYPES = setOf("webnovel")
     }
 
     private val workers = Executors.newFixedThreadPool(MAX_CONCURRENT)
+    private val pumpScheduler = Executors.newSingleThreadScheduledExecutor()
     private val running = ConcurrentHashMap.newKeySet<String>()
     private val queue = ArrayDeque<String>()
     private var active = 0
     private var ticker: ScheduledExecutorService? = null
+    private var nextNovelStartAt = 0L
+    private var pumpScheduled = false
 
     @Volatile
     private var started = false
@@ -63,6 +69,7 @@ class HubScheduler(
     fun stop() {
         ticker?.shutdownNow()
         ticker = null
+        pumpScheduler.shutdownNow()
         workers.shutdownNow()
         started = false
     }
@@ -86,16 +93,56 @@ class HubScheduler(
         for (row in database.allSourceRows()) {
             // Fontes de demonstração não entram no "atualizar tudo".
             if (row.isDemo) continue
+            // O "atualizar tudo" também é manual: respeita o cooldown das novels.
+            if (manual && novelCooldownRemainingMs(row) > 0) continue
             if (enqueueSource(row.id, manual)) count++
         }
         return count
     }
 
+    /** Tempo restante do cooldown de refresh manual de uma novel, em ms. */
+    fun novelCooldownRemainingMs(row: SourceRow): Long {
+        if (row.type != "webnovel") return 0
+        val lastChecked = row.lastCheckedAt ?: return 0
+        val checked = Dates.parseIsoMillis(lastChecked) ?: return 0
+        val elapsed = System.currentTimeMillis() - checked
+        if (elapsed < 0) return 0
+        return maxOf(0L, NOVEL_MANUAL_COOLDOWN_MS - elapsed)
+    }
+
+    private fun schedulePump(delayMs: Long) {
+        if (pumpScheduled) return
+        pumpScheduled = true
+        pumpScheduler.schedule({
+            synchronized(this) {
+                pumpScheduled = false
+                pump()
+            }
+        }, maxOf(50L, delayMs), TimeUnit.MILLISECONDS)
+    }
+
     @Synchronized
     private fun pump() {
         while (active < MAX_CONCURRENT && queue.isNotEmpty()) {
-            val sourceId = queue.removeFirst()
+            // Espera 2s entre novels, mesmo quando várias vencem no mesmo tick.
+            val now = System.currentTimeMillis()
+            val sourceId = queue.firstOrNull { id ->
+                if (now >= nextNovelStartAt) true
+                else database.sourceRow(id)?.type != "webnovel"
+            }
+
+            if (sourceId == null) {
+                schedulePump(nextNovelStartAt - now)
+                return
+            }
+
+            queue.remove(sourceId)
             if (running.contains(sourceId)) continue
+
+            val row = database.sourceRow(sourceId)
+            if (row?.type == "webnovel") {
+                nextNovelStartAt = System.currentTimeMillis() + NOVEL_START_SPACING_MS
+            }
 
             active++
             running.add(sourceId)
@@ -134,8 +181,16 @@ class HubScheduler(
      */
     fun runDueNow(limit: Int): Int {
         var refreshed = 0
+        var lastNovelStart = 0L
         for (row in database.dueSources(limit)) {
             try {
+                if (row.type == "webnovel") {
+                    if (lastNovelStart > 0) {
+                        val wait = NOVEL_START_SPACING_MS - (System.currentTimeMillis() - lastNovelStart)
+                        if (wait > 0) Thread.sleep(wait)
+                    }
+                    lastNovelStart = System.currentTimeMillis()
+                }
                 runSource(row.id)
                 refreshed++
             } catch (error: Exception) {
@@ -183,7 +238,7 @@ class HubScheduler(
         val startedAt = Dates.nowIso()
         val startMs = System.currentTimeMillis()
         val runId = database.startRun(sourceId, startedAt)
-        val intervalMs = effectiveIntervalMs(row, connector, settings.optInt("feedRefreshSeconds", 300))
+        val intervalMs = effectiveIntervalMs(row, connector, settings)
 
         try {
             val config = parseObject(row.config)
@@ -364,11 +419,35 @@ class HubScheduler(
     private fun effectiveInterval(row: SourceRow, connector: Connector): Int =
         maxOf(row.intervalMinutes, connector.defaultIntervalMinutes, connector.minIntervalMinutes, 5)
 
-    private fun effectiveIntervalMs(row: SourceRow, connector: Connector, feedRefreshSeconds: Int): Long {
+    private fun effectiveIntervalMs(
+        row: SourceRow,
+        connector: Connector,
+        settings: JSONObject
+    ): Long {
+        if (NOVEL_REFRESH_TYPES.contains(row.type)) {
+            return maxOf(settings.optInt("novelRefreshMinutes", 60), 5) * 60_000L
+        }
         if (FEED_REFRESH_TYPES.contains(row.type)) {
-            return maxOf(feedRefreshSeconds, 60) * 1000L
+            return maxOf(settings.optInt("feedRefreshSeconds", 300), 60) * 1000L
         }
         return effectiveInterval(row, connector) * 60_000L
+    }
+
+    /** Reagenda as novels para aplicar um novo intervalo em minutos. */
+    fun rescheduleNovelSources() {
+        val intervalMs = maxOf(database.settings().optInt("novelRefreshMinutes", 60), 5) * 60_000L
+        val now = System.currentTimeMillis()
+        for (row in database.allSourceRows()) {
+            if (!NOVEL_REFRESH_TYPES.contains(row.type)) continue
+            val last = row.lastCheckedAt?.let { Dates.parseIsoMillis(it) }
+            val base = if (last != null) {
+                maxOf(now + 30_000L, last + intervalMs)
+            } else {
+                now + intervalMs
+            }
+            val spread = (Math.random() * minOf(120_000L, (intervalMs * 0.2).toLong())).toLong()
+            database.setNextRun(row.id, Dates.iso(base + spread))
+        }
     }
 
     private fun jitteredNextRun(intervalMs: Long, extraDelayMs: Long = 0): String {

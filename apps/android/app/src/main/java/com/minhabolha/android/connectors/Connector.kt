@@ -46,7 +46,8 @@ data class SourceRow(
     val nextRunAt: String?,
     val consecutiveFailures: Int,
     val isDemo: Boolean,
-    val lastSuccessAt: String?
+    val lastSuccessAt: String?,
+    val lastCheckedAt: String?
 )
 
 /** Resultado de uma sincronização. */
