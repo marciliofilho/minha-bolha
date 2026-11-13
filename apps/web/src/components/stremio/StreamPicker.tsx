@@ -65,12 +65,14 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
   const [episode, setEpisode] = useState(target.episode ?? 1);
   const [playing, setPlaying] = useState<TitleStreamDto | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [posterStage, setPosterStage] = useState(0);
 
   useEffect(() => {
     setSeason(target.season ?? 1);
     setEpisode(target.episode ?? 1);
     setPlaying(null);
     setRefreshToken(0);
+    setPosterStage(0);
   }, [target.metaId, target.season, target.episode, target.type]);
 
   const episodesQuery = useStremioEpisodes(
@@ -152,6 +154,13 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
 
   const title = target.title;
   const background = target.backdrop ?? target.poster;
+  const metahubPoster = /^tt\d+$/.test(target.metaId)
+    ? `https://images.metahub.space/poster/medium/${target.metaId}/img`
+    : null;
+  const posterCandidates = [target.poster, target.backdrop, metahubPoster].filter(
+    (value): value is string => Boolean(value)
+  );
+  const poster = posterCandidates[posterStage] ?? null;
 
   /**
    * No Android, streams diretos/HLS vão para o player nativo (Media3). O
@@ -259,14 +268,15 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
       <div className="relative p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg border border-line bg-elevated sm:h-28 sm:w-20">
-            {target.poster ? (
+            {poster ? (
               <img
-                src={target.poster}
+                src={poster}
                 alt=""
                 className="h-full w-full object-cover"
                 loading="eager"
                 decoding="async"
                 referrerPolicy="no-referrer"
+                onError={() => setPosterStage((stage) => stage + 1)}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-faint">
