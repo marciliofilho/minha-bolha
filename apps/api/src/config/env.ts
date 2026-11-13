@@ -56,7 +56,7 @@ export const env = {
   dbPath,
   timezone: process.env.TZ ?? 'America/Sao_Paulo',
   seedDemo: bool(process.env.HUB_SEED_DEMO, true),
-  version: '0.4.15',
+  version: '0.4.16',
   phase: 3
 };
 
