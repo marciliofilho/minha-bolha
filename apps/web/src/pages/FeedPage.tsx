@@ -65,6 +65,7 @@ import {
   useMarkAllRead,
   usePlaybackContinue,
   useRefreshAll,
+  useRefreshSource,
   useRefreshState,
   useSetNovelProgress,
   useSources,
@@ -312,6 +313,7 @@ export function FeedPage() {
   const [playing, setPlaying] = useState<{ item: FeedItemDto; videoId: string } | null>(null);
   const [streamTarget, setStreamTarget] = useState<StreamTarget | null>(null);
   const [heroPaused, setHeroPaused] = useState(false);
+  const [refreshingSection, setRefreshingSection] = useState<string | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [readerItem, setReaderItem] = useState<FeedItemDto | null>(null);
   const [articleReaderItem, setArticleReaderItem] = useState<FeedItemDto | null>(null);
@@ -339,6 +341,7 @@ export function FeedPage() {
   const feedQuery = useFeed(tab, sourceId);
   const refreshState = useRefreshState();
   const refreshAll = useRefreshAll();
+  const refreshSource = useRefreshSource();
   const markAllRead = useMarkAllRead();
   const updateItem = useUpdateItem();
   const setNovelProgress = useSetNovelProgress();
@@ -869,6 +872,24 @@ export function FeedPage() {
     });
   };
 
+  const refreshFeedSection = (section: FeedSection): void => {
+    if (section.kind !== 'category') return;
+    const categoryId = section.id.replace(/^category:/, '');
+    const targets = sources.filter(
+      (source) =>
+        source.enabled &&
+        source.categoryId === categoryId &&
+        (!sourceId || source.id === sourceId)
+    );
+    if (targets.length === 0) return;
+    setRefreshingSection(section.id);
+    void Promise.all(targets.map((source) => refreshSource.mutateAsync(source.id))).finally(
+      () => {
+        setRefreshingSection((current) => (current === section.id ? null : current));
+      }
+    );
+  };
+
   const moveSection = (id: string, direction: -1 | 1): void => {
     const index = sections.findIndex((section) => section.id === id);
     const target = index + direction;
@@ -922,7 +943,14 @@ export function FeedPage() {
                 <span className="hidden sm:inline">{t('Notificações')}</span>
               </Button>
               {notificationsOpen ? (
-                <div className="absolute right-0 top-full z-[80] mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface p-2 shadow-2xl shadow-black/40">
+                <div
+                  className="fixed inset-0 z-[75] bg-black/60 sm:hidden"
+                  onClick={() => setNotificationsOpen(false)}
+                  aria-hidden="true"
+                />
+              ) : null}
+              {notificationsOpen ? (
+                <div className="absolute right-0 top-full z-[80] mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface p-2 shadow-2xl shadow-black/40 max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:mt-0 max-sm:max-h-[80vh] max-sm:w-[calc(100vw-2rem)] max-sm:max-w-sm max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 max-sm:overflow-y-auto">
                   <div className="flex items-center justify-between gap-2 px-1 pb-1">
                     <p className="text-[11px] font-semibold text-fg">{t('Notificar sobre')}</p>
                     <button
@@ -1426,6 +1454,21 @@ export function FeedPage() {
                         ) : (
                           <Eye className="h-3.5 w-3.5" />
                         )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => refreshFeedSection(section)}
+                        disabled={refreshingSection === section.id}
+                        aria-label={`${t('Atualizar')} ${sectionLabel}`}
+                        title={t('Atualizar apenas este feed')}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint transition hover:bg-elevated hover:text-fg disabled:opacity-60"
+                      >
+                        <RefreshCw
+                          className={cn(
+                            'h-3.5 w-3.5',
+                            refreshingSection === section.id && 'animate-spin'
+                          )}
+                        />
                       </button>
                       {isNovelRow ? <NovelOfflineManager /> : null}
                       {moveControls}

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -422,6 +423,19 @@ class MainActivity : Activity() {
                     )
                 } catch (error: Exception) {
                     Log.e(TAG, "falha ao abrir o navegador", error)
+                }
+            }
+        }
+
+        /** Abre uma URL no navegador do sistema (download do APK de atualização). */
+        @JavascriptInterface
+        fun openExternal(url: String?) {
+            if (url.isNullOrBlank()) return
+            runOnUiThread {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (error: Exception) {
+                    Log.e(TAG, "falha ao abrir link externo", error)
                 }
             }
         }

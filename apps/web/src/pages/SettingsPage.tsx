@@ -54,6 +54,7 @@ import {
   useSettings,
   useStorageStats
 } from '@/lib/queries';
+import { AndroidUpdatesPanel } from '@/components/android/AndroidUpdates';
 import { api } from '@/lib/api';
 import { useStoredBoolean } from '@/lib/use-stored-boolean';
 import { useI18n } from '@/lib/i18n';
@@ -850,6 +851,12 @@ export function SettingsPage() {
           );
         })}
       </nav>
+
+      {window.HubNative ? (
+        <div className="mb-3">
+          <AndroidUpdatesPanel />
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         {category === 'streaming' ? (

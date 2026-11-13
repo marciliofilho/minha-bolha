@@ -2,6 +2,7 @@
 import { lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
+import { AndroidUpdatePrompt } from '@/components/android/AndroidUpdates';
 import { FeedPage } from '@/pages/FeedPage';
 import { useSettings } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime';
@@ -38,18 +39,21 @@ export function App() {
   useTheme(settings.data?.theme ?? 'dark');
 
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<FeedPage />} />
-        <Route path="library" element={<LibraryPage />} />
-        <Route path="explore" element={<ExplorePage />} />
-        <Route path="title/:type/:metaId" element={<TitlePage />} />
-        <Route path="calendar" element={<CalendarPage />} />
-        <Route path="wishlist" element={<WishlistPage />} />
-        <Route path="sources" element={<SourcesPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<FeedPage />} />
+          <Route path="library" element={<LibraryPage />} />
+          <Route path="explore" element={<ExplorePage />} />
+          <Route path="title/:type/:metaId" element={<TitlePage />} />
+          <Route path="calendar" element={<CalendarPage />} />
+          <Route path="wishlist" element={<WishlistPage />} />
+          <Route path="sources" element={<SourcesPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+      <AndroidUpdatePrompt />
+    </>
   );
 }

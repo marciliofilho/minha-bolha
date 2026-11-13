@@ -295,7 +295,7 @@ export function SourcesPage() {
           )}
           style={
             view === 'grid'
-              ? { gridTemplateColumns: 'repeat(auto-fill, minmax(min(22rem, 100%), 1fr))' }
+              ? { gridTemplateColumns: 'repeat(auto-fill, minmax(min(10.5rem, 46%), 1fr))' }
               : undefined
           }
         >
@@ -381,7 +381,7 @@ export function SourcesPage() {
         className={cn(view === 'grid' ? 'grid gap-3' : 'space-y-2.5')}
         style={
           view === 'grid'
-            ? { gridTemplateColumns: 'repeat(auto-fill, minmax(min(22rem, 100%), 1fr))' }
+            ? { gridTemplateColumns: 'repeat(auto-fill, minmax(min(10.5rem, 46%), 1fr))' }
             : undefined
         }
       >

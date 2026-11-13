@@ -94,6 +94,8 @@ class HubServer(
 
         return when {
             segments == listOf("health") && method == Method.GET -> health()
+            segments == listOf("updates", "check") && method == Method.GET ->
+                json(UpdateChecker.check(force = param(session, "force") == "1"))
             segments == listOf("status") && method == Method.GET -> status()
             segments == listOf("events") && method == Method.GET -> sse()
 
