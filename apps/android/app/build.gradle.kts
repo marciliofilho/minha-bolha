@@ -97,9 +97,10 @@ android {
 
     defaultConfig {
         applicationId = "com.minhabolha.android"
-        // SQLite do Android 11+ já suporta JSON1 e window functions usados
-        // pelas migrations compartilhadas com o desktop.
-        minSdk = 30
+        // Android 10+. O SQLite empacotado (3.49) garante JSON1 e window
+        // functions em qualquer aparelho, então não dependemos mais do
+        // SQLite do sistema do Android 11.
+        minSdk = 29
         targetSdk = 35
         versionCode = androidBuild
         versionName = appVersionName

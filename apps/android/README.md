@@ -25,7 +25,7 @@ into the web build, so the About screen matches `/api/health`.
 - SQLite database created from the **same migrations** as the desktop
   (`apps/api/src/db/migrations`), with `_migrations` tracking. The app bundles
   SQLite 3.49 (`sqlite-android`), so JSON1 and window functions work even on
-  system images that lack them (BlueStacks and some Android 11 devices).
+  system images that lack them (BlueStacks and some Android 10/11 devices).
 - System categories seeded on first boot, mirroring `@hub/shared`.
 - Connectors **YouTube** (public Atom feed + channel page fallback) and
   **RSS/Atom/RDF**, with the same SSRF guard and HTTP policy as the desktop.
@@ -117,7 +117,7 @@ Screens whose endpoints are still missing show the app's normal error state.
 
 ## Requirements
 
-Android 11 (API 30) or newer. On BlueStacks, use an **Android 11/13** instance
+Android 10 (API 29) or newer. On BlueStacks, use an **Android 11/13** instance
 (`BlueStacks App Player 9` in the default setup); the Android 9 (Pie64) instance
 cannot install the APK because of `minSdk`.
 
@@ -238,7 +238,8 @@ The smoke test uses API 34 (`google_apis`, `x86_64`) to get a modern WebView.
 ## Known differences from the desktop
 
 - WebView instead of Electron Chromium: no CDP, no Puppeteer, no hidden windows.
-- `minSdk` is 30 (Android 11). The bundled SQLite already provides JSON1 and
-  window functions; the floor comes from the rest of the platform APIs.
+- `minSdk` is 29 (Android 10). The bundled SQLite already provides JSON1 and
+  window functions; the floor comes from the rest of the platform APIs used by
+  the player and the foreground service.
 - MediaSession exposes only the current item (no queue/next/previous).
 - Play Store/AAB packaging and signing are not configured.
