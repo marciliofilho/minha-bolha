@@ -191,9 +191,30 @@ class PlayerActivity : Activity() {
             setBackgroundColor(Color.parseColor("#F2080A0F"))
             setPadding(64, 64, 64, 64)
             visibility = View.GONE
-            addView(errorText)
-            addView(backButton)
         }
+        val retryButton = Button(this).apply {
+            text = "Tentar novamente"
+            setTextColor(Color.parseColor("#7C9CFF"))
+            setBackgroundColor(Color.parseColor("#1B2433"))
+            setPadding(48, 20, 48, 20)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = 24
+            }
+            setOnClickListener {
+                errorBox.visibility = View.GONE
+                controller?.let { media ->
+                    runCatching { media.prepare() }
+                    media.playWhenReady = true
+                }
+            }
+        }
+        errorBox.addView(errorText)
+        errorBox.addView(retryButton)
+        errorBox.addView(backButton)
 
         val subtitleButton = Button(this).apply {
             text = "Legendas"
@@ -359,7 +380,7 @@ class PlayerActivity : Activity() {
             for (index in 0 until subtitles.length()) {
                 // Mantém todas as faixas, inclusive as repetidas: duas
                 // legendas em PT-BR podem ter sincronias diferentes.
-                if (configurations.size >= 150) break
+                if (configurations.size >= 80) break
                 val item = subtitles.optJSONObject(index) ?: continue
                 val proxyUrl = item.optString("proxyUrl")
                 if (proxyUrl.isEmpty()) continue

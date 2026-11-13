@@ -1678,12 +1678,28 @@ class HubServer(
             builder.header("Range", it)
         }
 
-        val remoteResponse = try {
-            streamClient.newCall(builder.build()).execute()
-        } catch (error: Exception) {
-            throw HubException(502, "stream", error.message ?: "Falha ao abrir o stream.")
+        var remoteResponse: okhttp3.Response? = null
+        var lastError: String? = null
+        for (attempt in 0..2) {
+            try {
+                val response = streamClient.newCall(builder.build()).execute()
+                val code = response.code
+                if (code < 400) {
+                    remoteResponse = response
+                    break
+                }
+                lastError = "O servidor do stream respondeu HTTP $code."
+                response.close()
+                if (code !in 500..599 || attempt == 2) break
+                Thread.sleep(300)
+            } catch (error: Exception) {
+                lastError = error.message ?: "Falha ao abrir o stream."
+                if (attempt < 2) Thread.sleep(300)
+            }
         }
-        val body = remoteResponse.body
+        val finalResponse = remoteResponse
+            ?: throw HubException(502, "stream", lastError ?: "Falha ao abrir o stream.")
+        val body = finalResponse.body
             ?: throw HubException(502, "stream", "O stream não retornou conteúdo.")
 
         val mime = body.contentType()?.toString() ?: "video/mp4"
@@ -1694,7 +1710,7 @@ class HubServer(
                 runCatching { body.close() }
             }
         }
-        val status = Response.Status.lookup(remoteResponse.code) ?: Response.Status.OK
+        val status = Response.Status.lookup(finalResponse.code) ?: Response.Status.OK
         val response = if (length > 0) {
             newFixedLengthResponse(status, mime, stream, length)
         } else {
@@ -1702,7 +1718,7 @@ class HubServer(
         }
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Cache-Control", "no-store")
-        remoteResponse.header("Content-Range")?.let {
+        finalResponse.header("Content-Range")?.let {
             response.addHeader("Content-Range", it)
         }
         return response
