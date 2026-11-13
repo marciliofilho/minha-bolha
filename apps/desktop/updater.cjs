@@ -319,14 +319,22 @@ schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
 `;
 
     fs.writeFileSync(scriptPath, script, 'utf8');
-    return scriptPath;
+
+    // O wscript abre o PowerShell com a janela oculta (0) e espera terminar.
+    // Assim a tarefa agendada não mostra o console do PowerShell.
+    const vbsPath = path.join(os.tmpdir(), `minha-bolha-update-${version}.vbs`);
+    const escapedScript = scriptPath.replace(/"/g, '""');
+    const vbs = `Set shell = CreateObject("WScript.Shell")
+shell.Run "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""${escapedScript}""", 0, True
+CreateObject("Scripting.FileSystemObject").DeleteFile WScript.ScriptFullName
+`;
+    fs.writeFileSync(vbsPath, vbs, 'utf8');
+    return { scriptPath, vbsPath };
   }
 
   /** Agenda o script para rodar fora do job object do Electron. */
-  function schedulePortableUpdater(scriptPath, taskName) {
-    const command =
-      `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden ` +
-      `-ExecutionPolicy Bypass -File "${scriptPath}"`;
+  function schedulePortableUpdater(vbsPath, taskName) {
+    const command = `wscript.exe //B "${vbsPath}"`;
     const create = spawnSync(
       'schtasks',
       ['/Create', '/TN', taskName, '/SC', 'ONCE', '/ST', '23:59', '/F', '/IT', '/TR', command],
@@ -381,12 +389,12 @@ schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
 
       send({ type: 'installing', version: pendingPortable.version });
       const taskName = portableTaskName(pendingPortable.version);
-      const scriptPath = writePortableUpdater(
+      const { vbsPath } = writePortableUpdater(
         destination,
         pendingPortable.version,
         taskName
       );
-      schedulePortableUpdater(scriptPath, taskName);
+      schedulePortableUpdater(vbsPath, taskName);
       setTimeout(() => app.quit(), 800);
       return { status: 'installing', version: pendingPortable.version };
     } catch (error) {
