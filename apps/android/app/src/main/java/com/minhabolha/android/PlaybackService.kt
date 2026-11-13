@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
@@ -42,14 +43,38 @@ class PlaybackService : MediaSessionService() {
 
         // Muitos addons redirecionam HTTP → HTTPS → HTTP (CDN). O Media3
         // recusa esses saltos por padrão e o player falhava com HTTP 301.
+        val browserUserAgent =
+            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
         val httpDataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(20_000)
-            .setReadTimeoutMs(20_000)
-            .setUserAgent("MinhaBolha/Android")
+            .setConnectTimeoutMs(30_000)
+            .setReadTimeoutMs(30_000)
+            .setUserAgent(browserUserAgent)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "*/*",
+                    "Accept-Language" to "pt-BR,pt;q=0.9,en;q=0.7"
+                )
+            )
+
+        // Muitos addons exigem Referer/UA de navegador e recusam o UA padrão do
+        // ExoPlayer com 403. O Referer é derivado do próprio host do stream.
+        val resolvingDataSource = ResolvingDataSource.Factory(httpDataSource) { dataSpec ->
+            val uri = dataSpec.uri
+            val headers = mutableMapOf(
+                "Accept" to "*/*",
+                "Accept-Language" to "pt-BR,pt;q=0.9,en;q=0.7"
+            )
+            if (uri.scheme == "http" || uri.scheme == "https") {
+                headers["Referer"] = "${uri.scheme}://${uri.host}/"
+            }
+            dataSpec.withRequestHeaders(headers)
+        }
 
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(httpDataSource))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingDataSource))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

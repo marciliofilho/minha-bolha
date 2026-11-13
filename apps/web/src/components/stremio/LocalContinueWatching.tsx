@@ -1,5 +1,5 @@
 /** "Continuar assistindo" com o progresso local do player do Hub. */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Clapperboard, Eye, EyeOff, Play, Star, Trash2 } from 'lucide-react';
 import type { PlaybackProgressDto, StremioCardInfoDto } from '@hub/shared';
@@ -36,24 +36,33 @@ function LocalContinueCard({
   onToggleWatchLater?: () => void;
 }) {
   const { t } = useI18n();
+  const [posterStage, setPosterStage] = useState(0);
   const code =
     item.type === 'series' && item.season !== null && item.season > 0 && item.episode !== null
       ? `S${item.season}E${item.episode}`
       : item.type === 'series'
         ? t('Série')
         : t('Filme');
+  const metahubPoster = /^tt\d+$/.test(item.metaId)
+    ? `https://images.metahub.space/poster/medium/${item.metaId}/img`
+    : null;
+  const posters = [item.poster, info?.backdropUrl, metahubPoster].filter(
+    (value): value is string => Boolean(value)
+  );
+  const poster = posters[posterStage] ?? null;
 
   const content = (
     <>
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line bg-elevated">
-        {item.poster ? (
+        {poster ? (
           <img
-            src={item.poster}
+            src={poster}
             alt=""
             loading="lazy"
             decoding="async"
             draggable={false}
             referrerPolicy="no-referrer"
+            onError={() => setPosterStage((stage) => stage + 1)}
             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
           />
         ) : (
