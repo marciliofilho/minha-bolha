@@ -175,8 +175,9 @@ object StremioCatalog {
     fun removeAddon(database: HubDatabase, id: String): Boolean = database.deleteStremioAddon(id)
 
     /**
-     * Addons oficiais/metadata que não distribuem mídia protegida:
-     * Cinemeta (catálogos/metadados) e OpenSubtitles v3 (legendas).
+     * Addons de metadados que não distribuem mídia protegida:
+     * Cinemeta (catálogos gerais), Kitsu (catálogos de anime) e
+     * OpenSubtitles v3 (legendas) — os mesmos padrões do desktop.
      *
      * O TMDB não entra por padrão: não existe um manifest oficial estável do
      * Stremio para ele; a integração TMDB do Hub continua pelas chaves da API.
@@ -184,6 +185,7 @@ object StremioCatalog {
     fun ensureDefaults(database: HubDatabase): Boolean {
         val defaults = listOf(
             "https://v3-cinemeta.strem.io/manifest.json",
+            "https://anime-kitsu.strem.fun/manifest.json",
             "https://opensubtitles-v3.strem.io/manifest.json"
         )
         var allPresent = true
