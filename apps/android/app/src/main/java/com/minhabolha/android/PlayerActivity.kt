@@ -377,10 +377,12 @@ class PlayerActivity : Activity() {
             connection.disconnect()
 
             val subtitles = JSONObject(text).optJSONArray("subtitles") ?: JSONArray()
+            val pairs = mutableListOf<
+                Pair<MediaItem.SubtitleConfiguration, AddonSubtitleOption>
+                >()
             for (index in 0 until subtitles.length()) {
-                // Mantém todas as faixas, inclusive as repetidas: duas
-                // legendas em PT-BR podem ter sincronias diferentes.
-                if (configurations.size >= 80) break
+                // Mantém várias faixas PT-BR (sincronias diferentes), mas
+                // limita o total para não estourar memória em aparelhos/emulador.
                 val item = subtitles.optJSONObject(index) ?: continue
                 val proxyUrl = item.optString("proxyUrl")
                 if (proxyUrl.isEmpty()) continue
@@ -397,15 +399,14 @@ class PlayerActivity : Activity() {
                 // Media3 não expõe um id no SubtitleConfiguration; o label
                 // único serve para reencontrar a faixa no TrackGroup.
                 val media3Label = "$label · $source · ${index + 1}"
-                configurations.add(
+                val configuration =
                     MediaItem.SubtitleConfiguration.Builder(Uri.parse(baseUrl + proxyUrl))
                         .setMimeType(MimeTypes.TEXT_VTT)
                         .setLanguage(language)
                         .setLabel(media3Label)
                         .build()
-                )
-                options.add(
-                    AddonSubtitleOption(
+                pairs.add(
+                    configuration to AddonSubtitleOption(
                         id = "sub-$index",
                         label = label,
                         language = language,
@@ -414,6 +415,20 @@ class PlayerActivity : Activity() {
                         media3Label = media3Label
                     )
                 )
+            }
+
+            val selected = pairs
+                .sortedWith(
+                    compareByDescending<
+                        Pair<MediaItem.SubtitleConfiguration, AddonSubtitleOption>
+                        > {
+                        isPreferredSubtitle(it.second.language, it.second.label)
+                    }.thenBy { it.second.label.lowercase() }
+                )
+                .take(30)
+            for ((configuration, option) in selected) {
+                configurations.add(configuration)
+                options.add(option)
             }
         } catch (error: Exception) {
             Log.w(TAG, "falha ao carregar legendas", error)
@@ -774,12 +789,12 @@ class PlayerActivity : Activity() {
         view?.player = null
         view = null
         controllerFuture?.let { future ->
-            if (future.isDone) {
-                try {
-                    MediaController.releaseFuture(future)
-                } catch (error: Exception) {
-                    Log.w(TAG, "falha ao liberar o controlador", error)
-                }
+            try {
+                // Também libera quando a conexão ainda está pendente; caso
+                // contrário o ServiceConnection fica vazando a cada abertura.
+                MediaController.releaseFuture(future)
+            } catch (error: Exception) {
+                Log.w(TAG, "falha ao liberar o controlador", error)
             }
         }
         controllerFuture = null
