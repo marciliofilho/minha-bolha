@@ -1111,7 +1111,7 @@ export function FeedPage() {
         )
       ) : null}
 
-      {streamTarget ? (
+      {streamTarget || playing ? (
         <div
           ref={heroRef}
           className={cn(
@@ -1131,31 +1131,35 @@ export function FeedPage() {
               />
             </div>
           ) : null}
-          <Suspense
-            fallback={
-              <div className="flex min-h-[30vh] items-center justify-center rounded-2xl border border-line bg-elevated">
-                <Loader2 className="h-5 w-5 animate-spin text-faint" />
-              </div>
-            }
-          >
-            <StreamPicker target={streamTarget} onClose={() => setStreamTarget(null)} />
-          </Suspense>
-        </div>
-      ) : playing ? (
-        <div
-          ref={heroRef}
-          className={cn(
-            'mx-auto w-full',
-            browserOpen
-              ? 'max-w-[145rem] 2xl:max-w-[161rem]'
-              : 'max-w-[79rem] 2xl:max-w-[87rem]'
-          )}
-        >
-          <HeroPlayer
-            item={playing.item}
-            videoId={playing.videoId}
-            onClose={() => setPlaying(null)}
-          />
+          <div className={cn('flex w-full gap-3', browserOpen ? 'items-stretch' : 'items-start')}>
+            {!isAndroidShell() ? (
+              <FeedBrowserToggle
+                open={browserOpen}
+                onOpen={() => setBrowserOpen(true)}
+                onClose={() => setBrowserOpen(false)}
+                title={t('Abrir navegador ao lado do destaque')}
+              />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              {streamTarget ? (
+                <Suspense
+                  fallback={
+                    <div className="flex min-h-[30vh] items-center justify-center rounded-2xl border border-line bg-elevated">
+                      <Loader2 className="h-5 w-5 animate-spin text-faint" />
+                    </div>
+                  }
+                >
+                  <StreamPicker target={streamTarget} onClose={() => setStreamTarget(null)} />
+                </Suspense>
+              ) : playing ? (
+                <HeroPlayer
+                  item={playing.item}
+                  videoId={playing.videoId}
+                  onClose={() => setPlaying(null)}
+                />
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : !feedQuery.isLoading &&
         items.length === 0 &&
