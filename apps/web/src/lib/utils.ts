@@ -48,6 +48,48 @@ export function formatRelative(iso: string | null | undefined): string {
   return formatDistanceToNowStrict(date, { addSuffix: true, locale: DATE_LOCALES[appLanguage] });
 }
 
+/** Tempo relativo compacto para selos: "30 min", "1 h", "1 dia", "2 meses". */
+export function formatRelativeCompact(
+  iso: string | null | undefined,
+  now = Date.now()
+): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  const diff = Math.max(0, now - date.getTime());
+  if (diff < 60_000) {
+    if (appLanguage === 'en') return 'now';
+    if (appLanguage === 'es') return 'ahora';
+    return 'agora';
+  }
+
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) {
+    if (appLanguage === 'en') return `${days} day${days === 1 ? '' : 's'}`;
+    if (appLanguage === 'es') return `${days} día${days === 1 ? '' : 's'}`;
+    return `${days} dia${days === 1 ? '' : 's'}`;
+  }
+
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    if (appLanguage === 'en') return `${months} mo`;
+    if (appLanguage === 'es') return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+    return `${months} ${months === 1 ? 'mês' : 'meses'}`;
+  }
+
+  const years = Math.floor(days / 365);
+  if (appLanguage === 'en') return `${years} yr${years === 1 ? '' : 's'}`;
+  if (appLanguage === 'es') return `${years} año${years === 1 ? '' : 's'}`;
+  return `${years} ano${years === 1 ? '' : 's'}`;
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   const date = new Date(iso);

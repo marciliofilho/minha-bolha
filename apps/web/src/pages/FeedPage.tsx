@@ -1,6 +1,7 @@
 /** Tela principal: feed com abas, filtro por fonte, scroll infinito e 3 layouts. */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   BellRing,
   BookOpen,
@@ -334,6 +335,7 @@ export function FeedPage() {
     readStoredStringArray(COLLAPSED_ROWS_KEY)
   );
   const heroRef = useRef<HTMLDivElement | null>(null);
+  const queryClient = useQueryClient();
 
   const countsQuery = useCounts();
   const settingsQuery = useSettings();
@@ -875,19 +877,64 @@ export function FeedPage() {
   const refreshFeedSection = (section: FeedSection): void => {
     if (section.kind !== 'category') return;
     const categoryId = section.id.replace(/^category:/, '');
-    const targets = sources.filter(
+    const selected = sources.filter(
       (source) =>
         source.enabled &&
         source.categoryId === categoryId &&
         (!sourceId || source.id === sourceId)
     );
-    if (targets.length === 0) return;
+    if (selected.length === 0) return;
+
+    // Cooldown de novels: evita repetir a mesma consulta em sequência.
+    const cooldownMs = 5 * 60_000;
+    const targets = selected.filter((source) => {
+      if (source.type !== 'webnovel' || !source.lastCheckedAt) return true;
+      const checked = Date.parse(source.lastCheckedAt);
+      return !Number.isFinite(checked) || Date.now() - checked >= cooldownMs;
+    });
+
+    if (targets.length === 0) {
+      setRefreshingSection(section.id);
+      window.setTimeout(
+        () => setRefreshingSection((current) => (current === section.id ? null : current)),
+        800
+      );
+      return;
+    }
+
     setRefreshingSection(section.id);
-    void Promise.all(targets.map((source) => refreshSource.mutateAsync(source.id))).finally(
-      () => {
+    void (async () => {
+      const pending = new Set(targets.map((source) => source.id));
+      const before = new Map(targets.map((source) => [source.id, source.lastCheckedAt]));
+      try {
+        for (let index = 0; index < targets.length; index++) {
+          if (index > 0) await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+          const result = await refreshSource.mutateAsync(targets[index].id);
+          if (result.queued === false && result.reason === 'cooldown') {
+            pending.delete(targets[index].id);
+          }
+        }
+
+        // A API responde 202 assim que entra na fila. Mantém o spinner até
+        // as fontes desta seção terminarem a sincronização de verdade.
+        const deadline = Date.now() + 90_000;
+        while (pending.size > 0 && Date.now() < deadline) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+          const latest = await api.sources();
+          for (const source of latest.sources) {
+            if (!pending.has(source.id)) continue;
+            if (source.lastCheckedAt !== before.get(source.id)) pending.delete(source.id);
+          }
+        }
+      } catch {
+        // A atualização em tempo real ainda entrega o resultado quando possível.
+      } finally {
         setRefreshingSection((current) => (current === section.id ? null : current));
+        void queryClient.invalidateQueries({ queryKey: ['sources'] });
+        void queryClient.invalidateQueries({ queryKey: ['feed'] });
+        void queryClient.invalidateQueries({ queryKey: ['counts'] });
       }
-    );
+    })();
   };
 
   const moveSection = (id: string, direction: -1 | 1): void => {

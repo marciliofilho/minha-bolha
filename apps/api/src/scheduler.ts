@@ -42,12 +42,18 @@ const log = createLogger('scheduler');
 const MAX_CONCURRENT = 2;
 const TICK_MS = 30_000;
 const MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
+/** Cooldown de atualizações manuais de novels (igual ao intervalo mínimo). */
+const NOVEL_MANUAL_COOLDOWN_MS = 5 * 60_000;
+/** Espaçamento entre iniciar duas novels, no manual e no automático. */
+const NOVEL_START_SPACING_MS = 2_000;
 
 const running = new Set<string>();
 const queue: Array<{ sourceId: string; manual: boolean }> = [];
 let active = 0;
 let timer: NodeJS.Timeout | null = null;
 let maintenanceTimer: NodeJS.Timeout | null = null;
+let pumpTimer: NodeJS.Timeout | null = null;
+let nextNovelStartAt = 0;
 let started = false;
 
 // ---------------------------------------------------------------------------
@@ -76,16 +82,48 @@ export function enqueueAll(manual = true): number {
     // Fontes de demonstração não entram no "atualizar tudo": são fictícias e
     // não devem poluir o feed com conteúdo real. O botão individual continua.
     if (source.is_demo === 1) continue;
+    // O "atualizar tudo" também é manual: respeita o cooldown das novels.
+    if (manual && novelManualCooldownRemainingMs(source.type, source.last_checked_at) > 0) {
+      continue;
+    }
     if (enqueueSource(source.id, manual)) count++;
   }
   return count;
 }
 
+function schedulePump(delayMs: number): void {
+  if (pumpTimer !== null) return;
+  pumpTimer = setTimeout(() => {
+    pumpTimer = null;
+    pump();
+  }, Math.max(50, delayMs));
+  pumpTimer.unref?.();
+}
+
 function pump(): void {
   while (active < MAX_CONCURRENT && queue.length > 0) {
-    const job = queue.shift();
+    // Espera 2s entre novels, mesmo quando várias vencem no mesmo tick.
+    // Os demais tipos não entram nesse espaçamento.
+    const now = Date.now();
+    const index = queue.findIndex((job) => {
+      if (now >= nextNovelStartAt) return true;
+      const row = getSourceRow(job.sourceId);
+      return !row || row.type !== 'webnovel';
+    });
+
+    if (index < 0) {
+      schedulePump(nextNovelStartAt - now);
+      return;
+    }
+
+    const [job] = queue.splice(index, 1);
     if (!job) return;
     if (running.has(job.sourceId)) continue;
+
+    const row = getSourceRow(job.sourceId);
+    if (row?.type === 'webnovel') {
+      nextNovelStartAt = Date.now() + NOVEL_START_SPACING_MS;
+    }
 
     active++;
     running.add(job.sourceId);
@@ -110,18 +148,37 @@ function effectiveInterval(row: SourceRow, connector: Connector): number {
   return Math.max(row.interval_minutes || connector.defaultIntervalMinutes, connector.minIntervalMinutes, 5);
 }
 
-const FEED_REFRESH_TYPES = new Set(['youtube', 'rss', 'webnovel', 'custom']);
+const FEED_REFRESH_TYPES = new Set(['youtube', 'rss', 'custom']);
+const NOVEL_REFRESH_TYPES = new Set(['webnovel']);
 
 /** Intervalo efetivo em ms; feeds usam o ajuste global em segundos. */
 function effectiveIntervalMs(
   row: SourceRow,
   connector: Connector,
-  feedRefreshSeconds: number
+  settings: { feedRefreshSeconds: number; novelRefreshMinutes: number }
 ): number {
+  // Novels têm um ritmo próprio: consultar a Webnovel a cada minuto
+  // aumenta muito o risco de bloqueio por bot.
+  if (NOVEL_REFRESH_TYPES.has(row.type)) {
+    return Math.max(settings.novelRefreshMinutes, 5) * 60_000;
+  }
   if (FEED_REFRESH_TYPES.has(row.type)) {
-    return Math.max(feedRefreshSeconds, 60) * 1000;
+    return Math.max(settings.feedRefreshSeconds, 60) * 1000;
   }
   return effectiveInterval(row, connector) * 60_000;
+}
+
+/** Tempo restante do cooldown de refresh manual de uma novel, em ms. */
+export function novelManualCooldownRemainingMs(
+  type: string,
+  lastCheckedAt: string | null | undefined
+): number {
+  if (type !== 'webnovel' || !lastCheckedAt) return 0;
+  const checked = Date.parse(lastCheckedAt);
+  if (!Number.isFinite(checked)) return 0;
+  const elapsed = Date.now() - checked;
+  if (elapsed < 0) return 0;
+  return Math.max(0, NOVEL_MANUAL_COOLDOWN_MS - elapsed);
 }
 
 function jitteredNextRun(intervalMs: number, extraDelayMs = 0): string {
@@ -150,7 +207,7 @@ async function runSource(sourceId: string, manual: boolean): Promise<void> {
   const startedAt = nowIso();
   const startMs = Date.now();
   const runId = startRun(sourceId, startedAt);
-  const intervalMs = effectiveIntervalMs(row, connector, settings.feedRefreshSeconds);
+  const intervalMs = effectiveIntervalMs(row, connector, settings);
 
   try {
     const result = await connector.fetch({
@@ -354,8 +411,10 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   if (timer) clearInterval(timer);
   if (maintenanceTimer) clearInterval(maintenanceTimer);
+  if (pumpTimer) clearTimeout(pumpTimer);
   timer = null;
   maintenanceTimer = null;
+  pumpTimer = null;
   started = false;
 }
 
@@ -369,5 +428,22 @@ export function rescheduleFeedSources(): void {
   for (const row of listAllSourceRows()) {
     if (!FEED_REFRESH_TYPES.has(row.type)) continue;
     setNextRun(row.id, new Date(now + Math.random() * 5_000).toISOString());
+  }
+}
+
+/** Reagenda as novels para aplicar um novo intervalo em minutos. */
+export function rescheduleNovelSources(): void {
+  const intervalMs = Math.max(getSettings().novelRefreshMinutes, 5) * 60_000;
+  const now = Date.now();
+  for (const row of listAllSourceRows()) {
+    if (!NOVEL_REFRESH_TYPES.has(row.type)) continue;
+    // Mantém o ritmo a partir da última verificação em vez de disparar
+    // uma rajada de requisições só porque a configuração mudou.
+    const last = row.last_checked_at ? Date.parse(row.last_checked_at) : NaN;
+    const base = Number.isFinite(last)
+      ? Math.max(now + 30_000, last + intervalMs)
+      : now + intervalMs;
+    const spread = Math.random() * Math.min(120_000, intervalMs * 0.2);
+    setNextRun(row.id, new Date(base + spread).toISOString());
   }
 }

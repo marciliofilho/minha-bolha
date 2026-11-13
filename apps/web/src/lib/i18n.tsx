@@ -296,8 +296,12 @@ const EN: Record<string, string> = {
   'Usado para exibir datas e, a partir da Fase 2, os lançamentos do calendário.':
     'Used to display dates and, from phase 2 on, calendar releases.',
   'Atualizar o feed a cada': 'Refresh the feed every',
-  'Vale para YouTube, RSS, novels e fontes personalizadas. O mínimo é 60s; valores baixos podem atingir limites das fontes.':
-    'Applies to YouTube, RSS, novels and custom sources. Minimum is 60s; low values may hit source limits.',
+  'Vale para YouTube, RSS e fontes personalizadas. O mínimo é 60s; valores baixos podem atingir limites das fontes.':
+    'Applies to YouTube, RSS and custom sources. Minimum is 60s; low values may hit source limits.',
+  'Atualizar as novels a cada': 'Refresh novels every',
+  minutos: 'minutes',
+  'Intervalo separado do feed geral. O mínimo é 5 min; para evitar bloqueios, prefira 30–60 min.':
+    'Separate from the main feed. Minimum is 5 min; to avoid blocks, prefer 30–60 min.',
   'Região e moeda': 'Region and currency',
   'Base para preços (gg.deals) e datas de lançamento regionais. Aplicado nas próximas fases.':
     'Base for prices (gg.deals) and regional release dates. Applied in later phases.',
@@ -1662,8 +1666,12 @@ const ES: Record<string, string> = {
   'Usado para exibir datas e, a partir da Fase 2, os lançamentos do calendário.':
     'Se usa para mostrar fechas y, desde la fase 2, los lanzamientos del calendario.',
   'Atualizar o feed a cada': 'Actualizar el feed cada',
-  'Vale para YouTube, RSS, novels e fontes personalizadas. O mínimo é 60s; valores baixos podem atingir limites das fontes.':
-    'Se aplica a YouTube, RSS, novelas y fuentes personalizadas. El mínimo es 60 s; valores bajos pueden alcanzar límites de las fuentes.',
+  'Vale para YouTube, RSS e fontes personalizadas. O mínimo é 60s; valores baixos podem atingir limites das fontes.':
+    'Se aplica a YouTube, RSS y fuentes personalizadas. El mínimo es 60 s; valores bajos pueden alcanzar límites de las fuentes.',
+  'Atualizar as novels a cada': 'Actualizar las novelas cada',
+  minutos: 'minutos',
+  'Intervalo separado do feed geral. O mínimo é 5 min; para evitar bloqueios, prefira 30–60 min.':
+    'Separado del feed general. El mínimo es 5 min; para evitar bloqueos, prefiere 30–60 min.',
   'Região e moeda': 'Región y moneda',
   'Base para preços (gg.deals) e datas de lançamento regionais. Aplicado nas próximas fases.':
     'Base para precios (gg.deals) y fechas de lanzamiento regionales. Se aplica en próximas fases.',

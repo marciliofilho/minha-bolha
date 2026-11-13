@@ -463,8 +463,10 @@ export interface SettingsDto {
   /** Reproduz o áudio da animação de abertura. */
   introAudio: boolean;
   defaultIntervalMinutes: number;
-  /** Intervalo global de atualização dos feeds (YouTube, RSS, novels, TMDB, AniList), em segundos. */
+  /** Intervalo global de atualização dos feeds (YouTube, RSS e fontes personalizadas), em segundos. */
   feedRefreshSeconds: number;
+  /** Intervalo de atualização das novels, em minutos. Separado do feed geral. */
+  novelRefreshMinutes: number;
   /** Segundos de espera com o mouse sobre um card antes de abrir a prévia. */
   hoverPreviewSeconds: number;
   /** Janela de exibição de vídeos do YouTube e notícias no feed, em horas. */
