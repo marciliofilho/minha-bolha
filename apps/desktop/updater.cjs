@@ -10,7 +10,7 @@
  */
 const { app, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { spawn } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const https = require('node:https');
@@ -216,42 +216,138 @@ function createUpdater({ getWindow, isPortable }) {
     return `'${String(value).replace(/'/g, "''")}'`;
   }
 
+  function portableTaskName(version) {
+    const safe = String(version).replace(/[^0-9A-Za-z._-]/g, '');
+    return `MinhaBolhaUpdate-${safe}-${Date.now()}`;
+  }
+
   /**
    * Script que espera o app fechar, extrai o ZIP portátil por cima da pasta
    * atual e abre o novo executável. `data/` não vem no ZIP, então é preservada.
+   *
+   * É iniciado por uma tarefa agendada porque o Electron encerra processos
+   * filhos (job object) ao sair — um PowerShell com `spawn` era morto antes
+   * de concluir a atualização.
    */
-  function writePortableUpdater(zipPath, version) {
+  function writePortableUpdater(zipPath, version, taskName) {
     const exeDir = path.dirname(process.execPath);
     const exePath = process.execPath;
     const scriptPath = path.join(os.tmpdir(), `minha-bolha-update-${version}.ps1`);
     const script = `
 $ErrorActionPreference = 'Stop'
 $parentPid = ${process.pid}
-while (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {
-  Start-Sleep -Milliseconds 500
-}
-Start-Sleep -Seconds 2
-
 $zip = ${powershellQuote(zipPath)}
 $destination = ${powershellQuote(exeDir)}
-$temp = Join-Path $env:TEMP ('minha-bolha-update-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force -Path $temp | Out-Null
-Expand-Archive -Path $zip -DestinationPath $temp -Force
+$exePath = ${powershellQuote(exePath)}
+$taskName = ${powershellQuote(taskName)}
+$log = Join-Path $env:TEMP ${powershellQuote(`minha-bolha-update-${version}.log`)}
 
-$source = Join-Path $temp 'Minha Bolha'
-if (-not (Test-Path $source)) {
-  $source = Get-ChildItem -Path $temp -Directory | Select-Object -First 1 -ExpandProperty FullName
+function Write-Log([string]$message) {
+  try { Add-Content -Path $log -Value ((Get-Date -Format o) + ' ' + $message) } catch { }
 }
-Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force
 
-Remove-Item -Path $temp -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue
-Start-Process -FilePath ${powershellQuote(exePath)} -WorkingDirectory $destination
-Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
+Write-Log "updater started (parent=$parentPid, version=${version})"
+
+$deadline = (Get-Date).AddSeconds(60)
+while ((Get-Process -Id $parentPid -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {
+  Start-Sleep -Milliseconds 500
+}
+
+# Espera API/navegador auxiliar liberarem os arquivos da pasta.
+$waitUntil = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $waitUntil) {
+  $busy = 0
+  foreach ($proc in Get-Process -ErrorAction SilentlyContinue) {
+    try {
+      if ($proc.Path -and $proc.Path.StartsWith($destination, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $busy++
+      }
+    } catch { }
+  }
+  if ($busy -eq 0) { break }
+  Start-Sleep -Milliseconds 500
+}
+
+$temp = Join-Path $env:TEMP ('minha-bolha-update-' + [guid]::NewGuid().ToString('N'))
+$copied = $false
+try {
+  New-Item -ItemType Directory -Force -Path $temp | Out-Null
+  Expand-Archive -Path $zip -DestinationPath $temp -Force
+
+  $source = Join-Path $temp 'Minha Bolha'
+  if (-not (Test-Path $source)) {
+    $source = Get-ChildItem -Path $temp -Directory | Select-Object -First 1 -ExpandProperty FullName
+  }
+
+  for ($attempt = 1; $attempt -le 6; $attempt++) {
+    try {
+      Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force -ErrorAction Stop
+      $copied = $true
+      Write-Log "files copied (attempt $attempt)"
+      break
+    } catch {
+      Write-Log "copy failed (attempt $attempt): $($_.Exception.Message)"
+      Start-Sleep -Seconds 2
+    }
+  }
+
+  if ($copied) {
+    $installed = (Get-Item -LiteralPath $exePath).VersionInfo.ProductVersion
+    Write-Log "installed version: $installed (expected ${version})"
+  } else {
+    Write-Log 'ERROR: could not replace the app files; zip kept for manual update'
+  }
+} catch {
+  Write-Log ('ERROR: ' + $_.Exception.Message)
+} finally {
+  Remove-Item -Path $temp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+try {
+  Start-Process -FilePath $exePath -WorkingDirectory $destination
+  Write-Log 'app started'
+} catch {
+  Write-Log ('ERROR starting app: ' + $_.Exception.Message)
+}
+
+if ($copied) {
+  Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
+}
+
+schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
 `;
 
     fs.writeFileSync(scriptPath, script, 'utf8');
     return scriptPath;
+  }
+
+  /** Agenda o script para rodar fora do job object do Electron. */
+  function schedulePortableUpdater(scriptPath, taskName) {
+    const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`;
+    const create = spawnSync(
+      'schtasks',
+      ['/Create', '/TN', taskName, '/SC', 'ONCE', '/ST', '23:59', '/F', '/IT', '/TR', command],
+      { windowsHide: true, encoding: 'utf8', timeout: 15000 }
+    );
+    if (create.status !== 0) {
+      throw new Error(
+        (create.stderr || create.stdout || 'Falha ao agendar a atualização.').trim()
+      );
+    }
+
+    const run = spawnSync('schtasks', ['/Run', '/TN', taskName], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 15000
+    });
+    if (run.status !== 0) {
+      spawnSync('schtasks', ['/Delete', '/TN', taskName, '/F'], {
+        windowsHide: true,
+        stdio: 'ignore'
+      });
+      throw new Error((run.stderr || run.stdout || 'Falha ao iniciar a atualização.').trim());
+    }
   }
 
   async function downloadPortable() {
@@ -282,14 +378,14 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
       );
 
       send({ type: 'installing', version: pendingPortable.version });
-      const scriptPath = writePortableUpdater(destination, pendingPortable.version);
-      const child = spawn(
-        'powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
-        { detached: true, stdio: 'ignore', windowsHide: true }
+      const taskName = portableTaskName(pendingPortable.version);
+      const scriptPath = writePortableUpdater(
+        destination,
+        pendingPortable.version,
+        taskName
       );
-      child.unref();
-      setTimeout(() => app.quit(), 600);
+      schedulePortableUpdater(scriptPath, taskName);
+      setTimeout(() => app.quit(), 800);
       return { status: 'installing', version: pendingPortable.version };
     } catch (error) {
       send({ type: 'error', message: errorMessage(error) });
