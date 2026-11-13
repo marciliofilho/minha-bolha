@@ -77,6 +77,22 @@ const upsertPriceStatement = db.prepare(`
 
 const selectIdByDedupe = db.prepare('SELECT id FROM items WHERE dedupe_key = ?');
 
+/**
+ * Atualiza o conteúdo de um item já existente (título/descrição/miniatura).
+ * Serve para corrigir títulos gravados com charset errado sem contar como
+ * item novo nem apagar lido/favorito.
+ */
+const refreshStatement = db.prepare(`
+  UPDATE items SET
+    title = ?,
+    description = ?,
+    thumbnail_url = ?,
+    author = ?,
+    published_at = ?,
+    meta = ?
+  WHERE dedupe_key = ?
+`);
+
 /** Insere itens ignorando duplicatas; devolve os realmente novos. */
 export interface InsertItemsResult {
   inserted: number;
@@ -124,6 +140,16 @@ export function insertItems(
             ? ((selectIdByDedupe.get(item.dedupeKey) as { id: string } | undefined)?.id ?? id)
             : id;
         newItemIds.push(storedId);
+      } else if (item.kind !== 'price_drop') {
+        refreshStatement.run(
+          item.title,
+          item.description ?? null,
+          item.thumbnailUrl ?? null,
+          item.author ?? null,
+          item.publishedAt,
+          item.meta ? JSON.stringify(item.meta) : null,
+          item.dedupeKey
+        );
       }
     }
     db.exec('COMMIT');

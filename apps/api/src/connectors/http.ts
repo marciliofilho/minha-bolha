@@ -69,15 +69,23 @@ export async function fetchText(url: string, options: HttpOptions = {}): Promise
         throw new ConnectorError('network', `Resposta grande demais (${Math.round(declared / 1024)} KB).`);
       }
 
-      const text = await response.text();
-      if (text.length > maxBytes) {
+      const contentType = response.headers.get('content-type') ?? '';
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > maxBytes) {
         throw new ConnectorError('network', 'Resposta excedeu o limite de tamanho.');
+      }
+      const charset = detectCharset(contentType, bytes);
+      let text: string;
+      try {
+        text = new TextDecoder(charset).decode(bytes);
+      } catch {
+        text = bytes.toString('utf8');
       }
 
       return {
         text,
         status: response.status,
-        contentType: response.headers.get('content-type') ?? '',
+        contentType,
         finalUrl: response.url || url
       };
     } catch (error) {
@@ -94,6 +102,33 @@ export async function fetchText(url: string, options: HttpOptions = {}): Promise
     throw new ConnectorError('network', 'O site demorou demais para responder.');
   }
   throw new ConnectorError('network', lastError instanceof Error ? lastError.message : 'Falha de rede.');
+}
+
+/**
+ * Muitos feeds de notícias ainda usam ISO-8859-1/Windows-1252. O `text()`
+ * padrão do fetch decodifica sempre como UTF-8 e transforma "André" em
+ * "Andr?". Lemos os bytes e respeitamos o charset do header ou do XML.
+ */
+function detectCharset(contentType: string, bytes: Buffer): string {
+  const fromHeader = /charset\s*=\s*["']?([^;"'\s]+)/i.exec(contentType)?.[1];
+  let label = fromHeader?.trim();
+  if (!label) {
+    const head = bytes.subarray(0, 1024).toString('latin1');
+    label =
+      /<\?xml[^>]*encoding=["']([^"']+)["']/i.exec(head)?.[1] ??
+      /<meta[^>]+charset=["']?([^"'"\s/>]+)/i.exec(head)?.[1] ??
+      'utf-8';
+  }
+  const normalized = label.toLowerCase();
+  if (normalized === 'iso-8859-1' || normalized === 'latin1' || normalized === 'latin-1') {
+    return 'windows-1252';
+  }
+  try {
+    new TextDecoder(normalized);
+    return normalized;
+  } catch {
+    return 'utf-8';
+  }
 }
 
 function sanitizeUrl(url: string): string {
