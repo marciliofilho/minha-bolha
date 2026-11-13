@@ -1069,28 +1069,38 @@ class HubServer(
         val url = param(session, "url")
             ?: throw HubException(400, "validation", "Informe a URL do capítulo.")
 
-        memoryGet("novel:$url")?.let { return json(it) }
+        memoryGet("novel:$url")?.let { payload ->
+            if (!extractor.isUnavailablePage(payload.optString("title"), payload.optString("text"))) {
+                return json(payload)
+            }
+        }
 
         // Offline primeiro: capítulos baixados abrem sem rede.
         val cached = database.cachedNovelChapter(url)
         if (cached != null) {
-            val payload = JSONObject()
-                .put("url", url)
-                .put("title", cached.optString("title"))
-                .put("text", cached.optString("text"))
-                .put("textWithComments", JSONObject.NULL)
-                .put("translatedText", JSONObject.NULL)
-                .put("translatedLanguage", JSONObject.NULL)
-                .put("fetchedAt", Dates.nowIso())
-            memoryPut("novel:$url", payload)
-            return json(payload)
+            val title = cached.optString("title")
+            val text = cached.optString("text")
+            if (!extractor.isUnavailablePage(title, text)) {
+                val payload = JSONObject()
+                    .put("url", url)
+                    .put("title", title)
+                    .put("text", text)
+                    .put("textWithComments", JSONObject.NULL)
+                    .put("translatedText", JSONObject.NULL)
+                    .put("translatedLanguage", JSONObject.NULL)
+                    .put("fetchedAt", Dates.nowIso())
+                memoryPut("novel:$url", payload)
+                return json(payload)
+            }
+            // Cache antigo continha a página de 404/consentimento.
+            database.deleteNovelChapterCache(url)
         }
 
         val extracted = extractor.extract(url)
             ?: throw HubException(
                 502,
                 "novel",
-                "Não foi possível extrair o capítulo (site bloqueado, lento ou sem texto)."
+                "Não foi possível extrair o capítulo (página 404, site bloqueado, lento ou sem texto)."
             )
 
         val payload = JSONObject()

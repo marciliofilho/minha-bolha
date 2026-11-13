@@ -2853,6 +2853,13 @@ class HubDatabase(private val context: Context) {
         )
     }
 
+    fun deleteNovelChapterCache(url: String) {
+        db.execSQL(
+            "DELETE FROM novel_cache WHERE cache_key = ? AND kind = 'chapter'",
+            arrayOf(url)
+        )
+    }
+
     fun cachedNovelChapter(url: String): org.json.JSONObject? {
         db.rawQuery(
             "SELECT data FROM novel_cache WHERE cache_key = ? AND kind = 'chapter'",

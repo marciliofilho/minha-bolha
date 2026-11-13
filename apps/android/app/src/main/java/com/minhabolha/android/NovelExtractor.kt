@@ -38,6 +38,10 @@ class NovelExtractor(context: Context) {
         const val RENDER_DELAY_MS = 5_000L
         const val EXTRACT_DELAY_MS = 1_000L
         const val DEFAULT_TIMEOUT_MS = 45_000L
+        val UNAVAILABLE_PAGE = Regex(
+            "(?is)^404\\b|we might have some troubles to find out this page|" +
+                "podemos ter alguns problemas para descobrir esta p[áa]gina|page not found"
+        )
 
         const val EXTRACT_JS = """            (function() {
               try {
@@ -377,9 +381,24 @@ class NovelExtractor(context: Context) {
         }
     }
 
+    /**
+     * Página de “não encontrado” da Webnovel: livro removido/indisponível.
+     * Não pode ser devolvida como conteúdo do capítulo (o banner de cookies
+     * seria exibido como se fosse o texto).
+     */
+    fun isUnavailablePage(title: String?, text: String?): Boolean {
+        val head = "${title.orEmpty()}\n${text.orEmpty().take(1200)}"
+        return UNAVAILABLE_PAGE.containsMatchIn(head)
+    }
+
     private fun load(url: String, callback: (Extracted?, String?) -> Unit) {
         loadInternal(url, EXTRACT_JS, 0, EXTRACT_DELAY_MS) { raw, error ->
-            callback(parse(raw), error)
+            val parsed = parse(raw)
+            if (parsed != null && isUnavailablePage(parsed.title, parsed.text)) {
+                callback(null, "página 404 (novel removida ou indisponível no site)")
+            } else {
+                callback(parsed, error)
+            }
         }
     }
 
