@@ -1214,9 +1214,7 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {!streamTarget &&
-      !playing &&
-      !feedQuery.isLoading &&
+      {!feedQuery.isLoading &&
       (items.length > 0 || (view === 'netflix' && sections.length > 0)) ? (
         view === 'list' ? (
           <div className="space-y-2.5">
@@ -1296,6 +1294,7 @@ export function FeedPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            {!streamTarget && !playing ? (
             <div
               ref={heroRef}
               className={cn(
@@ -1378,6 +1377,7 @@ export function FeedPage() {
                 </div>
               </div>
             </div>
+            ) : null}
 
             {sections.map((section, index) => {
               const moveControls = (
