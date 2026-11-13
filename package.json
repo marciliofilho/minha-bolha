@@ -1,7 +1,7 @@
 {
   "name": "hub",
   "private": true,
-  "version": "0.4.14",
+  "version": "0.4.15",
   "type": "module",
   "license": "GPL-3.0-only",
   "description": "Local-first desktop hub for feeds, releases, game prices and novels, with an embedded browser, offline reading and automatic updates.",
