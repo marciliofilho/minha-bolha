@@ -644,8 +644,8 @@ npm run dist
 
 Gera em `release/`:
 
-- **Instalador:** `Minha-Bolha-Setup-0.4.8.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
-- **Portátil:** `Minha-Bolha-Portable-0.4.8.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
+- **Instalador:** `Minha-Bolha-Setup-0.4.9.exe` — instala por usuário em `%LOCALAPPDATA%\Programs\Minha Bolha`.
+- **Portátil:** `Minha-Bolha-Portable-0.4.9.zip` — extraia em uma pasta gravável e execute `Minha Bolha.exe`. Não instala nada.
 
 As duas versões são independentes:
 
