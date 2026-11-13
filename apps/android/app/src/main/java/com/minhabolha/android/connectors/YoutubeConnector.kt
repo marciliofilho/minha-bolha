@@ -27,8 +27,22 @@ class YoutubeConnector : Connector {
         val entries: List<RawItem>
     )
 
+    /**
+     * O YouTube redireciona requisições com UA mobile para `m.youtube.com`,
+     * que usa outra estrutura (`richItemRenderer`) e quebra o parser da página
+     * `/videos`. Usamos UA de desktop apenas nestas requisições do conector.
+     */
     private val pageHeaders = mapOf(
+        "user-agent" to
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "accept" to "text/html,application/xhtml+xml",
+        "accept-language" to "en-US,en;q=0.9",
+        "cookie" to "CONSENT=YES+cb"
+    )
+
+    private val feedHeaders = mapOf(
+        "user-agent" to pageHeaders.getValue("user-agent"),
         "accept-language" to "en-US,en;q=0.9",
         "cookie" to "CONSENT=YES+cb"
     )
@@ -68,7 +82,8 @@ class YoutubeConnector : Connector {
         var parsed: ParsedFeed? = try {
             val feed = Http.fetchText(
                 feedUrl(channelId),
-                accept = "application/atom+xml,application/xml"
+                accept = "application/atom+xml,application/xml",
+                headers = feedHeaders
             )
             parseFeed(feed.text, channelId)
         } catch (error: ConnectorError) {
@@ -119,7 +134,8 @@ class YoutubeConnector : Connector {
         var parsed: ParsedFeed? = try {
             val response = Http.fetchText(
                 feedUrl(channelId),
-                accept = "application/atom+xml,application/xml"
+                accept = "application/atom+xml,application/xml",
+                headers = feedHeaders
             )
             parseFeed(response.text, channelId)
         } catch (error: ConnectorError) {
