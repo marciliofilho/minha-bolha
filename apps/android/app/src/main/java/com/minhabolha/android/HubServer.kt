@@ -10,9 +10,6 @@ import fi.iki.elonen.NanoHTTPD.Response
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONTokener
@@ -42,21 +39,10 @@ class HubServer(
     private val browserUserAgent =
         "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
-    private val proxyCookies =
-        java.util.concurrent.ConcurrentHashMap<String, List<Cookie>>()
-    private val proxyCookieJar = object : CookieJar {
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            proxyCookies[url.host] = cookies
-        }
-
-        override fun loadForRequest(url: HttpUrl): List<Cookie> =
-            proxyCookies[url.host].orEmpty()
-    }
     private val streamClient by lazy {
         OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
-            .cookieJar(proxyCookieJar)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
