@@ -9,7 +9,8 @@ import { useI18n } from '@/lib/i18n';
 import { useNovelDetails, useSettings } from '@/lib/queries';
 import { readerLanguage } from '@/lib/reader-html';
 import { translateText } from '@/lib/translate';
-import { cn } from '@/lib/utils';
+import { useNow } from '@/lib/use-now';
+import { cn, formatDateTime, formatRelativeCompact } from '@/lib/utils';
 
 export interface NovelGroup {
   key: string;
@@ -90,6 +91,8 @@ export function NovelCard({
   onOpenChapter: (chapter: NovelChapterTarget | null) => void;
 }) {
   const { t } = useI18n();
+  const now = useNow();
+  const latestAge = formatRelativeCompact(group.latest.publishedAt, now);
   const settings = useSettings();
   const hoverDelayMs =
     (settings.data?.hoverPreviewSeconds ?? DEFAULT_HOVER_OPEN_DELAY_MS / 1000) * 1000;
@@ -255,9 +258,19 @@ export function NovelCard({
           {t('Novo')}
         </span>
       ) : null}
-      <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
-        {group.chapterCount} cap.
-      </span>
+      <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1">
+        {latestAge !== '—' ? (
+          <span
+            className="rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm"
+            title={formatDateTime(group.latest.publishedAt)}
+          >
+            {latestAge}
+          </span>
+        ) : null}
+        <span className="rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
+          {group.chapterCount} cap.
+        </span>
+      </div>
     </div>
   );
 

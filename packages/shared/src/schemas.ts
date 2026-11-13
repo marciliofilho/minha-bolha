@@ -87,6 +87,7 @@ export const updateSettingsSchema = z
     theme: z.enum(['dark', 'light', 'system']),
     defaultIntervalMinutes: z.number().int().min(5).max(1440),
     feedRefreshSeconds: z.number().int().min(60).max(3600),
+    novelRefreshMinutes: z.number().int().min(5).max(1440),
     hoverPreviewSeconds: z.number().int().min(0).max(15),
     feedWindowHours: z.number().int().min(1).max(168),
     novelCacheRetentionHours: z.number().int().min(1).max(720),

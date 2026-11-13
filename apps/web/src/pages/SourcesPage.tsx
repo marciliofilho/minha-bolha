@@ -1,6 +1,7 @@
 /** Gerenciador de fontes. */
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckSquare, LayoutGrid, LayoutList, Plus, Rss, Trash2 } from 'lucide-react';
 import { SOURCE_TYPES, type SourceDto, type SourceType } from '@hub/shared';
 import { Button, EmptyState, ErrorBanner, Modal, PageHeader } from '@/components/ui';
@@ -14,6 +15,7 @@ import {
   useSources,
   useUpdateSource
 } from '@/lib/queries';
+import { waitForSourceRefresh } from '@/lib/refresh-source';
 import { categoryColor, cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
@@ -36,8 +38,26 @@ export function SourcesPage() {
   const updateSource = useUpdateSource();
   const refreshSource = useRefreshSource();
   const deleteSources = useDeleteSources();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState<SourcesView>(readSourcesView);
+  const [refreshingIds, setRefreshingIds] = useState<Set<string>>(() => new Set());
+
+  const refreshOne = (source: SourceDto): void => {
+    setRefreshingIds((previous) => new Set(previous).add(source.id));
+    void waitForSourceRefresh(source, () => refreshSource.mutateAsync(source.id))
+      .catch(() => undefined)
+      .finally(() => {
+        setRefreshingIds((previous) => {
+          const next = new Set(previous);
+          next.delete(source.id);
+          return next;
+        });
+        void queryClient.invalidateQueries({ queryKey: ['sources'] });
+        void queryClient.invalidateQueries({ queryKey: ['feed'] });
+        void queryClient.invalidateQueries({ queryKey: ['counts'] });
+      });
+  };
 
   const changeView = (next: SourcesView): void => {
     setView(next);
@@ -384,10 +404,10 @@ export function SourcesPage() {
             key={source.id}
             source={source}
             layout={view}
-            refreshing={refreshSource.isPending && refreshSource.variables === source.id}
+            refreshing={refreshingIds.has(source.id)}
             onEdit={() => openEdit(source)}
             onDelete={() => setDeleteTargets([source])}
-            onRefresh={() => refreshSource.mutate(source.id)}
+            onRefresh={() => refreshOne(source)}
             onToggle={(enabled) => updateSource.mutate({ id: source.id, body: { enabled } })}
             onNovelProgress={() => setNovelTarget(source)}
             selectable={selectMode}

@@ -11,6 +11,7 @@ const KEYS = [
   'introAudio',
   'defaultIntervalMinutes',
   'feedRefreshSeconds',
+  'novelRefreshMinutes',
   'hoverPreviewSeconds',
   'feedWindowHours',
   'novelCacheRetentionHours',
@@ -41,6 +42,7 @@ export const DEFAULT_SETTINGS: SettingsDto = {
   introAudio: true,
   defaultIntervalMinutes: 30,
   feedRefreshSeconds: 300,
+  novelRefreshMinutes: 60,
   hoverPreviewSeconds: 3,
   feedWindowHours: 48,
   novelCacheRetentionHours: 168,
@@ -85,6 +87,12 @@ export function getSettings(): SettingsDto {
       DEFAULT_SETTINGS.feedRefreshSeconds,
       60,
       3600
+    ),
+    novelRefreshMinutes: clampNumber(
+      stored.get('novelRefreshMinutes'),
+      DEFAULT_SETTINGS.novelRefreshMinutes,
+      5,
+      1440
     ),
     hoverPreviewSeconds: clampNumber(
       stored.get('hoverPreviewSeconds'),

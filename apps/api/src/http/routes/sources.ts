@@ -49,7 +49,7 @@ import { findMediaByExternal } from '../../db/repositories/media';
 import { ensureGgdealsSource } from '../../domain/games';
 import { nowIso } from '../../lib/dates';
 import { parseJson } from '../../db/mappers';
-import { enqueueSource } from '../../scheduler';
+import { enqueueSource, novelManualCooldownRemainingMs } from '../../scheduler';
 import { renderPageJson } from '../../lib/headless-browser';
 import { desktopExtractAvailable, extractViaDesktop } from '../../lib/desktop-extract';
 import { fetchViaJina } from '../../lib/jina';
@@ -1291,6 +1291,15 @@ sourcesRouter.get('/sources/:id/runs', (req, res) => {
 sourcesRouter.post('/sources/:id/refresh', (req, res) => {
   const source = getSource(req.params.id);
   if (!source) throw new HttpError(404, 'Fonte não encontrada.', 'not_found');
+  const cooldownMs = novelManualCooldownRemainingMs(source.type, source.lastCheckedAt);
+  if (cooldownMs > 0) {
+    res.status(202).json({
+      queued: false,
+      reason: 'cooldown',
+      retryAfterSeconds: Math.ceil(cooldownMs / 1000)
+    });
+    return;
+  }
   const queued = enqueueSource(source.id, true);
   res.status(202).json({ queued });
 });

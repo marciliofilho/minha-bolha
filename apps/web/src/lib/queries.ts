@@ -42,6 +42,7 @@ export const FALLBACK_SETTINGS: SettingsDto = {
   introAudio: true,
   defaultIntervalMinutes: 30,
   feedRefreshSeconds: 300,
+  novelRefreshMinutes: 60,
   hoverPreviewSeconds: 3,
   feedWindowHours: 48,
   novelCacheRetentionHours: 168,

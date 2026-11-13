@@ -1410,9 +1410,24 @@ export function SettingsPage() {
               max={3600}
               suffix={t('segundos')}
               hint={t(
-                'Vale para YouTube, RSS, novels e fontes personalizadas. O mínimo é 60s; valores baixos podem atingir limites das fontes.'
+                'Vale para YouTube, RSS e fontes personalizadas. O mínimo é 60s; valores baixos podem atingir limites das fontes.'
               )}
               onCommit={(value) => saveSettings.mutate({ feedRefreshSeconds: value })}
+            />
+          </div>
+
+          <div className="mt-4">
+            <NumberSetting
+              id="novel-refresh-minutes"
+              label={t('Atualizar as novels a cada')}
+              value={settings.novelRefreshMinutes}
+              min={5}
+              max={1440}
+              suffix={t('minutos')}
+              hint={t(
+                'Intervalo separado do feed geral. O mínimo é 5 min; para evitar bloqueios, prefira 30–60 min.'
+              )}
+              onCommit={(value) => saveSettings.mutate({ novelRefreshMinutes: value })}
             />
           </div>
         </Section>

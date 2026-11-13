@@ -188,7 +188,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ids })
     }),
-  refreshSource: (id: string) => request<{ queued: boolean }>(`/sources/${id}/refresh`, { method: 'POST' }),
+  refreshSource: (id: string) =>
+    request<{ queued: boolean; reason?: 'cooldown'; retryAfterSeconds?: number }>(
+      `/sources/${id}/refresh`,
+      { method: 'POST' }
+    ),
   sourceRuns: (id: string) => request<{ runs: SourceRunDto[] }>(`/sources/${id}/runs`),
   novelDetails: (id: string) => request<NovelDetailsDto>(`/sources/${id}/novel`),
   novelChapter: (url: string) =>
