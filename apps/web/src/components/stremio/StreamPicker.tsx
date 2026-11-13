@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { TitleStreamDto } from '@hub/shared';
 import { Chip, ErrorBanner, InfoBanner } from '@/components/ui';
-import { useStremioEpisodes, useStremioServerStatus, useStremioStreams } from '@/lib/queries';
+import { useSettings, useStremioEpisodes, useStremioServerStatus, useStremioStreams } from '@/lib/queries';
 import { useI18n } from '@/lib/i18n';
 import { isAndroidShell } from '@/lib/platform';
 import { cn } from '@/lib/utils';
@@ -138,6 +138,7 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
   const streams = streamsQuery.data?.streams ?? [];
   const authErrors = (streamsQuery.data?.errors ?? []).filter((error) => error.helpUrl);
   const server = useStremioServerStatus();
+  const settingsQuery = useSettings();
 
   // Se o backend devolveu cache antigo ou está esperando um addon lento em
   // segundo plano, faz algumas leituras extras para trazer a lista nova.
@@ -167,10 +168,17 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
    * player web fica para o desktop e para YouTube. Isso também resolve HEVC,
    * redirecionamentos e a tela cheia sem depender do layout do WebView.
    */
-  const nativePayload = (stream: TitleStreamDto): string =>
-    JSON.stringify({
-      url: stream.playbackUrl,
+  const nativePayload = (stream: TitleStreamDto): string => {
+    // Streams diretos passam pelo proxy local: ele aplica UA/Referer e
+    // mantém cookies nos redirecionamentos HTTP↔HTTPS.
+    const playbackUrl =
+      stream.kind === 'direct' && stream.playbackUrl
+        ? `/api/stream-proxy?url=${encodeURIComponent(stream.playbackUrl)}`
+        : stream.playbackUrl;
+    return JSON.stringify({
+      url: playbackUrl,
       title,
+      subtitleLanguage: settingsQuery.data?.subtitleLanguage ?? 'por',
       tracking: {
         metaId: target.metaId,
         type: target.type,
@@ -193,6 +201,7 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
           .join('|')
       }
     });
+  };
 
   const selectStream = (stream: TitleStreamDto): void => {
     if (stream.kind === 'external' && stream.externalUrl && !stream.ytId) {

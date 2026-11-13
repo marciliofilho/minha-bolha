@@ -10,7 +10,14 @@ import fi.iki.elonen.NanoHTTPD.Response
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONTokener
+import java.io.FilterInputStream
+import java.io.InputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -32,6 +39,28 @@ class HubServer(
 ) : NanoHTTPD("127.0.0.1", port) {
 
     private val translationExecutor = Executors.newFixedThreadPool(4)
+    private val browserUserAgent =
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+    private val proxyCookies =
+        java.util.concurrent.ConcurrentHashMap<String, List<Cookie>>()
+    private val proxyCookieJar = object : CookieJar {
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            proxyCookies[url.host] = cookies
+        }
+
+        override fun loadForRequest(url: HttpUrl): List<Cookie> =
+            proxyCookies[url.host].orEmpty()
+    }
+    private val streamClient by lazy {
+        OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .cookieJar(proxyCookieJar)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
     private val contentMemory = object : java.util.LinkedHashMap<String, JSONObject>(24, 0.75f, true) {
         override fun removeEldestEntry(
             eldest: MutableMap.MutableEntry<String, JSONObject>?
@@ -201,6 +230,7 @@ class HubServer(
             segments == listOf("stremio", "streams") && method == Method.GET -> stremioStreams(session)
             segments == listOf("stremio", "subtitles") && method == Method.GET -> stremioSubtitles(session)
             segments == listOf("stremio", "subtitle") && method == Method.GET -> stremioSubtitle(session)
+            segments == listOf("stream-proxy") && method == Method.GET -> streamProxy(session)
             segments == listOf("stremio", "torrent", "prepare") && method == Method.POST ->
                 prepareTorrent(session)
             segments == listOf("stremio", "torrent", "engine") && method == Method.GET ->
@@ -1631,6 +1661,64 @@ class HubServer(
             vtt
         )
         response.addHeader("Cache-Control", "private, max-age=3600")
+        return response
+    }
+
+    /**
+     * Proxy de streams diretos. Muitos addons exigem UA de navegador,
+     * Referer e cookies entre redirecionamentos HTTP↔HTTPS; o ExoPlayer
+     * não carrega cookies sozinho. O player Android usa esta rota.
+     */
+    private fun streamProxy(session: IHTTPSession): Response {
+        val raw = param(session, "url")
+            ?: throw HubException(400, "validation", "Informe a URL do stream.")
+        val remote = try {
+            com.minhabolha.android.connectors.PublicUrl.assert(raw).toString()
+        } catch (error: Exception) {
+            throw HubException(400, "validation", "URL de stream inválida.")
+        }
+
+        val builder = Request.Builder()
+            .url(remote)
+            .header("User-Agent", browserUserAgent)
+            .header("Accept", "*/*")
+            .header("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
+
+        val uri = android.net.Uri.parse(remote)
+        if (uri.scheme == "http" || uri.scheme == "https") {
+            builder.header("Referer", "${uri.scheme}://${uri.host}/")
+        }
+        session.headers["range"]?.takeIf { it.isNotBlank() }?.let {
+            builder.header("Range", it)
+        }
+
+        val remoteResponse = try {
+            streamClient.newCall(builder.build()).execute()
+        } catch (error: Exception) {
+            throw HubException(502, "stream", error.message ?: "Falha ao abrir o stream.")
+        }
+        val body = remoteResponse.body
+            ?: throw HubException(502, "stream", "O stream não retornou conteúdo.")
+
+        val mime = body.contentType()?.toString() ?: "video/mp4"
+        val length = body.contentLength()
+        val stream = object : FilterInputStream(body.byteStream()) {
+            override fun close() {
+                runCatching { super.close() }
+                runCatching { body.close() }
+            }
+        }
+        val status = Response.Status.lookup(remoteResponse.code) ?: Response.Status.OK
+        val response = if (length > 0) {
+            newFixedLengthResponse(status, mime, stream, length)
+        } else {
+            newChunkedResponse(status, mime, stream)
+        }
+        response.addHeader("Accept-Ranges", "bytes")
+        response.addHeader("Cache-Control", "no-store")
+        remoteResponse.header("Content-Range")?.let {
+            response.addHeader("Content-Range", it)
+        }
         return response
     }
 
