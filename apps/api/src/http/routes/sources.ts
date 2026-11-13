@@ -59,7 +59,7 @@ import {
   MOBILE_USER_AGENT,
   toMobileUrl
 } from '../../lib/live-browser';
-import { isNovelChallengePage, isSameChapter } from '../../lib/webnovel-url';
+import { isNovelChallengePage, isNovelUnavailablePage, isSameChapter } from '../../lib/webnovel-url';
 import { fetchNovelChapterHtml } from '../../lib/novel-html';
 import { HttpError, parseBody } from '../errors';
 import { sourceImageUrl } from '../../lib/source-image';
@@ -551,6 +551,11 @@ async function loadNovelChapter(
       if (isNovelChallengePage(candidateTitle, candidateText)) {
         throw new Error('página de verificação de segurança');
       }
+      if (isNovelUnavailablePage(candidateTitle, candidateText)) {
+        throw new Error(
+          'a página do capítulo retornou 404 (novel removida ou indisponível no site)'
+        );
+      }
       if (!isSameChapter(candidate.finalUrl || urlKey, urlKey)) {
         throw new Error('a página retornou outro capítulo');
       }
@@ -638,7 +643,8 @@ sourcesRouter.get('/novels/chapter', async (req, res) => {
   const cacheKey = novelChapterCacheKey(urlKey);
   const cached = getNovelCache<NovelChapterContentDto>(cacheKey);
   const cachedIsChallenge = cached
-    ? isNovelChallengePage(cached.data.title, cached.data.text)
+    ? isNovelChallengePage(cached.data.title, cached.data.text) ||
+      isNovelUnavailablePage(cached.data.title, cached.data.text)
     : false;
   const cachedIsWrongChapter = cached
     ? !isSameChapter(cached.data.url, urlKey)
@@ -855,7 +861,8 @@ async function processNovelDownloadJob(job: NovelDownloadJobDto): Promise<void> 
         const cacheKey = novelChapterCacheKey(urlKey);
         const cached = getNovelCache<NovelChapterContentDto>(cacheKey);
         const challenge = cached
-          ? isNovelChallengePage(cached.data.title, cached.data.text)
+          ? isNovelChallengePage(cached.data.title, cached.data.text) ||
+      isNovelUnavailablePage(cached.data.title, cached.data.text)
           : false;
         const wrongChapter = cached ? !isSameChapter(cached.data.url, urlKey) : false;
         const usable = cached && !challenge && !wrongChapter ? cached.data : null;
@@ -998,7 +1005,8 @@ sourcesRouter.post('/novels/download/status', (req, res) => {
         novelChapterCacheKey(url.toString())
       );
       const challenge = cached
-        ? isNovelChallengePage(cached.data.title, cached.data.text)
+        ? isNovelChallengePage(cached.data.title, cached.data.text) ||
+      isNovelUnavailablePage(cached.data.title, cached.data.text)
         : false;
       const downloaded = Boolean(cached && !challenge);
       return {

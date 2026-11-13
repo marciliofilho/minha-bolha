@@ -6,7 +6,7 @@
  * tentativas da cadeia.
  */
 import { decodeEntities } from '../connectors/util';
-import { isNovelChallengePage } from './webnovel-url';
+import { isNovelChallengePage, isNovelUnavailablePage } from './webnovel-url';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36';
@@ -128,7 +128,9 @@ export function extractChapterFromHtml(html: string, finalUrl = ''): HtmlChapter
 
   const text = htmlToText(content);
   if (text.length < 200) return null;
-  if (isNovelChallengePage(title, text)) return null;
+  if (isNovelChallengePage(title, text) || isNovelUnavailablePage(title, text)) {
+    return null;
+  }
 
   return { title: title || 'Capítulo', text, finalUrl };
 }

@@ -10,6 +10,7 @@ import type { NovelChapter, NovelSnapshot } from './novel-types';
 import { liveRenderJson, MOBILE_USER_AGENT, toMobileUrl } from '../lib/live-browser';
 import { renderPageJson } from '../lib/headless-browser';
 import { desktopExtractAvailable, extractViaDesktop } from '../lib/desktop-extract';
+import { isNovelUnavailablePage } from '../lib/webnovel-url';
 
 interface RawChapter {
   id?: string;
@@ -205,11 +206,19 @@ export async function loadWebnovelPage(input: string): Promise<NovelSnapshot> {
   ];
 
   let data: RawNovel | null = null;
+  let notFound = false;
   const failures: string[] = [];
   for (const attempt of attempts) {
     try {
       const result = await attempt.run();
       const candidate = result.data;
+      if (isNovelUnavailablePage(result.title, '')) {
+        notFound = true;
+        throw new ConnectorError(
+          'not_found',
+          'A página da Webnovel retornou 404. O livro pode ter sido removido ou estar indisponível.'
+        );
+      }
       if (!candidate?.bookId || !candidate.title) {
         throw new Error('dados da novel não encontrados');
       }
@@ -226,6 +235,12 @@ export async function loadWebnovelPage(input: string): Promise<NovelSnapshot> {
   }
 
   if (!data) {
+    if (notFound) {
+      throw new ConnectorError(
+        'not_found',
+        'A página da Webnovel retornou 404. O livro pode ter sido removido ou estar indisponível.'
+      );
+    }
     throw new ConnectorError(
       'blocked',
       `A Webnovel não liberou a página. ${failures.join(' | ')}`

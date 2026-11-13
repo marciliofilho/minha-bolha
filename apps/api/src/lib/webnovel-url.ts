@@ -73,3 +73,17 @@ export function isNovelChallengePage(title: string, text: string): boolean {
   const haystack = `${title}\n${text.slice(0, 1500)}`;
   return text.length < 20_000 && NOVEL_CHALLENGE_RE.test(haystack);
 }
+
+/**
+ * Página de “não encontrado” da Webnovel. O livro pode ter sido removido,
+ * renomeado ou ficar indisponível na região; não é conteúdo de capítulo.
+ */
+export function isNovelUnavailablePage(title: string, text: string): boolean {
+  const pageTitle = (title || '').trim();
+  const haystack = `${pageTitle}\n${(text || '').slice(0, 1200)}`;
+  if (/^404\b/i.test(pageTitle)) return true;
+  if (/^page not found$/i.test(pageTitle)) return true;
+  if (/we might have some troubles to find out this page/i.test(haystack)) return true;
+  if (/podemos ter alguns problemas para descobrir esta p[aá]gina/i.test(haystack)) return true;
+  return false;
+}
