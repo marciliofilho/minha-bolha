@@ -324,7 +324,9 @@ schtasks.exe /Delete /TN $taskName /F 2>&1 | Out-Null
 
   /** Agenda o script para rodar fora do job object do Electron. */
   function schedulePortableUpdater(scriptPath, taskName) {
-    const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`;
+    const command =
+      `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden ` +
+      `-ExecutionPolicy Bypass -File "${scriptPath}"`;
     const create = spawnSync(
       'schtasks',
       ['/Create', '/TN', taskName, '/SC', 'ONCE', '/ST', '23:59', '/F', '/IT', '/TR', command],

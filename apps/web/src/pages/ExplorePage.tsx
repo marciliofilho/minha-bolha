@@ -467,7 +467,7 @@ export function ExplorePage() {
             <InfoBanner message={t('Todos os catálogos filtrados exigem configuração extra (ex.: gênero/IDs). Escolha outro addon ou tipo.')} />
           ) : null}
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="-mx-1 flex snap-x gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filtered.map((group) => {
               const active = catalogKey(group) === selectedKey;
               const missing = unsupportedRequired(group);
@@ -480,7 +480,7 @@ export function ExplorePage() {
                   onClick={() => setSelectedKey(catalogKey(group))}
                   title={disabled ? `${t('Este catálogo exige:')} ${missing.join(', ')}` : undefined}
                   className={cn(
-                    'max-w-full rounded-lg border px-2.5 py-1.5 text-left text-[11px] transition',
+                    'w-40 max-w-[70vw] shrink-0 snap-start rounded-lg border px-2.5 py-1.5 text-left text-[11px] transition',
                     active
                       ? 'border-accent/50 bg-accent/10 text-fg'
                       : disabled

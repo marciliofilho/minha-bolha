@@ -110,11 +110,137 @@ export function SourceCard({
         : latestAt && progress.updatedAt && latestAt > progress.updatedAt)
   );
 
+  if (layout === 'grid') {
+    const imageUrl =
+      coverUrl ??
+      (typeof source.config.avatarUrl === 'string' ? source.config.avatarUrl : null) ??
+      (typeof source.config.imageUrl === 'string' ? source.config.imageUrl : null);
+
+    return (
+      <article
+        className={cn(
+          'card flex h-full flex-col p-3',
+          selected && 'border-accent/60 ring-1 ring-accent/30'
+        )}
+      >
+        <div className="flex items-start justify-between gap-1.5">
+          <div
+            className={cn(
+              'flex shrink-0 items-center justify-center overflow-hidden rounded-xl border',
+              isNovel && imageUrl ? 'h-16 w-12' : 'h-9 w-9'
+            )}
+            style={
+              imageUrl
+                ? undefined
+                : { borderColor: `${color}33`, backgroundColor: `${color}14`, color }
+            }
+          >
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <AppIcon name={SOURCE_TYPE_ICON[source.type]} className="h-4 w-4" />
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
+            {selectable ? (
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={(event) => onSelect?.(event.target.checked)}
+                aria-label={t('Selecionar {name}', { name: source.name })}
+                className="h-3.5 w-3.5 accent-[var(--accent)]"
+              />
+            ) : null}
+            <Switch
+              checked={source.enabled}
+              onChange={onToggle}
+              label={source.enabled ? t('Pausar fonte') : t('Ativar fonte')}
+            />
+          </div>
+        </div>
+
+        <h3 className="mt-2 line-clamp-2 text-xs font-semibold leading-snug text-fg">
+          {source.name}
+        </h3>
+
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <Chip color={color}>{t(categoryLabel)}</Chip>
+          {source.unreadCount > 0 ? (
+            <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+              {source.unreadCount}
+            </span>
+          ) : null}
+          {isNovel && hasNewChapter ? <Chip color="#38bdf8">{t('novo')}</Chip> : null}
+        </div>
+
+        <p className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-muted">
+          <StatusDot tone={status.tone} />
+          {t(status.label)}
+        </p>
+        <p className="mt-0.5 line-clamp-1 text-[10px] text-faint">
+          {source.latestItemTitle ?? t('{count} itens', { count: source.itemCount })}
+        </p>
+
+        {isNovel ? (
+          <p className="mt-1 line-clamp-1 text-[10px] text-faint">
+            {progress
+              ? `${t('Lido até')} Cap. ${progress.chapterIndex ?? '?'}`
+              : t('Nenhum capítulo marcado como lido.')}
+          </p>
+        ) : null}
+
+        <div className="mt-auto flex items-center justify-between gap-1 pt-2">
+          <span className="truncate text-[9px] text-faint">
+            {formatRelative(source.lastCheckedAt)}
+          </span>
+          <div className="flex items-center gap-0.5">
+            <IconButton
+              label={t('Atualizar agora')}
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="h-6 w-6"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            </IconButton>
+            <IconButton label={t('Editar fonte')} onClick={onEdit} className="h-6 w-6">
+              <Pencil className="h-3.5 w-3.5" />
+            </IconButton>
+            <IconButton
+              label={t('Remover fonte')}
+              onClick={onDelete}
+              tone="danger"
+              className="h-6 w-6"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </IconButton>
+          </div>
+        </div>
+
+        {isNovel && onNovelProgress ? (
+          <button
+            type="button"
+            onClick={onNovelProgress}
+            className="mt-2 inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-line bg-elevated px-2 text-[10px] font-medium text-fg transition hover:border-accent/40"
+          >
+            <BookOpen className="h-3 w-3" />
+            {t('Progresso')}
+          </button>
+        ) : null}
+      </article>
+    );
+  }
+
   return (
     <article
       className={cn(
         'card p-4',
-        layout === 'grid' && 'flex h-full flex-col',
         selected && 'border-accent/60 ring-1 ring-accent/30'
       )}
     >
@@ -258,10 +384,7 @@ export function SourceCard({
       ) : null}
 
       <div
-        className={cn(
-          'flex items-center justify-between border-t border-line/60 pt-2',
-          layout === 'grid' ? 'mt-auto' : 'mt-3'
-        )}
+        className="mt-3 flex items-center justify-between border-t border-line/60 pt-2"
       >
         <button
           type="button"
