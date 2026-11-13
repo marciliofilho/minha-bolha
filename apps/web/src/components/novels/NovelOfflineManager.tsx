@@ -17,6 +17,40 @@ import {
 } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
+function OfflineCover({
+  coverUrl,
+  title,
+  count
+}: {
+  coverUrl: string | null;
+  title: string;
+  count: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(coverUrl) && !failed;
+  return (
+    <span className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg border border-line bg-elevated transition group-hover:border-accent/50">
+      {showImage ? (
+        <img
+          src={coverUrl as string}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-xs font-semibold text-accent/70">
+          {title.slice(0, 2).toUpperCase()}
+        </span>
+      )}
+      <span className="absolute right-1 top-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-semibold text-white">
+        {count}
+      </span>
+    </span>
+  );
+}
+
 function formatBytes(bytes: number): string {
   if (!bytes) return '0 KB';
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -145,24 +179,11 @@ export function NovelOfflineManager() {
                 className="group flex min-w-0 flex-col items-center gap-1.5 text-center"
                 title={item.title}
               >
-                <span className="relative block aspect-[2/3] w-full overflow-hidden rounded-lg border border-line bg-elevated transition group-hover:border-accent/50">
-                  {item.coverUrl ? (
-                    <img
-                      src={item.coverUrl}
-                      alt=""
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-xs text-accent/60">
-                      {item.title.slice(0, 2).toUpperCase()}
-                    </span>
-                  )}
-                  <span className="absolute right-1 top-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-semibold text-white">
-                    {item.count}
-                  </span>
-                </span>
+                <OfflineCover
+                  coverUrl={item.coverUrl}
+                  title={item.title}
+                  count={item.count}
+                />
                 <span className="line-clamp-2 text-[10px] font-medium leading-tight text-fg">
                   {item.title}
                 </span>

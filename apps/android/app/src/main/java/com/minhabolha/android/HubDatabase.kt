@@ -2897,7 +2897,7 @@ class HubDatabase(private val context: Context) {
                     .put("chapterCount", value.first)
                     .put("updatedAt", value.second)
                     .put("author", org.json.JSONObject.NULL)
-                    .put("coverUrl", org.json.JSONObject.NULL)
+                    .put("coverUrl", novelCoverFor(title) ?: org.json.JSONObject.NULL)
             )
         }
         return books
@@ -2934,6 +2934,7 @@ class HubDatabase(private val context: Context) {
         return org.json.JSONObject()
             .put("bookId", bookId)
             .put("title", bookTitle)
+            .put("coverUrl", novelCoverFor(bookTitle) ?: org.json.JSONObject.NULL)
             .put("chapters", chapters)
     }
 
@@ -2945,6 +2946,47 @@ class HubDatabase(private val context: Context) {
             removed++
         }
         return removed
+    }
+
+    /**
+     * Capa do livro offline. Os capítulos salvos não guardam a capa, então
+     * buscamos no card mais recente do feed ou na configuração da fonte.
+     */
+    private fun novelCoverFor(title: String): String? {
+        db.rawQuery(
+            """
+            SELECT thumbnail_url FROM items
+            WHERE thumbnail_url IS NOT NULL AND thumbnail_url <> ''
+              AND json_extract(meta, '$.bookTitle') = ?
+            ORDER BY published_at DESC
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(title)
+        ).use { cursor ->
+            if (cursor.moveToFirst()) {
+                val value = cursor.getString(0)
+                if (!value.isNullOrBlank()) return value
+            }
+        }
+
+        db.rawQuery(
+            "SELECT name, config FROM sources WHERE type = 'webnovel'",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val config = try {
+                    org.json.JSONObject(cursor.getString(1) ?: "{}")
+                } catch (error: Exception) {
+                    continue
+                }
+                val name = cursor.getString(0).orEmpty()
+                val configTitle = config.optString("title")
+                if (name != title && configTitle != title) continue
+                val cover = config.optString("coverUrl")
+                if (cover.isNotBlank()) return cover
+            }
+        }
+        return null
     }
 
     private fun bookIdOf(title: String): String = android.util.Base64.encodeToString(
