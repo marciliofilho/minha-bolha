@@ -190,17 +190,30 @@ object StremioCatalog {
         )
         var allPresent = true
         for (url in defaults) {
-            val transport = normalizeManifestUrl(url)
-            if (database.findStremioAddonByHash(sha256(transport)) != null) continue
-            try {
-                addAddon(database, url)
-            } catch (error: Exception) {
-                allPresent = false
-                Log.w("MinhaBolha", "falha ao adicionar addon padrão $url", error)
-            }
+            if (!ensureAddon(database, url)) allPresent = false
         }
         return allPresent
     }
+
+    /** Instala um addon padrão se ainda não existir. */
+    fun ensureAddon(database: HubDatabase, url: String): Boolean {
+        val transport = normalizeManifestUrl(url)
+        if (database.findStremioAddonByHash(sha256(transport)) != null) return true
+        return try {
+            addAddon(database, url)
+            true
+        } catch (error: Exception) {
+            Log.w("MinhaBolha", "falha ao adicionar addon padrão $url", error)
+            false
+        }
+    }
+
+    /**
+     * Migração para instalações que já tinham o seed v1 (Cinemeta +
+     * OpenSubtitles): garante o Kitsu sem reinstalar addons removidos.
+     */
+    fun ensureKitsuDefault(database: HubDatabase): Boolean =
+        ensureAddon(database, "https://anime-kitsu.strem.fun/manifest.json")
 
     /** Atualiza nome, estado, prioridade e, opcionalmente, a URL do manifest. */
     fun updateAddon(

@@ -94,14 +94,28 @@ object HubRuntime {
                         "hub_defaults",
                         Context.MODE_PRIVATE
                     )
-                    if (prefs.getBoolean("stremio_defaults_v1", false)) return@Thread
-                    val ok = runCatching {
-                        StremioCatalog.ensureDefaults(hubDatabase)
-                    }.getOrDefault(false)
-                    if (ok) {
-                        prefs.edit().putBoolean("stremio_defaults_v1", true).apply()
-                        hubEvents.broadcast("stremio:changed")
+                    var changed = false
+                    if (!prefs.getBoolean("stremio_defaults_v1", false)) {
+                        val ok = runCatching {
+                            StremioCatalog.ensureDefaults(hubDatabase)
+                        }.getOrDefault(false)
+                        if (ok) {
+                            prefs.edit().putBoolean("stremio_defaults_v1", true).apply()
+                            changed = true
+                        }
                     }
+                    // O Kitsu passou a ser padrão depois do seed v1; instala
+                    // em quem já tinha o app sem reinstalar addons removidos.
+                    if (!prefs.getBoolean("kitsu_default_v1", false)) {
+                        val ok = runCatching {
+                            StremioCatalog.ensureKitsuDefault(hubDatabase)
+                        }.getOrDefault(false)
+                        if (ok) {
+                            prefs.edit().putBoolean("kitsu_default_v1", true).apply()
+                            changed = true
+                        }
+                    }
+                    if (changed) hubEvents.broadcast("stremio:changed")
                 }.start()
 
                 // O calendário global é atualizado assim que o app abre.
