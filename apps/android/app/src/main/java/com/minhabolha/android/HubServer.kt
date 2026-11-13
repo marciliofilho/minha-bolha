@@ -291,6 +291,7 @@ class HubServer(
 
             segments.size == 3 && segments[2] == "refresh" && method == Method.POST -> refreshSource(segments[1])
             segments.size == 3 && segments[2] == "runs" && method == Method.GET -> sourceRuns(segments[1])
+            segments.size == 3 && segments[2] == "image" && method == Method.GET -> sourceImage(segments[1])
 
             else -> throw HubException(404, "not_found", "Rota não encontrada: ${session.uri}")
         }
@@ -435,6 +436,18 @@ class HubServer(
             throw HubException(404, "not_found", "Fonte não encontrada.")
         }
         return json(JSONObject().put("runs", database.listRuns(id)))
+    }
+
+    /** Redireciona para a imagem/logo da fonte, resolvida e guardada por 3 dias. */
+    private fun sourceImage(id: String): Response {
+        val url = SourceImage.resolve(database, id)
+        if (url.isNullOrEmpty()) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "")
+        }
+        val response = newFixedLengthResponse(Response.Status.REDIRECT, "text/plain", "")
+        response.addHeader("Location", url)
+        response.addHeader("Cache-Control", "public, max-age=259200")
+        return response
     }
 
     private fun requireConnector(type: String): com.minhabolha.android.connectors.Connector {

@@ -71,6 +71,7 @@ export function SourceCard({
 }: SourceCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const categories = useCategories();
   const runs = useSourceRuns(expanded ? source.id : null);
 
@@ -110,11 +111,14 @@ export function SourceCard({
         : latestAt && progress.updatedAt && latestAt > progress.updatedAt)
   );
 
+  // A API resolve e guarda a imagem por 3 dias; o bucket na query faz o
+  // navegador buscar uma versão nova quando o cache expira.
+  const imageSrc = `/api/sources/${source.id}/image?v=${Math.floor(
+    Date.now() / (3 * 24 * 60 * 60 * 1000)
+  )}`;
+
   if (layout === 'grid') {
-    const imageUrl =
-      coverUrl ??
-      (typeof source.config.avatarUrl === 'string' ? source.config.avatarUrl : null) ??
-      (typeof source.config.imageUrl === 'string' ? source.config.imageUrl : null);
+    const showImage = !imageFailed;
 
     return (
       <article
@@ -127,21 +131,22 @@ export function SourceCard({
           <div
             className={cn(
               'flex shrink-0 items-center justify-center overflow-hidden rounded-xl border',
-              isNovel && imageUrl ? 'h-16 w-12' : 'h-9 w-9'
+              isNovel && showImage ? 'h-16 w-12' : 'h-9 w-9'
             )}
             style={
-              imageUrl
+              showImage
                 ? undefined
                 : { borderColor: `${color}33`, backgroundColor: `${color}14`, color }
             }
           >
-            {imageUrl ? (
+            {showImage ? (
               <img
-                src={imageUrl}
+                src={imageSrc}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 referrerPolicy="no-referrer"
+                onError={() => setImageFailed(true)}
                 className="h-full w-full object-cover"
               />
             ) : (
@@ -255,10 +260,26 @@ export function SourceCard({
           />
         ) : null}
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
-          style={{ borderColor: `${color}33`, backgroundColor: `${color}14`, color }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
+          style={
+            imageFailed
+              ? { borderColor: `${color}33`, backgroundColor: `${color}14`, color }
+              : undefined
+          }
         >
-          <AppIcon name={SOURCE_TYPE_ICON[source.type]} className="h-5 w-5" />
+          {imageFailed ? (
+            <AppIcon name={SOURCE_TYPE_ICON[source.type]} className="h-5 w-5" />
+          ) : (
+            <img
+              src={imageSrc}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={() => setImageFailed(true)}
+              className="h-full w-full object-cover"
+            />
+          )}
         </div>
 
         <div className="min-w-0 flex-1">
