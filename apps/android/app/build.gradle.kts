@@ -31,6 +31,23 @@ val hasReleaseSigning = keystoreProperties.getProperty("storeFile")?.isNotBlank(
 val abiSplits = providers.gradleProperty("abiSplits").orNull == "true"
 
 /**
+ * Versão única do app.
+ *
+ * A versão base vem do `package.json` da raiz (a mesma do desktop) e o
+ * contador alpha de `apps/android/gradle.properties` (`android.build`).
+ * Um bump na raiz atualiza desktop e Android; só o contador alpha muda por
+ * build. Também dá para sobrescrever com `-PandroidBuild=53`.
+ */
+val baseVersion = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
+    .find(rootProject.file("../../package.json").readText())
+    ?.groupValues?.get(1)
+    ?: error("Não foi possível ler a versão do package.json da raiz.")
+val androidBuild = (providers.gradleProperty("androidBuild").orNull)?.toIntOrNull()
+    ?: (providers.gradleProperty("android.build").orNull)?.toIntOrNull()
+    ?: error("Defina android.build em apps/android/gradle.properties.")
+val appVersionName = "$baseVersion-alpha$androidBuild"
+
+/**
  * Assets gerados: a UI compilada e as migrations.
  *
  * Se `apps/web/dist` não existir (build local sem `npm run build`), o app usa a
@@ -84,8 +101,8 @@ android {
         // pelas migrations compartilhadas com o desktop.
         minSdk = 30
         targetSdk = 35
-        versionCode = 51
-        versionName = "0.4.8-alpha51"
+        versionCode = androidBuild
+        versionName = appVersionName
 
         // libtorrent4j traz bibliotecas nativas: só as ABIs suportadas.
         ndk {

@@ -6,6 +6,18 @@ Kotlin service running in the same process.
 
 This is an **alpha** on the way to functional parity. It is not feature complete.
 
+## Versioning
+
+The base version is read from the root `package.json`, the same one used by the
+desktop. The Android alpha counter lives in `apps/android/gradle.properties`
+(`android.build`) and becomes both `versionCode` and the `-alphaN` suffix:
+
+- root `0.4.9` + `android.build=53` → `versionName "0.4.9-alpha53"`, `versionCode 53`.
+
+To cut a new Android build, increment `android.build` (or pass
+`-PandroidBuild=53`). The CI resolves the same values and injects the version
+into the web build, so the About screen matches `/api/health`.
+
 ## What works today
 
 - Kotlin app with an embedded HTTP server (`NanoHTTPD`) bound to `127.0.0.1`.
@@ -25,7 +37,8 @@ This is an **alpha** on the way to functional parity. It is not feature complete
   and title metadata (the addon URL is encrypted and never exposed).
 - **Stremio streams**: aggregation across enabled addons (direct, HLS, external
   and torrent entries) and local playback progress with "continue watching".
-  Direct/HLS streams play in the existing web player (hls.js inside the WebView).
+  Direct/HLS streams and torrents play in the native Media3 player; the web
+  player (hls.js) remains for desktop and YouTube.
 - **Stremio subtitles**: tracks from the enabled addons, downloaded through a
   same-origin proxy that detects UTF-8/Windows-1252, converts SRT/ASS to WebVTT
   and is attached to both the web and the native player.

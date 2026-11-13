@@ -65,11 +65,13 @@ jobs:
       - name: Read Android version
         shell: bash
         run: |
-          VERSION="$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/android/app/build.gradle.kts | head -n1)"
-          if [ -z "$VERSION" ]; then
-            echo "versionName não encontrado no build.gradle.kts"
+          BASE_VERSION="$(node -p "require('./package.json').version")"
+          BUILD_NUMBER="$(grep -oP '^android\.build=\K[0-9]+' apps/android/gradle.properties | head -n1)"
+          if [ -z "$BASE_VERSION" ] || [ -z "$BUILD_NUMBER" ]; then
+            echo "Não foi possível resolver a versão (package.json + android.build)."
             exit 1
           fi
+          VERSION="${BASE_VERSION}-alpha${BUILD_NUMBER}"
           echo "HUB_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Versão do app Android: $VERSION"
 
