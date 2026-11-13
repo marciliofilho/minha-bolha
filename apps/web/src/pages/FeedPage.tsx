@@ -1081,7 +1081,7 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {feedQuery.isLoading ? (
+      {feedQuery.isLoading && !streamTarget && !playing ? (
         view === 'list' ? (
           <div className="space-y-3">
             {[0, 1, 2, 3].map((index) => (
@@ -1214,7 +1214,10 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {!feedQuery.isLoading && (items.length > 0 || (view === 'netflix' && sections.length > 0)) ? (
+      {!streamTarget &&
+      !playing &&
+      !feedQuery.isLoading &&
+      (items.length > 0 || (view === 'netflix' && sections.length > 0)) ? (
         view === 'list' ? (
           <div className="space-y-2.5">
             {feedEntries.map((entry) => {
