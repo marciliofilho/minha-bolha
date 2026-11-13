@@ -1075,7 +1075,7 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {feedQuery.isLoading ? (
+      {feedQuery.isLoading && !streamTarget && !playing ? (
         view === 'list' ? (
           <div className="space-y-3">
             {[0, 1, 2, 3].map((index) => (
@@ -1208,7 +1208,10 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {!feedQuery.isLoading && (items.length > 0 || (view === 'netflix' && sections.length > 0)) ? (
+      {!streamTarget &&
+      !playing &&
+      !feedQuery.isLoading &&
+      (items.length > 0 || (view === 'netflix' && sections.length > 0)) ? (
         view === 'list' ? (
           <div className="space-y-2.5">
             {feedEntries.map((entry) => {
@@ -1307,23 +1310,7 @@ export function FeedPage() {
                 />
 
                 <div className="min-w-0 flex-1">
-                  {streamTarget ? (
-                    <Suspense
-                      fallback={
-                        <div className="flex min-h-[30vh] items-center justify-center rounded-2xl border border-line bg-elevated">
-                          <Loader2 className="h-5 w-5 animate-spin text-faint" />
-                        </div>
-                      }
-                    >
-                      <StreamPicker target={streamTarget} onClose={() => setStreamTarget(null)} />
-                    </Suspense>
-                  ) : playing ? (
-                    <HeroPlayer
-                      item={playing.item}
-                      videoId={playing.videoId}
-                      onClose={() => setPlaying(null)}
-                    />
-                  ) : heroItem ? (
+                  {heroItem ? (
                     <NetflixHero
                       item={heroItem}
                       onExternal={() => markRead(heroItem)}
