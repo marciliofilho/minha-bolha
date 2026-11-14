@@ -7,6 +7,7 @@ import type {
   AddonCatalogGroupDto,
   AddonCatalogItemDto,
   AddonCatalogPageDto,
+  AddonDiagnosticCode,
   AddonImportResultDto,
   AddonSearchResultDto,
   AddonStreamSummaryDto,
@@ -384,11 +385,14 @@ async function testStreams(
     totalBytes: null,
     largestBytes: null,
     elapsedMs: 0,
-    error: null
+    error: null,
+    errorCode: null,
+    host: addonHost(transportUrl)
   };
 
   if (!supportsResource(manifest, 'stream', sample.type, sample.videoId)) {
     summary.error = 'O addon não declara streams para este tipo/ID.';
+    summary.errorCode = 'invalid';
     return summary;
   }
 
@@ -417,9 +421,13 @@ async function testStreams(
     }
     summary.qualities = [...qualities].sort();
     summary.totalBytes = totalBytes > 0 ? totalBytes : null;
+    if (summary.count === 0) summary.errorCode = 'empty';
   } catch (error) {
     summary.elapsedMs = Date.now() - started;
     summary.error = error instanceof Error ? error.message : 'Falha ao consultar streams.';
+    summary.errorCode = diagnosticOf(error);
+    summary.host =
+      (error instanceof AddonHttpError ? error.host : null) ?? addonHost(transportUrl);
   }
 
   return summary;
@@ -434,7 +442,9 @@ export async function testAddon(id: string): Promise<AddonTestSummaryDto> {
     catalogsDeclared: 0,
     catalogsTested: 0,
     streams: null,
-    warnings: []
+    warnings: [],
+    errorCode: null,
+    host: null
   };
   const started = Date.now();
 
@@ -454,10 +464,14 @@ export async function testAddon(id: string): Promise<AddonTestSummaryDto> {
     manifest = loaded.manifest;
     summary.manifestMs = loaded.elapsedMs;
     summary.catalogsDeclared = manifest.catalogs?.length ?? 0;
+    summary.host = addonHost(transportUrl);
   } catch (error) {
     summary.warnings.push(
       error instanceof Error ? error.message : 'Não foi possível carregar o manifest do addon.'
     );
+    summary.errorCode = diagnosticOf(error);
+    summary.host =
+      (error instanceof AddonHttpError ? error.host : null) ?? addonHost(transportUrl);
     summary.elapsedMs = Date.now() - started;
     setAddonTestState(id, { ok: false, error: summary.warnings[0]!, summary });
     return summary;
@@ -478,6 +492,8 @@ export async function testAddon(id: string): Promise<AddonTestSummaryDto> {
   if (streamCapability) {
     if (sample) {
       summary.streams = await testStreams(transportUrl, manifest, sample);
+      summary.errorCode = summary.streams.errorCode;
+      summary.host = summary.streams.host ?? summary.host;
       if (summary.streams.error) {
         summary.warnings.push(summary.streams.error);
       } else if (summary.streams.count === 0) {
@@ -1384,6 +1400,20 @@ interface StreamErrorEntry {
   expiresAt: number;
   error: string;
   helpUrl: string | null;
+  code: AddonDiagnosticCode;
+  host: string | null;
+}
+
+function addonHost(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+function diagnosticOf(error: unknown): AddonDiagnosticCode {
+  return error instanceof AddonHttpError ? error.diagnostic : 'unknown';
 }
 
 const log = createLogger('addons-cache');
@@ -1491,7 +1521,13 @@ function scheduleStreamRefresh(
     .catch((error) => {
       const message = error instanceof Error ? error.message : 'Falha ao consultar streams.';
       const helpUrl = error instanceof AddonHttpError ? error.helpUrl : null;
-      streamErrors.set(key, { expiresAt: Date.now() + STREAM_ERROR_TTL, error: message, helpUrl });
+      streamErrors.set(key, {
+        expiresAt: Date.now() + STREAM_ERROR_TTL,
+        error: message,
+        helpUrl,
+        code: diagnosticOf(error),
+        host: error instanceof AddonHttpError ? error.host : addonHost(addon.transportUrl)
+      });
       log.warn(`${addon.name}: falha ao atualizar streams em segundo plano: ${message}`);
     })
     .finally(() => {
@@ -1510,6 +1546,7 @@ async function fetchStreamsCached(
 ) {
   const addonKey = addonCacheKey(addon);
   const key = streamCacheKey(addonKey, type, videoId);
+  const host = addonHost(addon.transportUrl);
 
   if (!refresh) {
     const cached = readStreamCache(addonKey, type, videoId);
@@ -1520,6 +1557,8 @@ async function fetchStreamsCached(
           streams: cached.streams,
           error: undefined,
           helpUrl: undefined,
+          code: null,
+          host,
           cached: true,
           refreshing: false
         };
@@ -1532,6 +1571,8 @@ async function fetchStreamsCached(
           streams: cached.streams,
           error: undefined,
           helpUrl: undefined,
+          code: null,
+          host,
           cached: true,
           refreshing: false
         };
@@ -1543,6 +1584,8 @@ async function fetchStreamsCached(
         streams: cached.streams,
         error: undefined,
         helpUrl: undefined,
+        code: null,
+        host,
         cached: true,
         refreshing
       };
@@ -1555,6 +1598,8 @@ async function fetchStreamsCached(
         streams: undefined,
         error: cachedError.error,
         helpUrl: cachedError.helpUrl,
+        code: cachedError.code,
+        host: cachedError.host ?? host,
         cached: false,
         refreshing: false
       };
@@ -1568,18 +1613,30 @@ async function fetchStreamsCached(
       streams,
       error: undefined,
       helpUrl: undefined,
+      code: null,
+      host,
       cached: false,
       refreshing: false
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha ao consultar streams.';
     const helpUrl = error instanceof AddonHttpError ? error.helpUrl : null;
-    streamErrors.set(key, { expiresAt: Date.now() + STREAM_ERROR_TTL, error: message, helpUrl });
+    const code = diagnosticOf(error);
+    const errorHost = error instanceof AddonHttpError ? error.host ?? host : host;
+    streamErrors.set(key, {
+      expiresAt: Date.now() + STREAM_ERROR_TTL,
+      error: message,
+      helpUrl,
+      code,
+      host: errorHost
+    });
     return {
       addon,
       streams: undefined,
       error: message,
       helpUrl,
+      code,
+      host: errorHost,
       cached: false,
       refreshing: false
     };
@@ -1607,6 +1664,8 @@ function withResponseDeadline(
         streams: undefined,
         error: 'O addon ainda está respondendo; a lista será atualizada em segundo plano.',
         helpUrl: null,
+        code: 'pending',
+        host: addonHost(addon.transportUrl),
         cached: false,
         refreshing: true
       });
@@ -1629,6 +1688,8 @@ function withResponseDeadline(
           streams: undefined,
           error: error instanceof Error ? error.message : 'Falha ao consultar streams.',
           helpUrl: null,
+          code: diagnosticOf(error),
+          host: addonHost(addon.transportUrl),
           cached: false,
           refreshing: false
         });
@@ -1771,7 +1832,9 @@ export async function getStreamsForTitle(input: {
       addonId: result.addon.id,
       addonName: result.addon.name,
       message: result.error ?? 'Falha ao consultar streams.',
-      helpUrl: result.helpUrl ?? null
+      helpUrl: result.helpUrl ?? null,
+      code: result.code ?? 'unknown',
+      host: result.host ?? null
     });
   }
 
