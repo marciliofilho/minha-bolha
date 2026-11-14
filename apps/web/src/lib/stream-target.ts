@@ -2,6 +2,13 @@
 import type { AddonCatalogItemDto, StremioLibraryItemDto } from '@hub/shared';
 import type { StreamTarget } from '@/components/stremio/StreamPicker';
 
+/** IDs de anime usados pelo Kitsu e por addons compatíveis. */
+const ANIME_ID_PREFIX = /^(kitsu|mal|anilist|anidb|zeusanime2?:|zeusanimev2:)/i;
+
+export function isAnimeMetaId(metaId: string | null | undefined): boolean {
+  return typeof metaId === 'string' && ANIME_ID_PREFIX.test(metaId.trim());
+}
+
 export function streamTargetFromAddonItem(item: AddonCatalogItemDto): StreamTarget {
   const type: 'movie' | 'series' = item.type === 'movie' ? 'movie' : 'series';
   return {
