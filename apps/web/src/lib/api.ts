@@ -38,6 +38,7 @@ import type {
   SecretStatusDto,
   SettingsDto,
   SourceDto,
+  SourceStatusDto,
   SourceRunDto,
   StorageStatsDto,
   StremioAddonDto,
@@ -161,6 +162,7 @@ export const api = {
 
   // Fontes
   sources: () => request<{ sources: SourceDto[] }>('/sources'),
+  sourceStatuses: () => request<{ sources: SourceStatusDto[] }>('/sources/status'),
   resolveSource: (body: { type: string; input: string }) =>
     request<ResolvedSourceDto>('/sources/resolve', { method: 'POST', body: JSON.stringify(body) }),
   createSource: (body: {

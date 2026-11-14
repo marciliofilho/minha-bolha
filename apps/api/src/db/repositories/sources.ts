@@ -1,7 +1,13 @@
 /** Repositório de fontes + histórico de execuções. */
 import { randomUUID } from 'node:crypto';
 import { db } from '../database';
-import type { SourceDto, SourceErrorCode, SourceRunDto, SourceType } from '@hub/shared';
+import type {
+  SourceDto,
+  SourceErrorCode,
+  SourceRunDto,
+  SourceStatusDto,
+  SourceType
+} from '@hub/shared';
 import type { SourceRow, SourceRunRow } from '../types';
 import { toRunDto, toSourceDto } from '../mappers';
 import { nowIso, youtubeFeedCutoffIso } from '../../lib/dates';
@@ -63,6 +69,31 @@ export function getSource(id: string): SourceDto | null {
 
   if (!row) return null;
   return toSourceDto(row, { itemCount: Number(row.item_count), unreadCount: Number(row.unread_count) });
+}
+
+/** Lista mínima para acompanhar o refresh sem baixar o config de cada fonte. */
+export function listSourceStatuses(): SourceStatusDto[] {
+  const rows = db
+    .prepare(
+      `SELECT id, enabled, last_checked_at, next_run_at, last_error_code
+       FROM sources
+       ORDER BY name ASC`
+    )
+    .all() as unknown as Array<{
+    id: string;
+    enabled: number;
+    last_checked_at: string | null;
+    next_run_at: string | null;
+    last_error_code: SourceErrorCode | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    enabled: row.enabled === 1,
+    lastCheckedAt: row.last_checked_at,
+    nextRunAt: row.next_run_at,
+    lastErrorCode: row.last_error_code
+  }));
 }
 
 export function getSourceRow(id: string): SourceRow | null {

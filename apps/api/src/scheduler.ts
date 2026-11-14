@@ -274,9 +274,10 @@ async function runSource(sourceId: string, manual: boolean): Promise<void> {
     const insertResult = insertItems(row.id, row.category_id, generated);
     const itemsNew = insertResult.inserted;
     const checkedAt = nowIso();
+    const nextRunAt = jitteredNextRun(intervalMs);
     recordSuccess(row.id, {
       state: JSON.stringify(result.state ?? {}),
-      nextRunAt: jitteredNextRun(intervalMs),
+      nextRunAt,
       checkedAt
     });
     finishRun(runId, {
@@ -290,7 +291,8 @@ async function runSource(sourceId: string, manual: boolean): Promise<void> {
       sourceId: row.id,
       ok: true,
       itemsNew,
-      lastCheckedAt: checkedAt
+      lastCheckedAt: checkedAt,
+      nextRunAt
     });
     if (itemsNew > 0) {
       broadcast('items:new', {
@@ -306,12 +308,13 @@ async function runSource(sourceId: string, manual: boolean): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const failures = row.consecutive_failures + 1;
     const checkedAt = nowIso();
+    const nextRunAt = failureNextRun(intervalMs, failures, code);
 
     recordFailure(row.id, {
       code,
       message,
       consecutiveFailures: failures,
-      nextRunAt: failureNextRun(intervalMs, failures, code),
+      nextRunAt,
       checkedAt
     });
     finishRun(runId, {
@@ -328,7 +331,8 @@ async function runSource(sourceId: string, manual: boolean): Promise<void> {
       ok: false,
       errorCode: code,
       errorMessage: message,
-      lastCheckedAt: checkedAt
+      lastCheckedAt: checkedAt,
+      nextRunAt
     });
 
     if (code === 'auth' && row.type === 'stremio-library') {

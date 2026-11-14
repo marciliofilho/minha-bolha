@@ -43,7 +43,7 @@ import {
 } from '../../db/repositories/novel-cache';
 import { translateTextTo, TRANSLATE_ALLOWED_TARGETS } from '../../lib/translate';
 import { getCategory } from '../../db/repositories/categories';
-import { createSource, deleteSource, deleteSources, getSource, getSourceRow, listRuns, listSources, updateSource } from '../../db/repositories/sources';
+import { createSource, deleteSource, deleteSources, getSource, getSourceRow, listRuns, listSources, listSourceStatuses, updateSource } from '../../db/repositories/sources';
 import { getSettings } from '../../db/repositories/settings';
 import { findMediaByExternal } from '../../db/repositories/media';
 import { ensureGgdealsSource } from '../../domain/games';
@@ -114,6 +114,11 @@ function novelInputFromConfig(config: Record<string, unknown>): string | null {
 
 sourcesRouter.get('/sources', (_req, res) => {
   res.json({ sources: listSources() });
+});
+
+/** Lista leve para acompanhar o refresh em lote sem reler todo o config. */
+sourcesRouter.get('/sources/status', (_req, res) => {
+  res.json({ sources: listSourceStatuses() });
 });
 
 /** Imagem/logo da fonte, resolvida e guardada por 3 dias. */

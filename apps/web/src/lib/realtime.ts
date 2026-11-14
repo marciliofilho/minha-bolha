@@ -1,7 +1,12 @@
 /** Conexão SSE com a API: mantém o feed e os contadores atualizados. */
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FAVORITES_TAB_ID, WATCH_LATER_TAB_ID } from '@hub/shared';
+import {
+  FAVORITES_TAB_ID,
+  WATCH_LATER_TAB_ID,
+  type SourceDto,
+  type SourceErrorCode
+} from '@hub/shared';
 
 interface RealtimeMessage {
   type: string;
@@ -10,6 +15,20 @@ interface RealtimeMessage {
 
 /** Agrupa os eventos de uma sincronização para não refazer o feed a cada item. */
 const INVALIDATE_DELAY_MS = 700;
+
+export type SourceStatusListener = (
+  sourceId: string,
+  ok: boolean,
+  lastCheckedAt: string | null
+) => void;
+
+const sourceStatusListeners = new Set<SourceStatusListener>();
+
+/** Avisa quando uma fonte termina, sem precisar recarregar a lista inteira. */
+export function subscribeSourceStatus(listener: SourceStatusListener): () => void {
+  sourceStatusListeners.add(listener);
+  return () => sourceStatusListeners.delete(listener);
+}
 
 export function useRealtime(): void {
   const queryClient = useQueryClient();
@@ -89,14 +108,52 @@ export function useRealtime(): void {
           }
           break;
 
-        case 'source:status':
+        case 'source:status': {
+          const sourceId = typeof message.sourceId === 'string' ? message.sourceId : null;
+          const ok = message.ok !== false;
+          const checkedAt =
+            typeof message.lastCheckedAt === 'string' ? message.lastCheckedAt : null;
+          const nextRunAt =
+            typeof message.nextRunAt === 'string' ? message.nextRunAt : null;
+          const errorCode =
+            typeof message.errorCode === 'string'
+              ? (message.errorCode as SourceErrorCode)
+              : null;
+          const errorMessage =
+            typeof message.errorMessage === 'string' ? message.errorMessage : null;
+
+          if (sourceId) {
+            for (const listener of sourceStatusListeners) {
+              listener(sourceId, ok, checkedAt);
+            }
+
+            // Atualiza só a fonte que terminou. O feed e os contadores são
+            // tratados pelos eventos items:new/counts.
+            queryClient.setQueryData<SourceDto[]>(['sources'], (previous) =>
+              previous?.map((source) =>
+                source.id === sourceId
+                  ? {
+                      ...source,
+                      lastCheckedAt: checkedAt ?? source.lastCheckedAt,
+                      lastSuccessAt: ok && checkedAt ? checkedAt : source.lastSuccessAt,
+                      lastErrorAt: ok ? null : checkedAt ?? source.lastErrorAt,
+                      lastErrorCode: ok ? null : errorCode ?? source.lastErrorCode,
+                      lastErrorMessage: ok ? null : errorMessage ?? source.lastErrorMessage,
+                      nextRunAt: nextRunAt ?? source.nextRunAt
+                    }
+                  : source
+              )
+            );
+          }
+
           queue({
-            sources: true,
             health: true,
-            ...(message.ok === false ? { counts: true } : {})
+            // Em falha vale reler a lista para atualizar contadores/backoff.
+            ...(ok === false ? { counts: true, sources: true } : {})
           });
           void queryClient.invalidateQueries({ queryKey: ['calendar'] });
           break;
+        }
 
         case 'calendar:changed':
           void queryClient.invalidateQueries({ queryKey: ['calendar'] });
