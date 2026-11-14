@@ -23,6 +23,8 @@ const EN: Record<string, string> = {
   'Remover fonte': 'Remove source',
   'Altere nome, categoria, intervalo ou URL. Trocar a URL faz o Hub resolver tudo de novo.':
     'Change the name, category, interval or URL. Changing the URL makes the Hub resolve everything again.',
+  'Altere nome, categoria ou URL. Trocar a URL faz o Hub resolver tudo de novo.':
+    'Change the name, category or URL. Changing the URL makes the Hub resolve everything again.',
   URL: 'URL',
   'Verificando atualizações…': 'Checking for updates…',
   'Novo capítulo': 'New chapter',
@@ -711,6 +713,10 @@ const EN: Record<string, string> = {
     'Optional — we use the detected name if left empty.',
   'Ex.: Meu canal favorito': 'e.g. My favorite channel',
   'Intervalo de verificação': 'Check interval',
+  'Controlado em Config → Sistema → Atualizar o feed a cada ({value} s).':
+    'Controlled in Settings → System → Refresh the feed every ({value} s).',
+  'Controlado em Config → Sistema → Atualizar as novels a cada ({value} min).':
+    'Controlled in Settings → System → Refresh novels every ({value} min).',
   'Categoria': 'Category',
   'Define a aba do feed onde os itens aparecem.': 'Sets the feed tab where items appear.',
   personalizada: 'custom',
@@ -1405,6 +1411,8 @@ const ES: Record<string, string> = {
   'Remover fonte': 'Quitar fuente',
   'Altere nome, categoria, intervalo ou URL. Trocar a URL faz o Hub resolver tudo de novo.':
     'Cambia el nombre, la categoría, el intervalo o la URL. Cambiar la URL hace que Hub lo resuelva todo de nuevo.',
+  'Altere nome, categoria ou URL. Trocar a URL faz o Hub resolver tudo de novo.':
+    'Cambia el nombre, la categoría o la URL. Cambiar la URL hace que Hub lo resuelva todo de nuevo.',
   URL: 'URL',
   'Novo capítulo': 'Nuevo capítulo',
   'Abrir link original': 'Abrir enlace original',
@@ -2093,6 +2101,10 @@ const ES: Record<string, string> = {
     'Opcional — usamos el nombre detectado si queda vacío.',
   'Ex.: Meu canal favorito': 'Ej.: Mi canal favorito',
   'Intervalo de verificação': 'Intervalo de comprobación',
+  'Controlado em Config → Sistema → Atualizar o feed a cada ({value} s).':
+    'Controlado en Configuración → Sistema → Actualizar el feed cada ({value} s).',
+  'Controlado em Config → Sistema → Atualizar as novels a cada ({value} min).':
+    'Controlado en Configuración → Sistema → Actualizar las novelas cada ({value} min).',
   Categoria: 'Categoría',
   'Define a aba do feed onde os itens aparecem.':
     'Define la pestaña del feed donde aparecen los elementos.',
