@@ -37,10 +37,16 @@ class HubScheduler(
         val NOVEL_REFRESH_TYPES = setOf("webnovel")
     }
 
+    private data class QueueJob(
+        val sourceId: String,
+        val type: String?,
+        val manual: Boolean
+    )
+
     private val workers = Executors.newFixedThreadPool(MAX_CONCURRENT)
     private val pumpScheduler = Executors.newSingleThreadScheduledExecutor()
     private val running = ConcurrentHashMap.newKeySet<String>()
-    private val queue = ArrayDeque<String>()
+    private val queue = ArrayDeque<QueueJob>()
     private var active = 0
     private var ticker: ScheduledExecutorService? = null
     private var nextNovelStartAt = 0L
@@ -80,9 +86,14 @@ class HubScheduler(
         .put("queued", queue.size)
 
     @Synchronized
-    fun enqueueSource(sourceId: String, manual: Boolean): Boolean {
-        if (running.contains(sourceId) || queue.contains(sourceId)) return false
-        queue.addLast(sourceId)
+    fun enqueueSource(
+        sourceId: String,
+        manual: Boolean,
+        knownType: String? = null
+    ): Boolean {
+        if (running.contains(sourceId) || queue.any { it.sourceId == sourceId }) return false
+        val type = knownType ?: database.sourceRow(sourceId)?.type
+        queue.addLast(QueueJob(sourceId = sourceId, type = type, manual = manual))
         events.broadcast("refresh:state", refreshState())
         pump()
         return true
@@ -95,9 +106,17 @@ class HubScheduler(
             if (row.isDemo) continue
             // O "atualizar tudo" também é manual: respeita o cooldown das novels.
             if (manual && novelCooldownRemainingMs(row) > 0) continue
-            if (enqueueSource(row.id, manual)) count++
+            if (enqueueSource(row.id, manual, row.type)) count++
         }
         return count
+    }
+
+    /** Feeds primeiro, depois ações manuais, novels e o resto. */
+    private fun queuePriority(type: String?, manual: Boolean): Int = when {
+        type == "youtube" || type == "rss" || type == "custom" -> 0
+        manual -> 1
+        type == "webnovel" -> 2
+        else -> 3
     }
 
     /** Tempo restante do cooldown de refresh manual de uma novel, em ms. */
@@ -125,37 +144,44 @@ class HubScheduler(
     private fun pump() {
         while (active < MAX_CONCURRENT && queue.isNotEmpty()) {
             // Espera 2s entre novels, mesmo quando várias vencem no mesmo tick.
+            // Feeds têm prioridade sobre mídia/calendário lento.
             val now = System.currentTimeMillis()
-            val sourceId = queue.firstOrNull { id ->
-                if (now >= nextNovelStartAt) true
-                else database.sourceRow(id)?.type != "webnovel"
+            var bestIndex = -1
+            var bestPriority = Int.MAX_VALUE
+            for (index in queue.indices) {
+                val candidate = queue[index]
+                if (candidate.type == "webnovel" && now < nextNovelStartAt) continue
+                val priority = queuePriority(candidate.type, candidate.manual)
+                if (priority < bestPriority) {
+                    bestPriority = priority
+                    bestIndex = index
+                }
             }
 
-            if (sourceId == null) {
+            if (bestIndex < 0) {
                 schedulePump(nextNovelStartAt - now)
                 return
             }
 
-            queue.remove(sourceId)
-            if (running.contains(sourceId)) continue
+            val job = queue.removeAt(bestIndex)
+            if (running.contains(job.sourceId)) continue
 
-            val row = database.sourceRow(sourceId)
-            if (row?.type == "webnovel") {
+            if (job.type == "webnovel") {
                 nextNovelStartAt = System.currentTimeMillis() + NOVEL_START_SPACING_MS
             }
 
             active++
-            running.add(sourceId)
+            running.add(job.sourceId)
             events.broadcast("refresh:state", refreshState())
 
             workers.execute {
                 try {
-                    runSource(sourceId)
+                    runSource(job.sourceId)
                 } catch (error: Exception) {
-                    Log.e(TAG, "erro não tratado no job $sourceId", error)
+                    Log.e(TAG, "erro não tratado no job ${job.sourceId}", error)
                 } finally {
                     synchronized(this) {
-                        running.remove(sourceId)
+                        running.remove(job.sourceId)
                         active--
                         events.broadcast("refresh:state", refreshState())
                         pump()
@@ -168,7 +194,7 @@ class HubScheduler(
     private fun tick() {
         try {
             for (row in database.dueSources(10)) {
-                enqueueSource(row.id, false)
+                enqueueSource(row.id, false, row.type)
             }
         } catch (error: Exception) {
             Log.e(TAG, "falha no tick do scheduler", error)
@@ -182,7 +208,7 @@ class HubScheduler(
     fun runDueNow(limit: Int): Int {
         var refreshed = 0
         var lastNovelStart = 0L
-        for (row in database.dueSources(limit)) {
+        for (row in database.dueSources(limit).sortedBy { queuePriority(it.type, false) }) {
             try {
                 if (row.type == "webnovel") {
                     if (lastNovelStart > 0) {
