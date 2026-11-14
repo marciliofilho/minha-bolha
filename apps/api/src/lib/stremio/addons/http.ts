@@ -4,6 +4,7 @@
  * apenas destinos de metadados ficam bloqueados.
  */
 import type { AddonDiagnosticCode, SourceErrorCode } from '@hub/shared';
+import { diagnosticForStatus } from './diagnostics';
 import { ADDON_MAX_BYTES, ADDON_TIMEOUT_MS, addonOrigin, assertAllowedAddonHost } from './manifest';
 
 const USER_AGENT =
@@ -27,7 +28,7 @@ function defaultDiagnostic(
   if (code === 'rate_limited') return 'rate_limited';
   if (code === 'config' || code === 'layout_changed') return 'invalid';
   if (code === 'network') return 'network';
-  return status > 0 ? 'http' : 'unknown';
+  return diagnosticForStatus(status);
 }
 
 export class AddonHttpError extends Error {

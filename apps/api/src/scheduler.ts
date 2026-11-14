@@ -37,15 +37,18 @@ import type { SourceRow } from './db/types';
 import { todayInZone } from './lib/dates';
 import { broadcast } from './sse';
 import { runAutomaticMaintenance } from './lib/storage';
+import {
+  canStartNovel,
+  nextNovelStartAfter,
+  novelCooldownRemainingMs
+} from './lib/novel-schedule';
+
+export { novelCooldownRemainingMs as novelManualCooldownRemainingMs } from './lib/novel-schedule';
 
 const log = createLogger('scheduler');
 const MAX_CONCURRENT = 2;
 const TICK_MS = 30_000;
 const MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
-/** Cooldown de atualizações manuais de novels (igual ao intervalo mínimo). */
-const NOVEL_MANUAL_COOLDOWN_MS = 5 * 60_000;
-/** Espaçamento entre iniciar duas novels, no manual e no automático. */
-const NOVEL_START_SPACING_MS = 2_000;
 
 const running = new Set<string>();
 const queue: Array<{ sourceId: string; manual: boolean }> = [];
@@ -83,7 +86,7 @@ export function enqueueAll(manual = true): number {
     // não devem poluir o feed com conteúdo real. O botão individual continua.
     if (source.is_demo === 1) continue;
     // O "atualizar tudo" também é manual: respeita o cooldown das novels.
-    if (manual && novelManualCooldownRemainingMs(source.type, source.last_checked_at) > 0) {
+    if (manual && novelCooldownRemainingMs(source.type, source.last_checked_at) > 0) {
       continue;
     }
     if (enqueueSource(source.id, manual)) count++;
@@ -106,7 +109,7 @@ function pump(): void {
     // Os demais tipos não entram nesse espaçamento.
     const now = Date.now();
     const index = queue.findIndex((job) => {
-      if (now >= nextNovelStartAt) return true;
+      if (canStartNovel(now, nextNovelStartAt)) return true;
       const row = getSourceRow(job.sourceId);
       return !row || row.type !== 'webnovel';
     });
@@ -122,7 +125,7 @@ function pump(): void {
 
     const row = getSourceRow(job.sourceId);
     if (row?.type === 'webnovel') {
-      nextNovelStartAt = Date.now() + NOVEL_START_SPACING_MS;
+      nextNovelStartAt = nextNovelStartAfter(Date.now());
     }
 
     active++;
@@ -166,19 +169,6 @@ function effectiveIntervalMs(
     return Math.max(settings.feedRefreshSeconds, 60) * 1000;
   }
   return effectiveInterval(row, connector) * 60_000;
-}
-
-/** Tempo restante do cooldown de refresh manual de uma novel, em ms. */
-export function novelManualCooldownRemainingMs(
-  type: string,
-  lastCheckedAt: string | null | undefined
-): number {
-  if (type !== 'webnovel' || !lastCheckedAt) return 0;
-  const checked = Date.parse(lastCheckedAt);
-  if (!Number.isFinite(checked)) return 0;
-  const elapsed = Date.now() - checked;
-  if (elapsed < 0) return 0;
-  return Math.max(0, NOVEL_MANUAL_COOLDOWN_MS - elapsed);
 }
 
 function jitteredNextRun(intervalMs: number, extraDelayMs = 0): string {

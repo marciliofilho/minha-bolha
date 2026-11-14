@@ -32,7 +32,7 @@
     "desktop:dev": "npm run start -w @hub/desktop",
     "start": "npm run start -w @hub/api",
     "typecheck": "npm run typecheck -w @hub/api && npm run typecheck -w @hub/web",
-    "test": "npm run test -w @hub/api",
+    "test": "npm run test -w @hub/api && npm run test -w @hub/web",
     "check:secrets": "node scripts/check-secrets.mjs"
   },
   "devDependencies": {
