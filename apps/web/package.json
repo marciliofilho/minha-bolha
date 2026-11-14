@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "tsx --test src/lib/utils.test.ts src/lib/stream-target.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

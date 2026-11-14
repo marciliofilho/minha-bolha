@@ -71,6 +71,8 @@ import {
 import { getStremioServerUrl, getStremioServerStatus } from '../lib/stremio/server';
 import { subtitleLanguageName, subtitleLanguageRank } from '../lib/stremio/subtitles';
 import { AddonHttpError } from '../lib/stremio/addons/http';
+import { isCacheableStreamList } from '../lib/stremio/addons/cache-policy';
+import { streamQueryTypes } from '../lib/stremio/addons/query';
 import {
   manifestCatalogs,
   manifestResources,
@@ -1454,10 +1456,7 @@ function readStreamCache(
   if (ageMs > streamStaleTtlMs()) return null;
   try {
     const parsed = JSON.parse(row.streams_json) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    // Resultado vazio pode ser temporário (addon lento/bloqueado); não o
-    // tratamos como cache válido por 15 minutos.
-    if (parsed.length === 0) return null;
+    if (!Array.isArray(parsed) || !isCacheableStreamList(parsed)) return null;
     return { streams: parsed as NormalizedStream[], ageMs };
   } catch {
     return null;
@@ -1470,6 +1469,11 @@ function writeStreamCache(
   videoId: string,
   streams: NormalizedStream[]
 ): void {
+  // Resultado vazio pode ser temporário (addon lento/bloqueado).
+  if (!isCacheableStreamList(streams)) {
+    deleteStreamCacheRow(addonKey, type, videoId);
+    return;
+  }
   const now = Date.now();
   try {
     saveStreamCacheRow({
@@ -1789,7 +1793,7 @@ export async function getStreamsForTitle(input: {
 
   // Addons de anime (FenixFlix) esperam type=anime, mas parte dos addons de
   // torrent só responde com type=series. Consulta os dois e mescla.
-  const queryTypes = type === 'anime' ? ['anime', 'series'] : [type];
+  const queryTypes = streamQueryTypes(type);
   const jobs: Array<{ addon: EnabledAddon; queryType: string }> = [];
   for (const queryType of queryTypes) {
     for (const addon of getEnabledAddons()) {
