@@ -134,7 +134,7 @@ if (existsSync(androidDir)) {
 // ---------------------------------------------------------------------------
 if (includeTemp) {
   const tempDir = os.tmpdir();
-  const allowed = /^mb-(alpha|linux-|user-|test-data|android-|apk-check|bluestacks|update-dest|release|desktop-|final|media3-apk|session-apk|torrent-apk|fgs-apk|smoke)/i;
+  const allowed = /^mb-(alpha|linux-|user-|test-data|android-|apk-check|bluestacks|update-dest|release|desktop-|final|media3-apk|session-apk|torrent-apk|fgs-apk|smoke|vbs)/i;
   for (const entry of readdirSync(tempDir)) {
     if (!allowed.test(entry)) continue;
     remove(join(tempDir, entry), `%TEMP%/${entry}`);
