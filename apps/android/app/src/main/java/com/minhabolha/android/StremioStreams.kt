@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
  */
 object StremioStreams {
 
-    private const val STREAM_TIMEOUT_MS = 8_000L
+    private const val STREAM_TIMEOUT_MS = 15_000L
     private const val STREAM_CACHE_MS = 3 * 60_000L
     private val streamExecutor = Executors.newFixedThreadPool(8)
 
@@ -29,6 +29,12 @@ object StremioStreams {
     private data class AddonResult(
         val streams: List<JSONObject>,
         val error: JSONObject?
+    )
+
+    private data class AddonJob(
+        val addon: StremioAddonRow,
+        val queryType: String,
+        val future: java.util.concurrent.Future<AddonResult>
     )
 
     fun fetch(
@@ -51,72 +57,69 @@ object StremioStreams {
         }
 
         val started = System.currentTimeMillis()
-        val collected = mutableListOf<JSONObject>()
-        val errors = JSONArray()
 
-        val addons = database.stremioAddons().filter { addon ->
-            addon.enabled && supportsStream(addon.manifest, type)
-        }
-
-        // Dispara todos os addons ao mesmo tempo. Antes, um addon lento
-        // (FenixFlix/FrostStream) atrasava Torrentio e os demais.
-        val futures = addons.map { addon ->
-            addon to streamExecutor.submit<AddonResult> {
-                try {
-                    val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
-                    val response = Http.fetchText(
-                        "$base/stream/$type/${enc(effectiveVideoId)}.json",
-                        accept = "application/json",
-                        retries = 0,
-                        timeoutMs = STREAM_TIMEOUT_MS
+        // Addons de anime (FenixFlix) esperam type=anime, mas parte dos addons
+        // de torrent só responde com type=series. Consulta os dois e mescla.
+        val queryTypes = if (type == "anime") listOf("anime", "series") else listOf(type)
+        val jobs = mutableListOf<AddonJob>()
+        for (queryType in queryTypes) {
+            for (addon in database.stremioAddons()) {
+                if (!addon.enabled || !supportsStream(addon.manifest, queryType)) continue
+                jobs.add(
+                    AddonJob(
+                        addon = addon,
+                        queryType = queryType,
+                        future = streamExecutor.submit<AddonResult> {
+                            fetchAddon(addon, queryType, effectiveVideoId)
+                        }
                     )
-                    val payload = JSONObject(response.text)
-                    val items = payload.optJSONArray("streams") ?: JSONArray()
-                    val list = mutableListOf<JSONObject>()
-                    for (index in 0 until items.length()) {
-                        val stream = items.optJSONObject(index) ?: continue
-                        list.add(normalize(addon, stream, index))
-                    }
-                    AddonResult(list, null)
-                } catch (error: Exception) {
-                    val message = when (error) {
-                        is ConnectorError -> error.message ?: error.code
-                        else -> error.message ?: "falha ao consultar o addon"
-                    }
-                    AddonResult(
-                        emptyList(),
-                        JSONObject()
-                            .put("addonId", addon.id)
-                            .put("addonName", addon.name)
-                            .put("message", message)
-                            .put("helpUrl", JSONObject.NULL)
-                    )
-                }
-            }
-        }
-
-        for ((addon, future) in futures) {
-            val result = try {
-                future.get(STREAM_TIMEOUT_MS + 1_500, TimeUnit.MILLISECONDS)
-            } catch (error: Exception) {
-                future.cancel(true)
-                AddonResult(
-                    emptyList(),
-                    JSONObject()
-                        .put("addonId", addon.id)
-                        .put("addonName", addon.name)
-                        .put("message", "timeout")
-                        .put("helpUrl", JSONObject.NULL)
                 )
             }
+        }
+
+        val collected = mutableListOf<JSONObject>()
+        val errorEntries = mutableListOf<JSONObject>()
+        val addonsWithStreams = mutableSetOf<String>()
+        // Um único prazo para todos os addons; evita esperar 15s por cada um.
+        val deadline = started + STREAM_TIMEOUT_MS + 1_500
+
+        for (job in jobs) {
+            val remaining = deadline - System.currentTimeMillis()
+            val result = if (remaining <= 0) {
+                job.future.cancel(true)
+                timeoutResult(job.addon)
+            } else {
+                try {
+                    job.future.get(remaining, TimeUnit.MILLISECONDS)
+                } catch (error: Exception) {
+                    job.future.cancel(true)
+                    timeoutResult(job.addon)
+                }
+            }
+            if (result.streams.isNotEmpty()) addonsWithStreams.add(job.addon.id)
             collected.addAll(result.streams)
-            result.error?.let { errors.put(it) }
+            result.error?.let { errorEntries.add(it) }
+        }
+
+        val errors = JSONArray()
+        val seenErrors = mutableSetOf<String>()
+        for (entry in errorEntries) {
+            val addonId = entry.optString("addonId")
+            // Se o mesmo addon respondeu por outro tipo, não mostra erro redundante.
+            if (addonId in addonsWithStreams || !seenErrors.add(addonId)) continue
+            errors.put(entry)
+        }
+
+        val seenStreams = mutableSetOf<String>()
+        val unique = collected.filter { stream ->
+            val key = streamKey(stream)
+            key.isNotEmpty() && seenStreams.add(key)
         }
 
         // Diretos primeiro; depois os torrents com mais seeds. Sem isso o
         // Torrentio devolve primeiro streams de 4K com 3 peers e o player
         // demora/ falha antes de chegar nos 1080p bem semeados.
-        val ordered = collected.sortedWith(
+        val ordered = unique.sortedWith(
             compareByDescending<JSONObject> { if (it.optString("kind") == "direct") 1 else 0 }
                 .thenByDescending { it.optInt("seeds", 0) }
                 .thenByDescending { qualityRank(it.optText("quality")) }
@@ -132,11 +135,70 @@ object StremioStreams {
             .put("errors", errors)
             .put("cache", JSONObject().put("used", false).put("refreshing", false))
             .put("elapsedMs", System.currentTimeMillis() - started)
-        streamCache[cacheKey] = CacheEntry(
-            JSONObject(payload.toString()),
-            System.currentTimeMillis() + STREAM_CACHE_MS
-        )
+        // Lista vazia pode ser um addon lento/bloqueado; não a cacheia para
+        // não prender o usuário em "0 opções" pelos próximos 3 minutos.
+        if (streams.length() > 0) {
+            streamCache[cacheKey] = CacheEntry(
+                JSONObject(payload.toString()),
+                System.currentTimeMillis() + STREAM_CACHE_MS
+            )
+        } else {
+            streamCache.remove(cacheKey)
+        }
         return payload
+    }
+
+    private fun fetchAddon(
+        addon: StremioAddonRow,
+        queryType: String,
+        videoId: String
+    ): AddonResult {
+        return try {
+            val base = addon.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
+            val response = Http.fetchText(
+                "$base/stream/$queryType/${enc(videoId)}.json",
+                accept = "application/json",
+                retries = 0,
+                timeoutMs = STREAM_TIMEOUT_MS
+            )
+            val payload = JSONObject(response.text)
+            val items = payload.optJSONArray("streams") ?: JSONArray()
+            val list = mutableListOf<JSONObject>()
+            for (index in 0 until items.length()) {
+                val stream = items.optJSONObject(index) ?: continue
+                list.add(normalize(addon, stream, index, queryType))
+            }
+            AddonResult(list, null)
+        } catch (error: Exception) {
+            val message = when (error) {
+                is ConnectorError -> error.message ?: error.code
+                else -> error.message ?: "falha ao consultar o addon"
+            }
+            AddonResult(
+                emptyList(),
+                JSONObject()
+                    .put("addonId", addon.id)
+                    .put("addonName", addon.name)
+                    .put("message", message)
+                    .put("helpUrl", JSONObject.NULL)
+            )
+        }
+    }
+
+    private fun timeoutResult(addon: StremioAddonRow): AddonResult = AddonResult(
+        emptyList(),
+        JSONObject()
+            .put("addonId", addon.id)
+            .put("addonName", addon.name)
+            .put("message", "timeout")
+            .put("helpUrl", JSONObject.NULL)
+    )
+
+    private fun streamKey(stream: JSONObject): String {
+        val playback = stream.opt("playbackUrl") as? String
+        val external = stream.opt("externalUrl") as? String
+        val infoHash = stream.opt("infoHash") as? String
+        return playback ?: external ?: infoHash ?: stream.optString("id")
     }
 
     private fun qualityRank(quality: String?): Int = when {
@@ -149,7 +211,7 @@ object StremioStreams {
     }
 
     private fun seriesVideoId(type: String, id: String, season: Int?, episode: Int?): String {
-        if (type == "series" && season != null && episode != null) {
+        if (type != "movie" && season != null && episode != null) {
             return "$id:$season:$episode"
         }
         return id
@@ -183,7 +245,12 @@ object StremioStreams {
         return false
     }
 
-    private fun normalize(addon: StremioAddonRow, stream: JSONObject, index: Int): JSONObject {
+    private fun normalize(
+        addon: StremioAddonRow,
+        stream: JSONObject,
+        index: Int,
+        queryType: String
+    ): JSONObject {
         val url = stream.optString("url").takeIf { it.isNotBlank() }
         val externalUrl = stream.optString("externalUrl").takeIf { it.isNotBlank() }
         val ytId = stream.optString("ytId").takeIf { it.isNotBlank() }
@@ -222,7 +289,7 @@ object StremioStreams {
         }
 
         return JSONObject()
-            .put("id", "${addon.id}:$index")
+            .put("id", "${addon.id}:$queryType:$index")
             .put("addonId", addon.id)
             .put("addonName", addon.name)
             .put("name", name ?: JSONObject.NULL)
