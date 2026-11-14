@@ -1435,8 +1435,8 @@ const EN: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Plays the opening animation sound.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'The change applies the next time the desktop app starts.',
-  '{app} v0.4.23 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.23 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
+  '{app} v0.4.24 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.24 · phases 1 to 3 + Stremio and addons · 100% local data in SQLite'
 };
 
 const ES: Record<string, string> = {
@@ -2870,8 +2870,8 @@ const ES: Record<string, string> = {
   'Toca o som da animação de abertura.': 'Reproduce el sonido de la animación de apertura.',
   'A alteração vale na próxima vez que o app desktop for aberto.':
     'El cambio se aplica la próxima vez que se abra la app de escritorio.',
-  '{app} v0.4.23 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
-    '{app} v0.4.23 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
+  '{app} v0.4.24 · fases 1 a 3 + Stremio e addons · dados 100% locais em SQLite':
+    '{app} v0.4.24 · fases 1 a 3 + Stremio y addons · datos 100% locales en SQLite'
 };
 
 function interpolate(template: string, params?: Params): string {
