@@ -633,6 +633,20 @@ export interface AddonCatalogDto {
   canSearch: boolean;
 }
 
+export type AddonDiagnosticCode =
+  | 'dns'
+  | 'timeout'
+  | 'auth'
+  | 'blocked'
+  | 'not_found'
+  | 'rate_limited'
+  | 'http'
+  | 'invalid'
+  | 'network'
+  | 'empty'
+  | 'pending'
+  | 'unknown';
+
 export interface AddonStreamSummaryDto {
   sampleTitle: string | null;
   sampleId: string | null;
@@ -650,6 +664,8 @@ export interface AddonStreamSummaryDto {
   largestBytes: number | null;
   elapsedMs: number;
   error: string | null;
+  errorCode: AddonDiagnosticCode | null;
+  host: string | null;
 }
 
 export interface AddonTestSummaryDto {
@@ -660,6 +676,8 @@ export interface AddonTestSummaryDto {
   catalogsTested: number;
   streams: AddonStreamSummaryDto | null;
   warnings: string[];
+  errorCode: AddonDiagnosticCode | null;
+  host: string | null;
 }
 
 export interface StremioAddonDto {
@@ -762,7 +780,14 @@ export interface TitleStreamsDto {
   id: string;
   videoId: string;
   streams: TitleStreamDto[];
-  errors: Array<{ addonId: string; addonName: string; message: string; helpUrl?: string | null }>;
+  errors: Array<{
+    addonId: string;
+    addonName: string;
+    message: string;
+    helpUrl?: string | null;
+    code?: AddonDiagnosticCode;
+    host?: string | null;
+  }>;
   /** Resultados vieram do cache local (e podem estar atualizando em segundo plano). */
   cache: { used: boolean; refreshing: boolean };
   elapsedMs: number;

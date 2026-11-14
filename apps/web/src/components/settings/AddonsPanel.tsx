@@ -13,12 +13,14 @@ import {
   Upload
 } from 'lucide-react';
 import type {
+  AddonDiagnosticCode,
   AddonImportResultDto,
   AddonStreamSummaryDto,
   AddonTestSummaryDto,
   StremioAddonDto
 } from '@hub/shared';
 import { Button, Chip, ErrorBanner, InfoBanner, Modal, SuccessNote, Switch } from '@/components/ui';
+import { addonDiagnosticLabel } from '@/lib/addon-diagnostics';
 import { api } from '@/lib/api';
 import { useStremioAddons, useStremioStatus } from '@/lib/queries';
 import { useI18n } from '@/lib/i18n';
@@ -39,10 +41,40 @@ function formatBytes(value: number | null): string {
   return `${amount.toFixed(amount >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function DiagnosticHint({
+  code,
+  host
+}: {
+  code: AddonDiagnosticCode | null;
+  host: string | null;
+}) {
+  const { t } = useI18n();
+  if (!code) return null;
+  return (
+    <p className="text-[11px] text-faint">
+      {t('Diagnóstico:')}{' '}
+      <span className="text-muted">{t(addonDiagnosticLabel(code))}</span>
+      {host ? (
+        <>
+          {' · '}
+          {t('Endereço:')} <span className="font-mono text-muted">{host}</span>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
 function StreamSummary({ summary }: { summary: AddonStreamSummaryDto }) {
   const { t } = useI18n();
   if (summary.error) {
-    return <p className="text-[11px] text-warning">{t('Streams:')} {summary.error}</p>;
+    return (
+      <div className="space-y-0.5">
+        <p className="text-[11px] text-warning">
+          {t('Streams:')} {summary.error}
+        </p>
+        <DiagnosticHint code={summary.errorCode} host={summary.host} />
+      </div>
+    );
   }
   return (
     <div className="space-y-0.5 text-[11px] leading-relaxed text-muted">
@@ -60,6 +92,7 @@ function StreamSummary({ summary }: { summary: AddonStreamSummaryDto }) {
         {summary.maxSeeds !== null ? ` · seeds ${summary.maxSeeds}` : ''}
       </p>
       <p className="text-faint">{t('Tempo da consulta de streams:')} {summary.elapsedMs} ms</p>
+      <DiagnosticHint code={summary.errorCode} host={summary.host} />
     </div>
   );
 }
@@ -80,6 +113,7 @@ function TestResult({ summary }: { summary: AddonTestSummaryDto }) {
         Manifest: {summary.manifestMs} ms · {t('catálogos declarados:')} {summary.catalogsDeclared} ·{' '}
         {t('catálogos consultados:')} {summary.catalogsTested}
       </p>
+      <DiagnosticHint code={summary.errorCode} host={summary.host} />
       {summary.streams ? <StreamSummary summary={summary.streams} /> : null}
       {summary.warnings.length > 0 ? (
         <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-warning">

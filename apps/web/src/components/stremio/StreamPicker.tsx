@@ -13,6 +13,7 @@ import {
 import type { TitleStreamDto } from '@hub/shared';
 import { Chip, ErrorBanner, InfoBanner } from '@/components/ui';
 import { useSettings, useStremioEpisodes, useStremioServerStatus, useStremioStreams } from '@/lib/queries';
+import { addonDiagnosticLabel } from '@/lib/addon-diagnostics';
 import { useI18n } from '@/lib/i18n';
 import { isAndroidShell } from '@/lib/platform';
 import { isAnimeMetaId } from '@/lib/stream-target';
@@ -567,6 +568,12 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
               {streamsQuery.data.errors.map((error) => (
                 <li key={error.addonId}>
                   <span className="text-muted">{error.addonName}:</span> {error.message}
+                  {error.code ? (
+                    <span className="block text-faint">
+                      {t(addonDiagnosticLabel(error.code))}
+                      {error.host ? ` · ${error.host}` : ''}
+                    </span>
+                  ) : null}
                   {error.helpUrl ? (
                     <>
                       {' '}
