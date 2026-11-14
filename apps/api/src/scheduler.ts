@@ -40,7 +40,8 @@ import { runAutomaticMaintenance } from './lib/storage';
 import {
   canStartNovel,
   nextNovelStartAfter,
-  novelCooldownRemainingMs
+  novelCooldownRemainingMs,
+  queuePriority
 } from './lib/novel-schedule';
 
 export { novelCooldownRemainingMs as novelManualCooldownRemainingMs } from './lib/novel-schedule';
@@ -51,7 +52,7 @@ const TICK_MS = 30_000;
 const MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 
 const running = new Set<string>();
-const queue: Array<{ sourceId: string; manual: boolean }> = [];
+const queue: Array<{ sourceId: string; manual: boolean; type: string | null }> = [];
 let active = 0;
 let timer: NodeJS.Timeout | null = null;
 let maintenanceTimer: NodeJS.Timeout | null = null;
@@ -71,9 +72,14 @@ function emitState(): void {
   broadcast('refresh:state', getRefreshState() as unknown as Record<string, unknown>);
 }
 
-export function enqueueSource(sourceId: string, manual = false): boolean {
+export function enqueueSource(
+  sourceId: string,
+  manual = false,
+  knownType?: string | null
+): boolean {
   if (running.has(sourceId) || queue.some((job) => job.sourceId === sourceId)) return false;
-  queue.push({ sourceId, manual });
+  const type = knownType !== undefined ? knownType : getSourceRow(sourceId)?.type ?? null;
+  queue.push({ sourceId, manual, type });
   emitState();
   pump();
   return true;
@@ -89,7 +95,7 @@ export function enqueueAll(manual = true): number {
     if (manual && novelCooldownRemainingMs(source.type, source.last_checked_at) > 0) {
       continue;
     }
-    if (enqueueSource(source.id, manual)) count++;
+    if (enqueueSource(source.id, manual, source.type)) count++;
   }
   return count;
 }
@@ -106,13 +112,19 @@ function schedulePump(delayMs: number): void {
 function pump(): void {
   while (active < MAX_CONCURRENT && queue.length > 0) {
     // Espera 2s entre novels, mesmo quando várias vencem no mesmo tick.
-    // Os demais tipos não entram nesse espaçamento.
+    // Feeds (YouTube/RSS/custom) têm prioridade sobre mídia/calendário lento.
     const now = Date.now();
-    const index = queue.findIndex((job) => {
-      if (canStartNovel(now, nextNovelStartAt)) return true;
-      const row = getSourceRow(job.sourceId);
-      return !row || row.type !== 'webnovel';
-    });
+    let index = -1;
+    let bestPriority = Number.POSITIVE_INFINITY;
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const candidate = queue[cursor]!;
+      if (candidate.type === 'webnovel' && !canStartNovel(now, nextNovelStartAt)) continue;
+      const priority = queuePriority(candidate.type, candidate.manual);
+      if (priority < bestPriority) {
+        bestPriority = priority;
+        index = cursor;
+      }
+    }
 
     if (index < 0) {
       schedulePump(nextNovelStartAt - now);
@@ -123,8 +135,7 @@ function pump(): void {
     if (!job) return;
     if (running.has(job.sourceId)) continue;
 
-    const row = getSourceRow(job.sourceId);
-    if (row?.type === 'webnovel') {
+    if (job.type === 'webnovel') {
       nextNovelStartAt = nextNovelStartAfter(Date.now());
     }
 

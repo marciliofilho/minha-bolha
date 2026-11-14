@@ -5,7 +5,7 @@ import { ERROR_LABELS, type SourceDto } from '@hub/shared';
 import { AppIcon } from '@/components/AppIcon';
 import { Chip, IconButton, StatusDot, Switch } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
-import { useCategories, useSourceRuns } from '@/lib/queries';
+import { useCategories, useSettings, useSourceRuns } from '@/lib/queries';
 import {
   SOURCE_TYPE_ICON,
   categoryColor,
@@ -73,12 +73,20 @@ export function SourceCard({
   const [expanded, setExpanded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const categories = useCategories();
+  const settings = useSettings();
   const runs = useSourceRuns(expanded ? source.id : null);
 
   const color = categoryColor(source.categoryId);
   const status = statusOf(source);
   const categoryLabel = categories.data?.find((category) => category.id === source.categoryId)?.label ?? source.categoryId;
   const isNovel = source.type === 'webnovel';
+  const isFeed =
+    source.type === 'youtube' || source.type === 'rss' || source.type === 'custom';
+  const effectiveInterval = isFeed
+    ? `${settings.data?.feedRefreshSeconds ?? 60} s`
+    : formatInterval(
+        isNovel ? (settings.data?.novelRefreshMinutes ?? 60) : source.intervalMinutes
+      );
   const coverUrl = typeof source.config.coverUrl === 'string' ? source.config.coverUrl : null;
   const bookUrl = typeof source.config.url === 'string' ? source.config.url : null;
   const siteName = typeof source.config.site === 'string' ? source.config.site : null;
@@ -294,7 +302,7 @@ export function SourceCard({
               <StatusDot tone={status.tone} />
               {t(status.label)}
             </span>
-            <span>{t('intervalo:')} {formatInterval(source.intervalMinutes)}</span>
+            <span>{t('intervalo:')} {effectiveInterval}</span>
             <span>{t('última:')} {formatRelative(source.lastCheckedAt)}</span>
             <span>{t('próxima:')} {formatRelative(source.nextRunAt)}</span>
           </div>

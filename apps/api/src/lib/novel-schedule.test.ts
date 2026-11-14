@@ -4,6 +4,7 @@ import {
   canStartNovel,
   nextNovelStartAfter,
   novelCooldownRemainingMs,
+  queuePriority,
   NOVEL_MANUAL_COOLDOWN_MS,
   NOVEL_START_SPACING_MS
 } from './novel-schedule';
@@ -41,4 +42,13 @@ test('novels só iniciam 2 segundos depois da anterior', () => {
   assert.equal(canStartNovel(NOW, NOW), true);
   assert.equal(canStartNovel(NOW, NOW + 1), false);
   assert.equal(nextNovelStartAfter(NOW), NOW + NOVEL_START_SPACING_MS);
+});
+
+test('feeds têm prioridade sobre novels e fontes de mídia', () => {
+  assert.equal(queuePriority('youtube', false), 0);
+  assert.equal(queuePriority('rss', false), 0);
+  assert.equal(queuePriority('custom', false), 0);
+  assert.equal(queuePriority('tmdb', true), 1);
+  assert.equal(queuePriority('webnovel', false), 2);
+  assert.equal(queuePriority('tmdb', false), 3);
 });

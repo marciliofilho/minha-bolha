@@ -25,3 +25,17 @@ export function canStartNovel(now: number, nextNovelStartAt: number): boolean {
 export function nextNovelStartAfter(now: number): number {
   return now + NOVEL_START_SPACING_MS;
 }
+
+/**
+ * Prioridade da fila: feeds primeiro, depois ações manuais, novels e o resto.
+ * Assim YouTube/RSS/custom não esperam atrás de TMDB/calendário lentos.
+ */
+export function queuePriority(
+  type: string | null | undefined,
+  manual: boolean
+): number {
+  if (type === 'youtube' || type === 'rss' || type === 'custom') return 0;
+  if (manual) return 1;
+  if (type === 'webnovel') return 2;
+  return 3;
+}

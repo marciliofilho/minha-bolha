@@ -52,6 +52,14 @@ function isMediaType(type: SourceType): type is 'tmdb' | 'anilist' {
   return type === 'tmdb' || type === 'anilist';
 }
 
+/** Tipos cujo intervalo é definido em Config → Sistema, não por fonte. */
+const GLOBAL_SCHEDULE_TYPES = new Set<SourceType>([
+  'youtube',
+  'rss',
+  'custom',
+  'webnovel'
+]);
+
 export function SourceFormModal({ open, onClose, source, defaultType }: SourceFormModalProps) {
   const { t } = useI18n();
   const editing = Boolean(source);
@@ -77,6 +85,7 @@ export function SourceFormModal({ open, onClose, source, defaultType }: SourceFo
   const [searchQuery, setSearchQuery] = useState('');
   const [searchError, setSearchError] = useState<string | null>(null);
   const [imdbId, setImdbId] = useState('');
+  const usesGlobalSchedule = GLOBAL_SCHEDULE_TYPES.has(type);
 
   useEffect(() => {
     if (!open) return;
@@ -164,7 +173,7 @@ export function SourceFormModal({ open, onClose, source, defaultType }: SourceFo
         } = {
           name: name.trim() || source.name,
           categoryId,
-          intervalMinutes
+          ...(usesGlobalSchedule ? {} : { intervalMinutes })
         };
         const nextInput = input.trim();
         if (nextInput && nextInput !== inputOf(source)) body.input = nextInput;
@@ -176,7 +185,7 @@ export function SourceFormModal({ open, onClose, source, defaultType }: SourceFo
           input: input.trim(),
           name: name.trim() || undefined,
           categoryId,
-          intervalMinutes,
+          ...(usesGlobalSchedule ? {} : { intervalMinutes }),
           ...(type === 'anilist' ? { imdbId: imdbId.trim() } : {})
         });
       }
@@ -213,7 +222,9 @@ export function SourceFormModal({ open, onClose, source, defaultType }: SourceFo
       description={
         editing
           ? t(
-              'Altere nome, categoria, intervalo ou URL. Trocar a URL faz o Hub resolver tudo de novo.'
+              usesGlobalSchedule
+                ? 'Altere nome, categoria ou URL. Trocar a URL faz o Hub resolver tudo de novo.'
+                : 'Altere nome, categoria, intervalo ou URL. Trocar a URL faz o Hub resolver tudo de novo.'
             )
           : t(
               'Busque um título ou cole a URL de um canal, feed ou página de novel. O Hub resolve e já busca os dados.'
@@ -474,7 +485,7 @@ export function SourceFormModal({ open, onClose, source, defaultType }: SourceFo
           </div>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className={usesGlobalSchedule ? 'grid gap-4' : 'grid gap-4 sm:grid-cols-2'}>
           <Field label={t('Nome exibido')} htmlFor="source-name" hint={t('Opcional — usamos o nome detectado se ficar vazio.')}>
             <input
               id="source-name"
@@ -485,20 +496,36 @@ export function SourceFormModal({ open, onClose, source, defaultType }: SourceFo
             />
           </Field>
 
-          <Field label={t('Intervalo de verificação')} htmlFor="source-interval">
-            <select
-              id="source-interval"
-              className="field-input"
-              value={intervalMinutes}
-              onChange={(event) => setIntervalMinutes(Number(event.target.value))}
-            >
-              {[...new Set([...INTERVAL_OPTIONS, intervalMinutes])].sort((a, b) => a - b).map((value) => (
-                <option key={value} value={value}>
-                  {formatInterval(value)}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {usesGlobalSchedule ? (
+            <Field label={t('Intervalo de verificação')} htmlFor="source-interval">
+              <div className="rounded-lg border border-line bg-elevated/40 px-3 py-2 text-[11px] leading-relaxed text-muted">
+                {type === 'webnovel'
+                  ? t(
+                      'Controlado em Config → Sistema → Atualizar as novels a cada ({value} min).',
+                      { value: settings.data?.novelRefreshMinutes ?? 60 }
+                    )
+                  : t(
+                      'Controlado em Config → Sistema → Atualizar o feed a cada ({value} s).',
+                      { value: settings.data?.feedRefreshSeconds ?? 60 }
+                    )}
+              </div>
+            </Field>
+          ) : (
+            <Field label={t('Intervalo de verificação')} htmlFor="source-interval">
+              <select
+                id="source-interval"
+                className="field-input"
+                value={intervalMinutes}
+                onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+              >
+                {[...new Set([...INTERVAL_OPTIONS, intervalMinutes])].sort((a, b) => a - b).map((value) => (
+                  <option key={value} value={value}>
+                    {formatInterval(value)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
         </div>
 
         <Field label={t('Categoria')} htmlFor="source-category" hint={t('Define a aba do feed onde os itens aparecem.')}>
