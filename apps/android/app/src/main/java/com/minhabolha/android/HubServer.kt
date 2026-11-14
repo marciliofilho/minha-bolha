@@ -284,6 +284,8 @@ class HubServer(
                 json(JSONObject().put("sources", database.sources()))
 
             segments.size == 1 && method == Method.POST -> createSource(session)
+            segments.size == 2 && segments[1] == "status" && method == Method.GET ->
+                json(JSONObject().put("sources", database.sourceStatuses()))
             segments.size == 2 && segments[1] == "resolve" && method == Method.POST -> resolveSource(session)
             segments.size == 2 && segments[1] == "bulk-delete" && method == Method.POST -> bulkDeleteSources(session)
             segments.size == 2 && (method == Method.PATCH || method == Method.PUT) -> updateSource(session, segments[1])

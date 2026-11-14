@@ -322,11 +322,12 @@ class HubScheduler(
 
             val inserted = database.insertItems(row.id, row.categoryId, generated)
             val checkedAt = Dates.nowIso()
+            val nextRunAt = jitteredNextRun(intervalMs)
 
             database.recordSuccess(
                 id = row.id,
                 state = result.state.toString(),
-                nextRunAt = jitteredNextRun(intervalMs),
+                nextRunAt = nextRunAt,
                 checkedAt = checkedAt
             )
             database.finishRun(
@@ -346,6 +347,7 @@ class HubScheduler(
                     .put("ok", true)
                     .put("itemsNew", inserted)
                     .put("lastCheckedAt", checkedAt)
+                    .put("nextRunAt", nextRunAt)
             )
             if (inserted > 0) {
                 events.broadcast(
@@ -362,13 +364,14 @@ class HubScheduler(
             val message = error.message ?: error.javaClass.simpleName
             val failures = row.consecutiveFailures + 1
             val checkedAt = Dates.nowIso()
+            val nextRunAt = failureNextRun(intervalMs, failures, code)
 
             database.recordFailure(
                 id = row.id,
                 code = code,
                 message = message,
                 consecutiveFailures = failures,
-                nextRunAt = failureNextRun(intervalMs, failures, code),
+                nextRunAt = nextRunAt,
                 checkedAt = checkedAt
             )
             database.finishRun(
@@ -389,6 +392,7 @@ class HubScheduler(
                     .put("errorCode", code)
                     .put("errorMessage", message)
                     .put("lastCheckedAt", checkedAt)
+                    .put("nextRunAt", nextRunAt)
             )
 
             Log.w(TAG, "${row.name}: $code — $message")

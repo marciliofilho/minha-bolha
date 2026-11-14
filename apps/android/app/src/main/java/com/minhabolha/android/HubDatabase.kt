@@ -296,6 +296,27 @@ class HubDatabase(private val context: Context) {
         return if (rows.length() > 0) rows.getJSONObject(0) else null
     }
 
+    /** Lista mínima para acompanhar o refresh em lote sem baixar todo o config. */
+    fun sourceStatuses(): JSONArray {
+        val result = JSONArray()
+        db.rawQuery(
+            "SELECT id, enabled, last_checked_at, next_run_at, last_error_code FROM sources ORDER BY name ASC",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.put(
+                    JSONObject()
+                        .put("id", cursor.getString(0))
+                        .put("enabled", cursor.getInt(1) == 1)
+                        .put("lastCheckedAt", cursor.getString(2) ?: JSONObject.NULL)
+                        .put("nextRunAt", cursor.getString(3) ?: JSONObject.NULL)
+                        .put("lastErrorCode", cursor.getString(4) ?: JSONObject.NULL)
+                )
+            }
+        }
+        return result
+    }
+
     fun sourceByType(type: String): JSONObject? {
         val rows = querySources("WHERE s.type = ?", arrayOf(type))
         return if (rows.length() > 0) rows.getJSONObject(0) else null
