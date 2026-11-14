@@ -129,12 +129,25 @@ object Http {
             }
         }
 
+        val host = try {
+            java.net.URI(url).host
+        } catch (error: Exception) {
+            null
+        }
+        val diagnostic = when {
+            lastError is java.net.UnknownHostException -> "dns"
+            lastError is java.net.SocketTimeoutException -> "timeout"
+            else -> "network"
+        }
         val message = when {
-            lastError is java.net.SocketTimeoutException -> "O site demorou demais para responder."
+            lastError is java.net.UnknownHostException ->
+                "Domínio do addon não encontrado (DNS): ${host ?: url}."
+            lastError is java.net.SocketTimeoutException ->
+                "O addon demorou demais para responder."
             lastError != null -> lastError.message ?: "Falha de rede."
             else -> "Falha de rede."
         }
-        throw ConnectorError("network", message)
+        throw ConnectorError("network", message, diagnostic)
     }
 
     private fun statusError(status: Int, url: String): ConnectorError {
@@ -142,13 +155,26 @@ object Http {
         return when (status) {
             401 -> ConnectorError(
                 "auth",
-                "Autenticação recusada (HTTP 401) em $safe. Confira a chave da API."
+                "Autenticação recusada (HTTP 401) em $safe. Confira a chave da API.",
+                "auth"
             )
 
-            403 -> ConnectorError("blocked", "Acesso negado (HTTP 403) em $safe.")
-            404, 410 -> ConnectorError("not_found", "Endereço não encontrado (HTTP $status).")
-            429 -> ConnectorError("rate_limited", "O site limitou as requisições (HTTP 429).")
-            else -> ConnectorError("network", "Resposta inesperada do servidor (HTTP $status).")
+            403 -> ConnectorError("blocked", "Acesso negado (HTTP 403) em $safe.", "blocked")
+            404, 410 -> ConnectorError(
+                "not_found",
+                "Endereço não encontrado (HTTP $status).",
+                "not_found"
+            )
+            429 -> ConnectorError(
+                "rate_limited",
+                "O site limitou as requisições (HTTP 429).",
+                "rate_limited"
+            )
+            else -> ConnectorError(
+                "network",
+                "Resposta inesperada do servidor (HTTP $status).",
+                "http"
+            )
         }
     }
 

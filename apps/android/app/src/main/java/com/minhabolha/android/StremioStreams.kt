@@ -181,6 +181,8 @@ object StremioStreams {
                     .put("addonName", addon.name)
                     .put("message", message)
                     .put("helpUrl", JSONObject.NULL)
+                    .put("code", AddonDiagnostics.codeOf(error))
+                    .put("host", AddonDiagnostics.hostOf(addon.transportUrl) ?: JSONObject.NULL)
             )
         }
     }
@@ -192,6 +194,8 @@ object StremioStreams {
             .put("addonName", addon.name)
             .put("message", "timeout")
             .put("helpUrl", JSONObject.NULL)
+            .put("code", "timeout")
+            .put("host", AddonDiagnostics.hostOf(addon.transportUrl) ?: JSONObject.NULL)
     )
 
     private fun streamKey(stream: JSONObject): String {

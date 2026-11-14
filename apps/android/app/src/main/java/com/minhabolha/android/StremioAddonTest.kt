@@ -34,9 +34,12 @@ object StremioAddonTest {
             .put("catalogsTested", 0)
             .put("streams", JSONObject.NULL)
             .put("warnings", warnings)
+            .put("errorCode", JSONObject.NULL)
+            .put("host", JSONObject.NULL)
 
         if (addon.transportUrl.isBlank()) {
             warnings.put("Não foi possível descriptografar a URL do addon. Reconecte/recadastre.")
+            summary.put("errorCode", "invalid")
             return finish(database, addon.id, summary, started, warnings)
         }
 
@@ -45,9 +48,12 @@ object StremioAddonTest {
             StremioCatalog.fetchManifest(addon.transportUrl)
         } catch (error: Exception) {
             warnings.put(error.message ?: "Não foi possível carregar o manifest do addon.")
+            summary.put("errorCode", AddonDiagnostics.codeOf(error))
+            summary.put("host", AddonDiagnostics.hostOf(addon.transportUrl) ?: JSONObject.NULL)
             return finish(database, addon.id, summary, started, warnings)
         }
         summary.put("manifestMs", System.currentTimeMillis() - manifestStarted)
+        summary.put("host", AddonDiagnostics.hostOf(addon.transportUrl) ?: JSONObject.NULL)
 
         val catalogs = manifest.optJSONArray("catalogs") ?: JSONArray()
         summary.put("catalogsDeclared", catalogs.length())
@@ -66,6 +72,8 @@ object StremioAddonTest {
             if (sample != null) {
                 val streams = testStreams(base, sample)
                 summary.put("streams", streams)
+                summary.put("errorCode", streams.opt("errorCode") ?: JSONObject.NULL)
+                summary.put("host", streams.opt("host") ?: JSONObject.NULL)
                 val error = streams.optText("error")
                 if (error != null) {
                     warnings.put(error)
@@ -172,6 +180,7 @@ object StremioAddonTest {
         var largestBytes = 0L
         var count = 0
         var error: String? = null
+        var errorCode: String? = null
 
         try {
             val body = Http.fetchText(
@@ -214,6 +223,7 @@ object StremioAddonTest {
             }
         } catch (caught: Exception) {
             error = caught.message ?: "Falha ao consultar streams."
+            errorCode = AddonDiagnostics.codeOf(caught)
         }
 
         return JSONObject()
@@ -228,6 +238,11 @@ object StremioAddonTest {
             .put("largestBytes", if (largestBytes > 0) largestBytes else JSONObject.NULL)
             .put("elapsedMs", System.currentTimeMillis() - started)
             .put("error", error ?: JSONObject.NULL)
+            .put(
+                "errorCode",
+                errorCode ?: if (count == 0) "empty" else JSONObject.NULL
+            )
+            .put("host", AddonDiagnostics.hostOf(base) ?: JSONObject.NULL)
     }
 
     private fun qualityOf(label: String): String? =

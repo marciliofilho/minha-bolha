@@ -183,5 +183,7 @@ interface Connector {
  */
 class ConnectorError(
     val code: String,
-    message: String
+    message: String,
+    /** Diagnóstico específico para addons (dns, timeout, auth, http...). */
+    val diagnostic: String? = null
 ) : Exception(message)
