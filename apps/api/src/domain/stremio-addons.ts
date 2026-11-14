@@ -1726,38 +1726,52 @@ export async function getStreamsForTitle(input: {
       ? `${id}:${input.season}:${input.episode}`
       : id);
 
-  const addons = getEnabledAddons().filter((addon) =>
-    supportsResource(addon.manifest, 'stream', type, videoId)
-  );
+  // Addons de anime (FenixFlix) esperam type=anime, mas parte dos addons de
+  // torrent só responde com type=series. Consulta os dois e mescla.
+  const queryTypes = type === 'anime' ? ['anime', 'series'] : [type];
+  const jobs: Array<{ addon: EnabledAddon; queryType: string }> = [];
+  for (const queryType of queryTypes) {
+    for (const addon of getEnabledAddons()) {
+      if (supportsResource(addon.manifest, 'stream', queryType, videoId)) {
+        jobs.push({ addon, queryType });
+      }
+    }
+  }
   const errors: TitleStreamsDto['errors'] = [];
   const collected: Array<{ stream: TitleStreamDto; priority: number }> = [];
+  const addonsWithStreams = new Set<string>();
 
   const results = await Promise.all(
-    addons.map((addon) =>
+    jobs.map(({ addon, queryType }) =>
       withResponseDeadline(
-        fetchStreamsCached(addon, type, videoId, input.refresh === true),
+        fetchStreamsCached(addon, queryType, videoId, input.refresh === true),
         addon
       )
     )
   );
 
   for (const result of results) {
-    if (!result.streams) {
-      if (!result.refreshing) {
-        errors.push({
-          addonId: result.addon.id,
-          addonName: result.addon.name,
-          message: result.error ?? 'Falha ao consultar streams.',
-          helpUrl: result.helpUrl ?? null
-        });
-      }
-      continue;
-    }
+    if (!result.streams) continue;
+    if (result.streams.length > 0) addonsWithStreams.add(result.addon.id);
     result.streams.forEach((stream, index) => {
       collected.push({
         stream: toStreamDto(stream, result.addon, index),
         priority: result.addon.priority
       });
+    });
+  }
+
+  const seenErrors = new Set<string>();
+  for (const result of results) {
+    if (result.streams || result.refreshing) continue;
+    // Se o mesmo addon respondeu por outro tipo, não mostra erro redundante.
+    if (addonsWithStreams.has(result.addon.id) || seenErrors.has(result.addon.id)) continue;
+    seenErrors.add(result.addon.id);
+    errors.push({
+      addonId: result.addon.id,
+      addonName: result.addon.name,
+      message: result.error ?? 'Falha ao consultar streams.',
+      helpUrl: result.helpUrl ?? null
     });
   }
 

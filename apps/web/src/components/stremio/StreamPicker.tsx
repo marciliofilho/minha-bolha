@@ -14,6 +14,7 @@ import type { TitleStreamDto } from '@hub/shared';
 import { Chip, ErrorBanner, InfoBanner } from '@/components/ui';
 import { useStremioEpisodes, useStremioServerStatus, useStremioStreams } from '@/lib/queries';
 import { useI18n } from '@/lib/i18n';
+import { isAnimeMetaId } from '@/lib/stream-target';
 import { cn } from '@/lib/utils';
 import { StreamPlayer } from './StreamPlayer';
 
@@ -105,11 +106,16 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
     return null;
   }, [target.type, selectedSeason, seasons, effectiveEpisode]);
 
+  // Addons de anime (FenixFlix) esperam type=anime para IDs kitsu:/mal:/etc.
+  // Temporadas e episódios continuam vindo do metadado type=series.
+  const streamType =
+    target.type !== 'movie' && isAnimeMetaId(target.metaId) ? 'anime' : target.type;
+
   const params = useMemo(
     () =>
       target.type === 'series'
         ? {
-            type: 'series' as const,
+            type: streamType,
             id: target.metaId,
             season: effectiveSeason,
             episode: effectiveEpisode,
@@ -124,7 +130,7 @@ export function StreamPicker({ target, onClose }: StreamPickerProps) {
             videoId: null,
             refreshToken
           },
-    [target.type, target.metaId, effectiveSeason, effectiveEpisode, refreshToken]
+    [target.type, target.metaId, streamType, effectiveSeason, effectiveEpisode, refreshToken]
   );
 
   const streamsQuery = useStremioStreams(params, true);
