@@ -11,10 +11,10 @@ import { NovelProgressModal } from '@/components/sources/NovelProgressModal';
 import {
   useCategories,
   useDeleteSources,
-  useRefreshSource,
   useSources,
   useUpdateSource
 } from '@/lib/queries';
+import { api } from '@/lib/api';
 import { waitForSourceRefresh } from '@/lib/refresh-source';
 import { categoryColor, cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
@@ -36,7 +36,6 @@ export function SourcesPage() {
   const sourcesQuery = useSources();
   const categoriesQuery = useCategories();
   const updateSource = useUpdateSource();
-  const refreshSource = useRefreshSource();
   const deleteSources = useDeleteSources();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -45,7 +44,7 @@ export function SourcesPage() {
 
   const refreshOne = (source: SourceDto): void => {
     setRefreshingIds((previous) => new Set(previous).add(source.id));
-    void waitForSourceRefresh(source, () => refreshSource.mutateAsync(source.id))
+    void waitForSourceRefresh(source, () => api.refreshSource(source.id))
       .catch(() => undefined)
       .finally(() => {
         setRefreshingIds((previous) => {

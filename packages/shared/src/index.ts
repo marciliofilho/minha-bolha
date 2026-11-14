@@ -228,6 +228,15 @@ export interface CategoryCountDto {
   total: number;
 }
 
+/** Versão leve usada para acompanhar o término de um refresh em lote. */
+export interface SourceStatusDto {
+  id: string;
+  enabled: boolean;
+  lastCheckedAt: string | null;
+  nextRunAt: string | null;
+  lastErrorCode: SourceErrorCode | null;
+}
+
 export interface SourceDto {
   id: string;
   type: SourceType;

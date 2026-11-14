@@ -66,7 +66,6 @@ import {
   useMarkAllRead,
   usePlaybackContinue,
   useRefreshAll,
-  useRefreshSource,
   useRefreshState,
   useSetNovelProgress,
   useSources,
@@ -77,6 +76,7 @@ import {
 } from '@/lib/queries';
 import { syntheticNovelItem } from '@/lib/novel-source-item';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
+import { subscribeSourceStatus } from '@/lib/realtime';
 import { api } from '@/lib/api';
 import {
   feedItemFromNotification,
@@ -343,7 +343,6 @@ export function FeedPage() {
   const feedQuery = useFeed(tab, sourceId);
   const refreshState = useRefreshState();
   const refreshAll = useRefreshAll();
-  const refreshSource = useRefreshSource();
   const markAllRead = useMarkAllRead();
   const updateItem = useUpdateItem();
   const setNovelProgress = useSetNovelProgress();
@@ -906,21 +905,30 @@ export function FeedPage() {
     void (async () => {
       const pending = new Set(targets.map((source) => source.id));
       const before = new Map(targets.map((source) => [source.id, source.lastCheckedAt]));
+      let unsubscribe: (() => void) | null = null;
       try {
+        // O SSE avisa assim que cada fonte termina, sem reler a lista inteira.
+        unsubscribe = subscribeSourceStatus((sourceId, _ok, lastCheckedAt) => {
+          if (!pending.has(sourceId)) return;
+          if (!lastCheckedAt || lastCheckedAt !== before.get(sourceId)) pending.delete(sourceId);
+        });
+
         for (let index = 0; index < targets.length; index++) {
           if (index > 0) await new Promise((resolve) => window.setTimeout(resolve, 2_000));
-          const result = await refreshSource.mutateAsync(targets[index].id);
+          const result = await api.refreshSource(targets[index].id);
           if (result.queued === false && result.reason === 'cooldown') {
             pending.delete(targets[index].id);
           }
         }
 
-        // A API responde 202 assim que entra na fila. Mantém o spinner até
-        // as fontes desta seção terminarem a sincronização de verdade.
+        // Rede de segurança: se um evento SSE se perder, consulta só o status.
         const deadline = Date.now() + 90_000;
+        let nextFallback = Date.now() + 10_000;
         while (pending.size > 0 && Date.now() < deadline) {
-          await new Promise((resolve) => window.setTimeout(resolve, 2_000));
-          const latest = await api.sources();
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+          if (Date.now() < nextFallback) continue;
+          nextFallback = Date.now() + 10_000;
+          const latest = await api.sourceStatuses();
           for (const source of latest.sources) {
             if (!pending.has(source.id)) continue;
             if (source.lastCheckedAt !== before.get(source.id)) pending.delete(source.id);
@@ -929,10 +937,12 @@ export function FeedPage() {
       } catch {
         // A atualização em tempo real ainda entrega o resultado quando possível.
       } finally {
+        unsubscribe?.();
         setRefreshingSection((current) => (current === section.id ? null : current));
         void queryClient.invalidateQueries({ queryKey: ['sources'] });
         void queryClient.invalidateQueries({ queryKey: ['feed'] });
         void queryClient.invalidateQueries({ queryKey: ['counts'] });
+        void queryClient.invalidateQueries({ queryKey: ['calendar'] });
       }
     })();
   };
